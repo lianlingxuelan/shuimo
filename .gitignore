@@ -33,4 +33,14 @@ _ls_u.txt
 # Python cache
 __pycache__/
 *.pyc
-tools/*.pyc
+
+# Dev-tools (keep local, not in repo)
+tools/
+.cache/
+Assets/images/_raw_gen/
+Assets/images/samples_brightened/
+
+# Internal validation scripts (Python)
+Assets/Scripts/**/Tests/*.py
+Assets/Scripts/Core/wcore_selfcheck.py
+Assets/_Project/t2_static_check.py
