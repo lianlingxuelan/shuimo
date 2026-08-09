@@ -1,0 +1,77 @@
+sequenceDiagram
+    autonumber
+    participant WB as WorldBuilder
+    participant SF as SpriteFactory
+    participant FS as StreamingAssets(磁盘)
+    participant GO as Player GameObject
+    participant SR as SpriteRenderer
+    participant HA as HeroineAnimator
+    participant PC as PlayerController
+    participant AC as AttackController
+    participant DC as DodgeController
+    participant CB as CombatBridge
+
+    rect rgb(238,244,252)
+    Note over WB,SF: 【阶段 1】世界重建 —— 释放旧贴图
+    WB->>SF: Clear()
+    SF->>SF: SafeDestroy 全部 _sprites / _textures（含上一批 PNG）
+    end
+
+    rect rgb(240,248,240)
+    Note over WB,HA: 【阶段 2】BuildPlayer() —— 先兜底，再升级
+    WB->>GO: new GameObject("Player")
+    WB->>SR: AddComponent<SpriteRenderer>()
+    WB->>SF: SolidRect("player", 40, 40, 蓝)
+    SF-->>SR: sprite = 蓝方块  ★无条件先设，保证任何分支可见
+    WB->>GO: AddComponent<PlayerController/AttackController/SkillController/DodgeController>()
+    WB->>HA: AddComponent<HeroineAnimator>()
+    activate HA
+    HA->>HA: Awake() → Warmup()
+    HA->>SF: PreloadPngSequence("characters/heroine","heroine_idle",4,48,64,pivot,white)
+    SF->>FS: File.ReadAllBytes(streamingAssetsPath + ...)
+    alt 文件存在
+        FS-->>SF: byte[]
+        SF->>SF: NewTexture(key,2,2) → _textures[key] 登记
+        SF->>SF: tex.LoadImage(bytes) → 自动 resize 48×64
+        SF->>SF: 校验实际尺寸 == 声明 w×h，不符则 LogWarning
+        SF->>SF: Sprite.Create(tex, rect, pivot, PPU=1) → _sprites[key]
+        SF-->>HA: Sprite
+    else 文件缺失 / 损坏
+        FS-->>SF: 异常 / null
+        SF->>SF: LogWarning（同 path 仅一次）
+        SF-->>HA: null
+    end
+    HA->>SF: 其余 7 个 pose 同样预热（合计 39 帧）
+    HA->>HA: IsReady = (idle 首帧 != null)
+    deactivate HA
+    WB->>HA: 读 IsReady
+    alt IsReady == true
+        WB->>SR: 交由 HeroineAnimator 每帧接管 sprite
+        WB->>GO: FacingMarker 弱化（alpha 0.45 / 宽度减半）
+    else IsReady == false  ★程序化 fallback
+        WB->>HA: Destroy(HeroineAnimator)
+        Note over SR: 保留 40×40 蓝方块 + 原朝向条，与今日行为逐字节一致
+    end
+    end
+
+    rect rgb(252,246,238)
+    Note over HA,CB: 【阶段 3】每帧 Update（轮询，只读，零内核写入）
+    loop 每帧
+        HA->>CB: IsGameplayBlocked?
+        alt 被闸门拦截（终局 / 菜单打开）
+            Note over HA: return —— 动画冻结在当前帧<br/>不使用 Time.timeScale，与 Scheduler.Paused 同源
+        else 正常推进
+            HA->>CB: PlayerHp
+            HA->>AC: SwingCount
+            HA->>DC: IsDodging
+            HA->>PC: IsMoving / LastFacing
+            HA->>HA: Evaluate() 按优先级定 AnimState
+            Note right of HA: HP<=0 → Death(锁死)<br/>IsDodging → Dodge<br/>HP 下降沿 → Hurt<br/>SwingCount 增长沿 → Attack<br/>IsMoving → Walk(按 facing 分档)<br/>else → Idle
+            HA->>HA: Advance(Time.deltaTime) 按 pose.Fps 推帧
+            HA->>SF: TryLoadPng(当前帧 path, ...)（命中缓存，O(1)）
+            SF-->>HA: Sprite
+            HA->>SR: sprite = 该帧
+            HA->>SR: flipX = ShouldFlipX(state, LastFacing)
+        end
+    end
+    end

@@ -1,0 +1,143 @@
+{
+  "_comment": "人物图鉴真源。id 一经确定不得改名。unlock_condition 为 null 表示默认解锁。",
+  "_version": 1,
+  "characters": [
+    {
+      "id": "char_yunqing",
+      "display_name": "云清",
+      "portrait_key": "p_player",
+      "title": "青岚传人",
+      "faction": "青岚一脉",
+      "bio": "青岚一脉末代传人，师从玄真子。背负师门遗命踏入修仙之途，剑心澄澈、意志坚韧。",
+      "age": 18,
+      "weapon": "青泓剑",
+      "affinity": "水",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_xuanzhen",    "type": "master_student", "label": "师徒", "direction": "from"},
+        {"target_id": "char_guixumozun",  "type": "nemesis",        "label": "宿敌", "direction": "mutual"}
+      ]
+    },
+    {
+      "id": "char_xuanzhen",
+      "display_name": "玄真子",
+      "portrait_key": "p_xuanzhen",
+      "title": "引路人",
+      "faction": "散修",
+      "bio": "白须老道，云清的师父。修为深不可测却甘居坊市一隅，以指引后辈为己任。",
+      "age": 287,
+      "weapon": "拂尘",
+      "affinity": "无",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_yunqing", "type": "master_student", "label": "师徒", "direction": "to"}
+      ]
+    },
+    {
+      "id": "char_heiyao",
+      "display_name": "黑曜道人",
+      "portrait_key": "p_heiyao",
+      "title": "炼器宗师",
+      "faction": "散修",
+      "bio": "中年炼器师，右臂缠布、面有灼痕。脾气暴躁但手艺精湛，以赤铁锤闻名。",
+      "age": 145,
+      "weapon": "赤铁锤",
+      "affinity": "火",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_yunqing", "type": "forge", "label": "锻造关系", "direction": "mutual"}
+      ]
+    },
+    {
+      "id": "char_yunxiao",
+      "display_name": "云霄仙子",
+      "portrait_key": "p_yunxiao",
+      "title": "境界长老",
+      "faction": "云霄殿",
+      "bio": "清冷女仙，掌管渡劫破境之道。额间花钿如雪，对求道者不假辞色却从不拒绝。",
+      "age": 320,
+      "weapon": "云霄绫",
+      "affinity": "冰",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_yunqing", "type": "guide", "label": "境界引导", "direction": "mutual"}
+      ]
+    },
+    {
+      "id": "char_linglong",
+      "display_name": "玲珑",
+      "portrait_key": "p_linglong",
+      "title": "法宝少女",
+      "faction": "千机谷",
+      "bio": "灵动少女，双丫髻缀铃铛。擅法宝蕴养之术，对一切新奇法器充满好奇。",
+      "age": 16,
+      "weapon": "千机匣",
+      "affinity": "木",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_yunqing", "type": "artifact", "label": "法宝蕴养", "direction": "mutual"}
+      ]
+    },
+    {
+      "id": "char_qingniang",
+      "display_name": "卿娘",
+      "portrait_key": "p_qingniang",
+      "title": "仙缘阁主",
+      "faction": "商盟",
+      "bio": "坊市女商，鬓插金步摇，笑眼含精明。经营仙缘阁，丹药法宝应有尽有。",
+      "age": 28,
+      "weapon": "金算盘",
+      "affinity": "金",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_yunqing", "type": "trade", "label": "易物之交", "direction": "to"}
+      ]
+    },
+    {
+      "id": "char_yunshang",
+      "display_name": "云裳",
+      "portrait_key": "p_yunshang",
+      "title": "仙侣",
+      "faction": "无",
+      "bio": "温婉道侣，浅碧纱裙披白帔，手持莲灯。与云清心意相通，修行路上不离不弃。",
+      "age": 19,
+      "weapon": "莲灯",
+      "affinity": "水",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_yunqing", "type": "companion", "label": "仙侣之情", "direction": "mutual"}
+      ]
+    },
+    {
+      "id": "char_guixumozun",
+      "display_name": "归墟魔尊",
+      "portrait_key": "p_boss",
+      "title": "终局之敌",
+      "faction": "归墟魔渊",
+      "bio": "天地尽头裂口的主宰，血雾翻涌、白骨成阶。与云清有不共戴天之仇。",
+      "age": -1,
+      "weapon": "灭世",
+      "affinity": "暗",
+      "unlock_condition": {"type": "boss_encounter", "zone_id": "zone_moyuan"},
+      "relations": [
+        {"target_id": "char_yunqing", "type": "nemesis", "label": "宿敌", "direction": "mutual"}
+      ]
+    },
+    {
+      "id": "char_moji",
+      "display_name": "墨姬",
+      "portrait_key": "p_moxiu",
+      "title": "暗月仙子",
+      "faction": "归墟魔渊",
+      "bio": "归墟魔渊之女，墨纱遮面、冷艳无双。身负魔道正统却心怀苍生，于正邪夹缝中踽踽独行。",
+      "age": 22,
+      "weapon": "暗月轮",
+      "affinity": "暗",
+      "unlock_condition": null,
+      "relations": [
+        {"target_id": "char_guixumozun", "type": "master_student", "label": "父女", "direction": "from"},
+        {"target_id": "char_yunqing",     "type": "guide",          "label": "命运交织", "direction": "mutual"}
+      ]
+    }
+  ]
+}

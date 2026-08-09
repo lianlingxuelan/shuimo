@@ -1,0 +1,15 @@
+[proc] V1 <- top_down_RPG_game_sprite__bird_2026-08-08T09-51-00.png
+       cropped=(1024, 1024) final=(48, 64) wm='未检测到水印（底部 8% 区域内容与水墨主体连续，未做额外裁切）' occ=0.084 aspect=1.000 cen=(0.478, 0.391)
+[proc] V2 <- 45_degree_high_angle_overhead__2026-08-08T09-51-45.png
+       cropped=(333, 521) final=(48, 64) wm='检测到底部独立块（高 34px，与主体有透明间隙），判定为水印并已裁除' occ=0.326 aspect=0.639 cen=(0.486, 0.493)
+[proc] V3 <- minimal_ink_silhouette_game_sp_2026-08-08T09-52-24.png
+       cropped=(213, 275) final=(48, 64) wm='未检测到水印（底部 8% 区域内容与水墨主体连续，未做额外裁切）' occ=0.346 aspect=0.775 cen=(0.425, 0.515)
+[compare] _compare_variants.png  1248x997
+
+自检
+------------------------------------------------------------
+  PASS  3 个变体均处理
+  PASS  3 张成品 = 48x64 且有真实透明
+  PASS  对比图可读
+IS_PASS: YES
+EXIT=0

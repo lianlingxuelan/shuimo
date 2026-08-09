@@ -1,0 +1,168 @@
+%% P1-2 受击反馈 —— 程序调用流程时序图
+%% 生成者：高见远（架构师）　｜　配套文档：docs/unity-p1-2-hitfeedback-architecture.md
+%%
+%% 覆盖五条链路：
+%%   ① 装配期：CombatBridge 接线 Director / Shake / PopupLayer
+%%   ② 主链路：敌人挨一刀 → 分档 → 去重 → 四件套派发（本图主体）
+%%   ③ 顿帧期间：内核照走、渲染钉住、解冻平滑归位（PRD B-4）
+%%   ④ 暂停 / 终局三态收敛（PRD R-05，验收 A-7 / A-8）
+%%   ⑤ Q1 实证：技能命中的双链路并发，以及为什么删 CombatEventsT3Unity:148
+%%
+%% 铁律提醒：
+%%   · Scheduler.Tick(Time.deltaTime) 全程不被冻结 —— 这是确定性的锚
+%%   · 全仓禁止 Time.timeScale（PRD B-1，零命中）
+
+sequenceDiagram
+    autonumber
+
+    participant WB as WorldBuilder<br/>(T2·装配)
+    participant CB as CombatBridge<br/>(T2·编排)
+    participant CC as CombatController<br/>(接线层)
+    participant DR as DamageResolver<br/>(纯逻辑内核)
+    participant EV as CombatEventsUnity<br/>(接线层·事件出口)
+    participant T3 as CombatEventsT3Unity<br/>(T2·技能事件)
+    participant DIR as HitFeedbackDirector<br/>(T2·总调度)
+    participant CLK as FeedbackClock<br/>(接线层·static)
+    participant CV as CombatView<br/>(接线层·实体视图)
+    participant CF as CameraFollow<br/>(T2·相机)
+    participant SHK as CameraShake<br/>(T2·屏震)
+    participant POP as DamagePopupLayer<br/>(T2·飘字)
+
+    %% =====================================================================
+    rect rgb(245, 245, 250)
+    Note over WB,POP: ① 装配期 —— 照抄 SetupProgression(CombatBridge.cs:466-475) 的既有形状
+    WB->>CF: AddComponent~CameraFollow~ + Configure(target, w, h)  【WorldBuilder.cs:647-650】
+    WB->>SHK: AddComponent~CameraShake~ + 注入 follow 引用
+    CB->>DIR: SetupHitFeedback(): 创建 Director
+    CB->>POP: 创建 DamagePopupLayer（预建 12 个 Text，SetActive(false)）
+    CB->>EV: controller.EventsUnity.HitFeedback += DIR.OnHitFeedback
+    CB->>EV: controller.EventsUnity.EnemyDied  += DIR.OnEnemyDied
+    Note over CB: ★ CombatBridge 只做装配与生命周期，<br/>策略一律不进这个已逾 1300 行的类
+    end
+
+    %% =====================================================================
+    rect rgb(255, 250, 240)
+    Note over DR,T3: ⑤ Q1 实证：一次技能命中，内核在同一步内先后触发两条链
+    DR->>DR: ResolveSkillHit(caster, target, def, ...)  【DamageResolver.cs:297】
+    DR->>DR: └─ ApplyToEnemyWithPoise(..., ev)  【:318】
+    DR->>EV: 　　└─ evt.OnHit(attacker, target, real, true)  【:251】← 链路①
+    DR->>T3: └─ evtT3.OnSkillHit(caster, target, def, real)  【:323】← 链路②
+    Note over T3: ★ 改造后 :145-149 的 view.PlayHitFlash() 已删除<br/>技能命中的闪白改由链路① 统一给出<br/>⇒ 架构上只剩一个入口，无需跨链路去重
+    end
+
+    %% =====================================================================
+    Note over DR,POP: ② 主链路 —— 「敌人挨一刀」完整流程（玩家普攻命中杂兵，内核算出 real = 11.0）
+
+    DR->>EV: OnHit(attacker, defender, 11.0, applied=true)
+    Note over EV: :70 applied==false 直接 return（W-CORE 闸门原样保留）
+    EV->>EV: :76 SpawnFx(HitFxPrefab, at, 1.0)　（不动）
+    EV->>EV: :89 PlaySfx("sfx_enemy_hit")　（本期不接音频资源）
+    EV->>DIR: HitFeedback(attacker, defender, 11.0)　★唯一富事件 hook
+
+    DIR->>CB: 读 IsGameplayBlocked
+    Note over DIR: ★ 只读，绝不写 Scheduler.Paused（PRD §6.2）
+    alt IsGameplayBlocked == true
+        DIR-->>EV: return —— 暂停/终局时不新起任何反馈（R-05）
+    end
+
+    DIR->>DIR: Grade(defender, 11.0)
+    Note over DIR: 敌人侧重击线 45%（HpMax≈22）<br/>11.0 ≥ 0.45×22 = 9.9 ⇒ IsHeavy = true<br/>Ratio=0.50 → Scale=1.18 ×FeedbackIntensity<br/>★ 玩家侧另用 8% 线（HpMax=260），两套阈值
+
+    DIR->>DIR: 去重：同 defender 0.02s 内只取最强（R-01 并发去重）
+    DIR->>DIR: 冷却：距上次 hitstop < 0.15s 则跳过顿帧（R-01 冷却下限）
+
+    Note over DIR,POP: 四件套同帧派发
+    DIR->>CLK: Frozen = true；_stopRemain = 0.09s
+    DIR->>CV: PlayHitFlash(#FFFFFF, 0.13s, peak=1.00)
+    Note over CV: 玩家档则为 (#C0392B, 0.16s, peak=0.80)<br/>—— 一眼分清挨打的是谁（验收 A-3）
+    DIR->>SHK: Kick(amp = 0.12 × 1.18, dur = 0.14s)
+    DIR->>POP: Push(defender.Position, 11.0, isPlayer=false, heavy=true)
+    POP->>POP: 0.15s 内同目标 → 累加进同一 slot；否则环形游标取新 slot（覆盖最旧）
+
+    %% =====================================================================
+    rect rgb(238, 242, 250)
+    Note over CC,SHK: ③ 顿帧期间的每一帧（0.09s ≈ 5 帧）
+    CC->>DR: Scheduler.Tick(Time.deltaTime)　【CombatController.cs:313】
+    Note over CC,DR: ★★ 内核照常按真实时间推进，一步不少 ——<br/>这是确定性的锚，也是 PRD 6.1.3 的硬要求
+
+    CC->>CV: SyncFromKernel()
+    CV->>CV: 检测内核走新步 → 滚动 _prevLogicPos / _currLogicPos
+    CV->>CV: _stepAge += Time.deltaTime　★状态机吃真实时间，永不落后
+    CV->>CV: target = Lerp(_prev, _curr, _stepAge / FixedStep)
+    CV->>CLK: 读 Frozen == true
+    CV->>CV: transform.position = _stopAnchor　（钉住渲染位置）
+    CV->>CV: _catchUpOffset = _stopAnchor - target　（每帧刷新欠账）
+    CV->>CV: UpdateFlash(): _flashTimer -= Delta(0) → 白色保持不衰减
+
+    CF->>CLK: 读 Delta == 0
+    CF->>CF: SmoothDamp(_center, desired, ref _velocity, smoothTime, ∞, 0) → _center 不动
+    SHK->>SHK: _age += Delta(0) → 抖动定格在当前相位
+    POP->>POP: age += Delta(0) → 飘字定格
+
+    Note over CV: ❌ 被否方案对照：<br/>若改为冻结 _stepAge 或让 SyncFromKernel 提前 return，<br/>_prev/_curr 仍会被内核滚动 3~7 次、中间步全丢，<br/>解冻瞬间 t 从 0 突跳到 1 ⇒ 敌人瞬移（PRD B-4 明文禁止）
+    end
+
+    DIR->>DIR: _stopRemain -= Time.deltaTime
+    Note over DIR: ★★ 必须用 Time.deltaTime！<br/>用 FeedbackClock.Delta 会自己冻自己 → 永久顿帧死锁
+    DIR->>CLK: _stopRemain ≤ 0 ⇒ Frozen = false
+
+    %% =====================================================================
+    rect rgb(240, 248, 240)
+    Note over CV,SHK: ③b 解冻后的 0.08s —— 平滑归位，绝不瞬移（验收 B-4）
+    CV->>CV: _catchUpAge += Time.deltaTime
+    CV->>CV: k = 1 - SmoothStep(0, 1, _catchUpAge / CatchUpDuration)
+    CV->>CV: transform.position = target + _catchUpOffset × k
+    Note over CV: CatchUpDuration = 0.08s < CameraFollow.DefaultSmoothTime = 0.14s<br/>⇒ 归位先于镜头跟随完成，两个平滑不互相拖影
+
+    Note over CF,SHK: 相机叠加顺序（ExecutionOrder 决定，不可颠倒）
+    CF->>CF: [100] LateUpdate: _center = ClampToBounds(SmoothDamp(_center, desired, ...))
+    CF->>CF: 　　　　transform.position = _center　（无屏震时到此为止，行为逐字等价）
+    SHK->>CF: [150] LateUpdate: basePos = follow.BaseCenter　（只读权威无偏移位置）
+    SHK->>SHK: offset = 双路异相正弦 × 线性衰减 k
+    SHK->>CF: transform.position = follow.ClampPoint(basePos + offset)
+    Note over SHK,CF: ★ 钳制在偏移之后 ⇒ 地图边缘挨打绝不露黑边（A-6 一票否决项）<br/>★ _age ≥ _duration 时 k=0 ⇒ offset 数学上精确归零，无累计漂移<br/>❌ 若直接在 CameraFollow 内写 transform.position：<br/>　 下一帧 SmoothDamp 从被抖过的位置起步，抖动被喂回 _velocity → 镜头漂移
+    end
+
+    POP->>POP: LateUpdate: 0~0.10s 弹入 / 0.10~0.45s 上飘 / 0.45~0.70s 淡出
+    POP->>POP: 世界→屏幕投影 → AvoidHud(): 落入 y∈[34,110] 则上抬到 y>120（A-9）
+    POP->>POP: 0.7s 到期 → 回收进环形池（SetActive(false)，永不 Destroy）
+
+    %% =====================================================================
+    rect rgb(252, 240, 240)
+    Note over DIR,POP: ④ 暂停 / 终局三态收敛（每帧在 Director.LateUpdate 裁决）
+    DIR->>CB: 读 IsGameplayBlocked / IsRunOver
+    DIR->>DIR: menuPaused = IsGameplayBlocked && !IsRunOver
+    Note over DIR: 逐字沿用 HeroineAnimator.cs:145 的既有三态写法
+
+    alt 菜单暂停（IsGameplayBlocked && !IsRunOver）
+        DIR->>CLK: Frozen = false　（hitstop 立即结束，不冻结）
+        Note over DIR,CLK: ★ 此时 Scheduler.Paused 已停内核，"冻结表现"是空操作；<br/>且 FeedbackClock 是全局的，留着会按住暂停面板自己的动画
+        DIR->>SHK: StopAndRecenter()　（相机立刻回正，验收 A-7）
+        DIR->>POP: FreezeAll(true)　（冻结但不清除，恢复后接着播）
+    else 终局（IsRunOver）
+        DIR->>CLK: Frozen = false
+        DIR->>SHK: StopAndRecenter()
+        DIR->>POP: ClearAll()　（结算面板上零残留，验收 A-8）
+    else 正常
+        DIR->>POP: FreezeAll(false)
+    end
+    end
+
+    %% =====================================================================
+    rect rgb(248, 245, 235)
+    Note over EV,POP: R-07 击杀强调（Q6 裁定：提到 P0，复用现成订阅点）
+    DR->>EV: OnEnemyDeath(e)　【CombatEventsUnity.cs:102】
+    EV->>DIR: EnemyDied(e)　【:112-115】
+    DIR->>CLK: Frozen = true；_stopRemain = 0.14s
+    DIR->>SHK: Kick(amp = 0.22, dur = 0.22s)
+    Note over DIR: 增量约 15 行 —— EnemyDied 是现成 hook，<br/>CombatBridge.cs:474 已有一个订阅方作为范式
+    end
+
+    %% =====================================================================
+    rect rgb(245, 245, 245)
+    Note over CB,CLK: 拆线与静态复位（防 Domain Reload 泄漏，见架构文档 §6.4）
+    CB->>EV: TeardownHitFeedback(): HitFeedback -= / EnemyDied -=　【照抄 :1217-1219】
+    CB->>POP: ClearAll()
+    CB->>CLK: Frozen = false
+    Note over CLK: 三重保险：<br/>① [RuntimeInitializeOnLoadMethod] ResetStatics()<br/>② Director.OnEnable / OnDisable<br/>③ CombatBridge.TeardownHitFeedback<br/>★ 漏掉任何一重 ⇒ 下次 Play 开局就全局冻结
+    end

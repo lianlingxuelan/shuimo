@@ -1,0 +1,310 @@
+%% P1-2 受击反馈 —— 数据结构与接口类图
+%% 生成者：高见远（架构师）　｜　配套文档：docs/unity-p1-2-hitfeedback-architecture.md
+%%
+%% 图例：
+%%   实线箭头        (-->)   单向引用 / 调用依赖 / 委托派发
+%%   虚线箭头        (..>)   仅读取常量或静态状态，无对象引用
+%%   实线菱形        (*--)   组合（生命周期从属）
+%%
+%% 分层与 asmdef（依赖方向单向，不可成环）：
+%%   Xianxia.Unity.T2  ──references──►  Xianxia.Combat.Unity  ──►  Xianxia.Combat  ──►  Xianxia.Core
+%%   ★ Xianxia.Combat.Unity 不允许引用 Xianxia.Unity.T2 —— 这是 FeedbackClock 必须下沉的唯一原因
+%%
+%% 本期硬约束：
+%%   · 全仓禁止 Time.timeScale（PRD B-1，零命中）
+%%   · Scheduler.Tick(Time.deltaTime) 一个字符不改（CombatController.cs:313）
+%%   · 不新增第二个暂停闸门（PRD §6.2）
+
+classDiagram
+    direction TB
+
+    %% =========================================================
+    %% 【纯逻辑内核】Xianxia.Combat —— 本期只读，零改动
+    %% =========================================================
+
+    class DamageResolver {
+        <<static · 纯逻辑 · 本期不动>>
+        +ApplyToEnemy(target, raw, attacker, ev)$ float
+        +ApplyToEnemyWithPoise(target, raw, breakDef, poiseDmg, attacker, ev)$ float
+        +ResolveSkillHit(caster, target, def, comboMult, rng, evT3, ev)$ float
+        %% :251 evt.OnHit(...)  ← 全部伤害的必经之路（唯一权威事件源）
+        %% :323 evtT3.OnSkillHit(...)  ← 仅技能路径，本期让它退出反馈链
+    }
+
+    class Combatant {
+        <<纯逻辑 · 本期不动>>
+        +int Id
+        +Vec2 Position
+        +Faction Faction
+        +float Hp
+        +float HpMax
+        +HpRatio() float
+    }
+
+    %% =========================================================
+    %% 【接线层】Xianxia.Combat.Unity —— 1 新增 + 2 修改
+    %% =========================================================
+
+    class FeedbackClock {
+        <<static · 新增 · Xianxia.Combat.Unity>>
+        +bool Frozen$
+        +float Delta$
+        +ResetStatics()$
+        %% Delta => Frozen ? 0f : Time.deltaTime
+        %% ★ 全工程唯一的表现层时钟闸门
+        %% ★ 与 Scheduler.Paused 物理隔离，互不读写（PRD §6.2）
+        %% ★ [RuntimeInitializeOnLoadMethod] 复位，防 Domain Reload 泄漏
+    }
+
+    class CombatEventsUnity {
+        <<修改 · Xianxia.Combat.Unity>>
+        +Func~int,CombatView~ ViewOf
+        +GameObject HitFxPrefab
+        +Action~string~ PlaySfx
+        +Action~Combatant,Combatant,float~ HitFeedback
+        +Action~BossPhase~ BossPhaseChanged
+        +Action~Combatant~ EnemyDied
+        +OnHit(attacker, defender, dmg, applied)
+        +OnEnemyDeath(e)
+        %% ★ 原 :49 Action~Vector2,string~ PopupText 原地演进为 HitFeedback
+        %%   （全仓零订阅，改签名破坏面为 0）
+        %% ★ :70 applied 闸门 / :76 SpawnFx / :89 PlaySfx 一律保持原样
+    }
+
+    class CombatView {
+        <<修改 · Xianxia.Combat.Unity>>
+        +Combatant Model
+        +float DefaultFlashDuration$ = 0.08f
+        -float CatchUpDuration$ = 0.08f
+        -Vector3 _prevLogicPos
+        -Vector3 _currLogicPos
+        -float _stepAge
+        -bool _stopHeld
+        -Vector3 _stopAnchor
+        -Vector3 _catchUpOffset
+        -float _catchUpAge
+        -Color _flashColor
+        -float _flashDuration
+        -float _flashPeak
+        +Bind(model)
+        +SyncFromKernel()
+        +PlayHitFlash()
+        +PlayHitFlash(tint, duration, peak)
+        -UpdateFlash()
+        %% ★ SyncFromKernel：状态机吃真实 Time.deltaTime（永不落后于内核）
+        %%   顿帧只钉 transform.position = _stopAnchor，解冻后 SmoothStep 归位
+        %%   —— 这是"不瞬移追帧"（PRD B-4）的根
+        %% ★ PlayHitFlash() 无参版保留，向后兼容既有调用点
+    }
+
+    %% =========================================================
+    %% 【Unity 表现层】Xianxia.Unity.T2 —— 4 新增
+    %% =========================================================
+
+    class HitFeedbackConfig {
+        <<static 常量表 · 新增 · Xianxia.Unity.T2>>
+        +float FeedbackIntensity$ = 0.8f
+        +float StopEnemyLight$ = 0.05f
+        +float StopEnemyHeavy$ = 0.09f
+        +float StopPlayer$ = 0.12f
+        +float StopOnKill$ = 0.14f
+        +float StopCooldown$ = 0.15f
+        +float DedupWindow$ = 0.02f
+        +float ShakeAmpEnemyLight$ = 0.05f
+        +float ShakeAmpPlayerHeavy$ = 0.30f
+        +float ShakeFrequencyHz$ = 24.0f
+        +Color PlayerTint$ = #C0392B
+        +Color PopupEnemyInk$ = #2B2B2B
+        +float HeavyRatioPlayer$ = 0.08f
+        +float HeavyRatioEnemy$ = 0.45f
+        +float PopupMergeWindow$ = 0.15f
+        +int PopupCapacity$ = 12
+        %% ★ 铁律：任何手感数字全仓只允许出现一次
+        %% ★ 玩家侧/敌人侧两套阈值 —— 敌人 HpMax≈22 vs 玩家 260，相差 11.8 倍
+    }
+
+    class HitFeedbackDirector {
+        <<新增 MonoBehaviour · Xianxia.Unity.T2>>
+        -CombatBridge _bridge
+        -CameraShake _shake
+        -DamagePopupLayer _popup
+        -Func~int,CombatView~ _viewOf
+        -float _stopRemain
+        -float _lastStopAt
+        -Dictionary~int,float~ _lastHitAt
+        +OnHitFeedback(attacker, defender, dmg)
+        +OnEnemyDied(enemy)
+        +ClearAll()
+        -Grade(defender, dmg) HitGrade
+        -ApplyPauseConvergence()
+        -LateUpdate()
+        %% ★ 唯一订阅方，全部策略集中于此
+        %% ★ _stopRemain 必须用 Time.deltaTime 递减
+        %%   （用 FeedbackClock.Delta 会自己冻自己 → 永久顿帧死锁）
+        %% ★ 只读 IsGameplayBlocked，绝不写 Scheduler.Paused
+    }
+
+    class HitGrade {
+        <<struct · 新增 · Xianxia.Unity.T2>>
+        +bool IsPlayerVictim
+        +bool IsHeavy
+        +float Ratio
+        +float Scale
+        %% struct 避免每次命中的 GC 分配
+    }
+
+    class CameraShake {
+        <<新增 MonoBehaviour · Xianxia.Unity.T2>>
+        -CameraFollow _follow
+        -float _amp
+        -float _duration
+        -float _age
+        +Kick(amplitude, duration)
+        +StopAndRecenter()
+        -LateUpdate()
+        %% ★ [DefaultExecutionOrder(150)] —— 必须晚于 CameraFollow(100)
+        %% ★ 双路异相正弦 × 线性衰减 ⇒ k=0 时数学上精确归零，无累计漂移
+        %% ★ 偏移之后再 ClampPoint 一次 ⇒ 地图边缘绝不露黑边（验收 A-6 一票否决项）
+    }
+
+    class DamagePopupLayer {
+        <<新增 MonoBehaviour · Xianxia.Unity.T2>>
+        -PopupSlot[] _slots
+        -int _cursor
+        -Dictionary~int,int~ _mergeIndex
+        -Camera _cam
+        +Push(worldPos, dmg, isPlayer, heavy)
+        +FreezeAll(frozen)
+        +ClearAll()
+        -LateUpdate()
+        -AvoidHud(screenPos) Vector2
+        %% ★ [DefaultExecutionOrder(215)] —— 晚于 Hud(200) / HudSkillBar(210)
+        %% ★ 屏幕空间 uGUI + Legacy Text（沿用 Hud 范式，工程零 TMP）
+        %% ★ 定长 12 环形池：游标覆盖 == R-04「上限 12 + 丢最旧」的最简实现
+        %% ★ AvoidHud 引用 HudSkillBar 常量，禁止复制字面量
+    }
+
+    class PopupSlot {
+        <<内部结构 · 新增>>
+        +Text Label
+        +Outline Stroke
+        +RectTransform Rect
+        +int TargetId
+        +float Accum
+        +float Age
+        +bool Active
+    }
+
+    %% =========================================================
+    %% 【Unity 表现层】Xianxia.Unity.T2 —— 既有文件修改
+    %% =========================================================
+
+    class CameraFollow {
+        <<修改 · Xianxia.Unity.T2>>
+        +float DefaultSmoothTime$ = 0.14f
+        -Vector3 _center
+        -Vector3 _velocity
+        +Vector3 BaseCenter
+        +Configure(follow, width, height)
+        +ClampPoint(pos) Vector3
+        -LateUpdate()
+        -ClampToBounds(pos) Vector3
+        %% ★ SmoothDamp 起点由 transform.position 改为 _center
+        %%   ⇒ 切断"屏震被喂回跟随、污染 _velocity"的回路
+        %%   ⇒ 无屏震时 _center 恒等于 transform.position，行为逐字等价
+        %% ★ [DefaultExecutionOrder(100)] 不变
+    }
+
+    class CombatBridge {
+        <<修改 · Xianxia.Unity.T2>>
+        +bool IsRunOver
+        +bool IsGameplayBlocked
+        +SetMenuPaused(paused)
+        -ApplyPauseState()
+        -SetupProgression()
+        -SetupHitFeedback()
+        -TeardownHitFeedback()
+        %% ★ ApplyPauseState 是全仓唯一写 Scheduler.Paused 的地方，本期一行不改
+        %% ★ SetupHitFeedback 照抄 SetupProgression(:466-475) 的接线形状
+        %% ★ TeardownHitFeedback 照抄 :1217-1219 的拆线形状 + FeedbackClock 复位
+    }
+
+    class CombatEventsT3Unity {
+        <<修改 · Xianxia.Unity.T2>>
+        +int SkillHitCount
+        +float LastSkillDamage
+        +OnSkillCast(caster, def)
+        +OnSkillHit(caster, target, def, dmg)
+        %% ★ :145-149 的 ResolveView + view.PlayHitFlash() 删除
+        %%   —— 它与 OnHit 链路重复触发（见时序图 Q1 实证）
+        %% ★ SkillHitCount / LastSkillDamage 探针保留（测试在断言）
+    }
+
+    class VfxSlash {
+        <<修改 · Xianxia.Unity.T2>>
+        -float _age
+        -Update()
+        %% :105 _age += Time.deltaTime → FeedbackClock.Delta
+    }
+
+    class VfxSkill {
+        <<修改 · Xianxia.Unity.T2>>
+        -float _age
+        -Update()
+        %% :224 同上
+    }
+
+    class HeroineAnimator {
+        <<修改 · Xianxia.Unity.T2>>
+        -Update()
+        %% :137 float dt = Time.deltaTime → FeedbackClock.Delta
+        %% :138 MaxStepSeconds 钳制与 :144 暂停判定保持原样
+    }
+
+    class HudSkillBar {
+        <<只被引用 · 本期不动>>
+        +float CellSize$ = 76.0f
+        +float BottomMargin$ = 34.0f
+        %% 飘字单方面避让它，它不需要知道飘字的存在
+    }
+
+    %% =========================================================
+    %% 关系
+    %% =========================================================
+
+    DamageResolver --> CombatEventsUnity : :251 evt.OnHit(applied=true)
+    DamageResolver --> CombatEventsT3Unity : :323 evtT3.OnSkillHit()
+    DamageResolver ..> Combatant : 读写血量 / 韧性
+
+    CombatEventsUnity --> HitFeedbackDirector : HitFeedback 委托<br/>★唯一入口
+    CombatEventsUnity --> CombatView : fallback PlayHitFlash()
+    CombatEventsUnity ..> Combatant : 读 Position / Faction
+
+    CombatBridge *-- HitFeedbackDirector : 创建并持有
+    CombatBridge *-- DamagePopupLayer : 创建并持有
+    CombatBridge --> CombatEventsUnity : += / -= 接线与拆线
+
+    HitFeedbackDirector --> CombatView : PlayHitFlash(tint, dur, peak)
+    HitFeedbackDirector --> CameraShake : Kick() / StopAndRecenter()
+    HitFeedbackDirector --> DamagePopupLayer : Push() / FreezeAll() / ClearAll()
+    HitFeedbackDirector --> FeedbackClock : 每帧写 Frozen
+    HitFeedbackDirector --> HitGrade : 产出
+    HitFeedbackDirector ..> HitFeedbackConfig : 读常量
+    HitFeedbackDirector ..> CombatBridge : 只读 IsGameplayBlocked / IsRunOver
+    HitFeedbackDirector ..> Combatant : 读 Faction / HpMax / Position
+
+    CameraShake --> CameraFollow : 读 BaseCenter<br/>调 ClampPoint()
+    CameraShake ..> FeedbackClock : 读 Delta
+    CameraShake ..> HitFeedbackConfig : 读常量
+
+    DamagePopupLayer *-- PopupSlot : 定长 12 环形池
+    DamagePopupLayer ..> FeedbackClock : 读 Delta
+    DamagePopupLayer ..> HudSkillBar : 读 CellSize / BottomMargin<br/>做 HUD 避让
+    DamagePopupLayer ..> HitFeedbackConfig : 读常量
+
+    CombatView ..> FeedbackClock : 读 Frozen / Delta
+    CombatView ..> Combatant : 读 Position（单向，不回写）
+    CameraFollow ..> FeedbackClock : 读 Delta
+    VfxSlash ..> FeedbackClock : 读 Delta
+    VfxSkill ..> FeedbackClock : 读 Delta
+    HeroineAnimator ..> FeedbackClock : 读 Delta

@@ -1,0 +1,19 @@
+{
+    "name": "Xianxia.Unity.T2",
+    "rootNamespace": "Xianxia.Unity.T2",
+    "references": [
+        "Xianxia.Core",
+        "Xianxia.Combat",
+        "Xianxia.Combat.Unity",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

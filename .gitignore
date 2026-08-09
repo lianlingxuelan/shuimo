@@ -1,0 +1,36 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+UserSettings/
+
+# IDE / OS
+.idea/
+.vs/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Temp work files (project-specific)
+_*.txt
+t1_out.txt
+t2_out.txt
+_bal.txt
+_baldone.txt
+_done3.txt
+_grep.txt
+_ls_combat.txt
+_ls_done.txt
+_ls_done2.txt
+_ls_rt.txt
+_ls_u.txt
+
+# Python cache
+__pycache__/
+*.pyc
+tools/*.pyc

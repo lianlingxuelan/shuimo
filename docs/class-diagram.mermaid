@@ -1,0 +1,155 @@
+classDiagram
+    %% ---------- 新建 T2 类 ----------
+    class Bootstrap {
+        «NEW»
+        +[InitializeOnLoadMethod] Register()
+    }
+    class WorldBuilder {
+        «NEW»
+        +string zoneId
+        +int zoneVisits
+        +bool isSafeZone
+        +static BuildScene()
+        -GenerateTerrain(rng, zone) Tilemap
+        -PlacePlayer(zone)
+        -SpawnEnemies()
+        -MakeWhiteTile() Tile
+    }
+    class PlayerController {
+        «NEW»
+        +Transform playerTransform
+        +float moveSpeed = 200
+        +Vec2 lastFacing
+        +Update()
+        -ReadInput() Vector2
+        -ApplyMovement(dt) 
+    }
+    class CameraFollow {
+        «NEW»
+        +Transform target
+        +float orthoSize = 352
+        +float damp = 8
+        +Bounds worldBounds
+        +LateUpdate()
+    }
+    class EnemySpawner {
+        «NEW»
+        +CombatController ctrl
+        +SpawnAll()
+        -ValidateSpawn(pos) bool
+        -WrapSpawnWave()
+    }
+    class CombatBridge {
+        «NEW»
+        +CombatController ctrl
+        +ConfigurePlayerDamageFilter()
+        +Update()
+    }
+    class AttackController {
+        «NEW»
+        +Combatant player
+        +float raw = 12
+        +float cd = 0.4
+        +TryAttack()
+        -QuerySectorHits(facing) List~Combatant~
+    }
+    class Hud {
+        «NEW»
+        +TextMeshProUGUI hpText
+        +Image hpBar
+        +TextMeshProUGUI enemyCount
+        +TextMeshProUGUI zoneName
+        +GameObject debugPanel
+        +Refresh(combatant, encounter, seed, step, fps)
+    }
+    class VfxSlash {
+        «NEW»
+        +SpawnSlash(at, dir, arcDeg)
+    }
+    class DeterminismDump {
+        «NEW»
+        +ExportWorldReport(tilemap, encounter) string
+    }
+
+    %% ---------- 复用既有类 ----------
+    class ShuimoSceneBuilder {
+        «EXISTING» static Action BuildScene
+        +BuildAll()
+    }
+    class ShuimoGenerated {
+        «EXISTING» +Mark(go)
+    }
+    class ZoneLoader {
+        «EXISTING» +LoadFromFile(path)$ ZoneDatabase
+    }
+    class ZoneSeed {
+        «EXISTING» +CreateRng(zoneId, isSafe, visits)$ PCG32
+    }
+    class Difficulty {
+        «EXISTING» +DamageTaken(raw, def, k)$ float
+    }
+    class CombatController {
+        «EXISTING» Encounter Encounter
+        +BuildEncounter()
+        +SetZoneConfig(enemies, boss, baseLevel)
+        +SpawnWave(center, minR, maxR)
+        +SpawnBoss(at)
+        +Player Combatant
+    }
+    class CombatView {
+        «EXISTING» +Bind(model)
+        +SyncFromKernel()
+        +PlayHitFlash()
+    }
+    class CombatScheduler {
+        «EXISTING» +Tick(deltaTime)
+    }
+    class Encounter {
+        «EXISTING» +StepFixed(dt)
+        +Combatants List~Combatant~
+        +Rng PCG32
+        +Add(c)
+    }
+    class DamageResolver {
+        «EXISTING» +ResolvePlayerAttack(player, target, raw, ev)$ float
+        +ResolveContact(attacker, defender, range, ev)$ bool
+    }
+    class Combatant {
+        «EXISTING» +Position Vec2
+        +WCore WCoreState
+        +HpRatio() float
+        +ApplyEnemyDamage(raw, breakDef) float
+    }
+    class WCoreState {
+        «EXISTING» +DamageFilter Func~float,float~
+        +TakeDamageFrom(srcId, dmg) bool
+    }
+
+    %% ---------- 关系 ----------
+    Bootstrap ..> ShuimoSceneBuilder : 注册 BuildScene
+    ShuimoSceneBuilder --> WorldBuilder : BuildScene 委托
+    WorldBuilder --> ZoneLoader : LoadFromFile
+    WorldBuilder --> ZoneSeed : CreateRng
+    WorldBuilder --> ShuimoGenerated : Mark(根节点)
+    WorldBuilder --> EnemySpawner : SpawnEnemies()
+    WorldBuilder --> PlayerController : 放置玩家Transform
+
+    EnemySpawner --> CombatController : SpawnWave / SetZoneConfig
+    CombatBridge --> CombatController : 持有并驱动
+    CombatBridge --> Difficulty : DamageFilter=DamageTaken
+    CombatController --> CombatView : AttachView / FindView
+    CombatController --> CombatScheduler : Tick
+    CombatController --> Encounter : StepFixed
+    CombatController --> WCoreState : Player.WCore
+
+    PlayerController --> Combatant : 写入 Position
+    AttackController --> Combatant : 读 player
+    AttackController --> DamageResolver : ResolvePlayerAttack
+    AttackController --> VfxSlash : SpawnSlash
+    DamageResolver --> Combatant : ApplyEnemyDamage
+    CombatController --> DamageResolver : ResolveContact
+    WCoreState --> Difficulty : DamageFilter(raw)
+
+    CombatBridge --> Hud : Refresh()
+    DeterminismDump --> Encounter : 导出敌人清单
+    DeterminismDump --> WorldBuilder : 读取 tilemap

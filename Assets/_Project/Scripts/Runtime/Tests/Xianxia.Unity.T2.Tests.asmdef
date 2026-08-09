@@ -1,0 +1,25 @@
+{
+    "name": "Xianxia.Unity.T2.Tests",
+    "rootNamespace": "Xianxia.Unity.T2.Tests",
+    "references": [
+        "Xianxia.Unity.T2",
+        "Xianxia.Core",
+        "Xianxia.Combat",
+        "Xianxia.Combat.Unity",
+        "UnityEngine.UI",
+        "com.unity.test-framework"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

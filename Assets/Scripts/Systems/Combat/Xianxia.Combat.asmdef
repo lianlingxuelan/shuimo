@@ -1,0 +1,1 @@
+{"name": "Xianxia.Combat", "rootNamespace": "Xianxia.Combat", "references": ["Xianxia.Core"], "includePlatforms": [], "allowUnsafeCode": false, "autoReferenced": true, "defineConstraints": [], "noEngineReferences": true, "versionDefines": []}

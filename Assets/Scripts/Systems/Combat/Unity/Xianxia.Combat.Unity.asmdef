@@ -1,0 +1,1 @@
+{"name": "Xianxia.Combat.Unity", "rootNamespace": "Xianxia.Combat.UnityBridge", "references": ["Xianxia.Combat", "Xianxia.Core"], "includePlatforms": [], "allowUnsafeCode": false, "autoReferenced": false, "defineConstraints": [], "noEngineReferences": false, "versionDefines": []}

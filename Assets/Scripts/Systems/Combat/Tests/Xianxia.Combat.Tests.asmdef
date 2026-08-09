@@ -1,0 +1,1 @@
+{"name": "Xianxia.Combat.Tests", "rootNamespace": "Xianxia.Combat.Tests", "references": ["com.unity.test-framework", "Xianxia.Core", "Xianxia.Combat"], "includePlatforms": ["Editor"], "allowUnsafeCode": false, "autoReferenced": false, "defineConstraints": ["UNITY_INCLUDE_TESTS"], "noEngineReferences": true, "versionDefines": []}

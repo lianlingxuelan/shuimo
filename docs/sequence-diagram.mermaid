@@ -1,0 +1,100 @@
+%% ============================================================
+%% 4.1 编辑期：Shuimo 菜单 Clean And Rebuild → 世界生成
+%% ============================================================
+sequenceDiagram
+    autonumber
+    actor Dev as 开发者
+    participant Menu as ShuimoSceneRebuilder (Editor)
+    participant SBuilder as ShuimoSceneBuilder
+    participant WB as WorldBuilder
+    participant ZL as ZoneLoader
+    participant ZS as ZoneSeed
+    participant ES as EnemySpawner
+    participant CC as CombatController
+    participant DB as DifficultyBridge
+    participant CV as CombatView
+    participant SG as ShuimoGenerated
+
+    Dev->>Menu: 点「Clean And Rebuild」
+    Menu->>Menu: CleanGeneratedObjects()(删带ShuimoGenerated的根)
+    Menu->>SBuilder: BuildAll()
+    SBuilder->>WB: BuildScene()  (已注册)
+    WB->>ZL: LoadFromFile("Assets/Data/zones.json")
+    ZL-->>WB: ZoneDatabase(zone_youhuang)
+    WB->>ZS: CreateRng(zoneId, isSafe, visits)
+    ZS-->>WB: PCG32(seed)
+    WB->>WB: GenerateTerrain() 画 120×80 Tilemap(逐格SetColor)
+    WB->>WB: PlacePlayer() 摆玩家Transform + CameraFollow.target
+    WB->>ES: SpawnEnemies()
+    loop count=6
+        ES->>CC: SpawnWave(center, minR=200, maxR=600)
+        CC->>DB: RollLevel(baseLevel, rng) → BuildEnemy(...)
+        DB-->>CC: Combatant(数值含模型B反调)
+        CC->>CV: AttachView(enemy, prefab)
+    end
+    WB->>SG: Mark(ZoneRoot)  挂生成标记
+    Menu->>Menu: MarkSceneDirty() → Log「场景已清理并重建」
+
+%% ============================================================
+%% 4.2 运行时：每帧驱动内核 + 战斗 + HUD
+%% ============================================================
+sequenceDiagram
+    autonumber
+    participant PC as PlayerController
+    participant CC as CombatController
+    participant CS as CombatScheduler
+    participant Enc as Encounter
+    participant AI as EnemyAI
+    participant DR as DamageResolver
+    participant WC as WCoreState
+    participant CV as CombatView
+    participant CB as CombatBridge
+    participant HUD as Hud
+
+    Note over PC,CV: 每个 MonoBehaviour.Update / FixedUpdate 帧
+    PC->>PC: ReadInput()→8向向量归一化
+    PC->>PC: ApplyMovement(dt) 写 playerTransform.position
+    CC->>CC: SyncPlayerIntoKernel()  (pos/vel 读入内核)
+    CC->>CS: Tick(Time.deltaTime)
+    CS->>Enc: StepFixed(1/60) ×N步(FixedStepAccumulator)
+    loop 每个固定步
+        Enc->>WC: Tick(dt)  两层闸门倒计时
+        Enc->>Enc: 玩家位移(Unity权威，跳过)
+        Enc->>AI: Update(dt, playerPos, playerVel)
+        AI-->>Enc: AICommand(速度/伤害倍率/相位)
+        Enc->>Enc: 敌人欧拉积分 + 击退推进
+        Enc->>DR: ResolveContact(enemy, player, TOUCH_RANGE, ev)
+        DR->>WC: TakeDamageFrom(srcId, raw)
+        WC-->>DR: applied? (true=生效 / false=被闸门拦)
+        DR-->>CV: OnHit(仅applied=true播闪白)
+        Enc->>Enc: 收尸(死亡敌人移出列表)
+    end
+    CC->>CV: SyncKernelIntoViews()  (位置写回Transform)
+    CC->>CC: RecycleOrphanViews()  (销毁死亡视图)
+    CB->>HUD: Refresh(player, encounter, seed, step, fps)
+
+%% ============================================================
+%% 4.3 玩家攻击（玩家→敌人，含剑气特效）
+%% ============================================================
+sequenceDiagram
+    autonumber
+    participant In as Input(旧InputMgr)
+    participant AC as AttackController
+    participant PC as PlayerController
+    participant DR as DamageResolver
+    participant C as Combatant(敌人)
+    participant VFX as VfxSlash
+    participant CV as CombatView
+
+    In->>AC: J / 鼠标左键按下
+    AC->>AC: TryAttack() (CD计时)
+    AC->>PC: 取 lastFacing (朝向)
+    AC->>AC: QuerySectorHits(facing) 90°扇形 r=70 内敌人
+    loop 每个命中敌人
+        AC->>DR: ResolvePlayerAttack(player, target, raw=12, ev)
+        DR->>C: ApplyEnemyDamage(12, breakDef=0)  real=max(1,12-armor)
+        DR->>C: DamagePoise(real)→破韧则硬直+KnockbackImpulse
+        DR-->>CV: OnHit / OnEnemyDeath
+    end
+    AC->>VFX: SpawnSlash(playerPos, facing, arcDeg=90)
+    Note over VFX: 弧形网格占位（剑气感，非扇形贴图）

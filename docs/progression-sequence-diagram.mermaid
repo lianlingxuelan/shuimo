@@ -1,0 +1,115 @@
+%% P1-6 玩家成长曲线 —— 程序调用流程时序图
+%% 生成者：高见远（架构师）　｜　配套文档：docs/unity-p1-6-progression-architecture.md
+%%
+%% 覆盖四条链路：
+%%   ① 装配期：Progression 创建 + 基准血量钉死（本期唯一既有代码改动）
+%%   ② 主链路：敌人死亡 → 经验入账 → 连升两级 → HpMax/Hp/AtkBonus 生效
+%%   ③ 伤害生效：普攻路径 与 技能路径 两条 raw 注入点
+%%   ④ 重开：场景重载 / 显式 Reset
+
+sequenceDiagram
+    autonumber
+
+    participant WB as WorldBuilder<br/>(Unity)
+    participant CC as CombatController<br/>(接线层)
+    participant CB as CombatBridge<br/>(Unity·编排)
+    participant EV as CombatEventsUnity<br/>(Unity·事件出口)
+    participant ENC as Encounter<br/>(纯逻辑·内核)
+    participant DB as DifficultyBridge<br/>(纯逻辑)
+    participant PG as PlayerProgression<br/>(纯逻辑·新增)
+    participant CV as ProgressionCurve<br/>(纯逻辑·静态表)
+    participant PL as Combatant(Player)<br/>+ WCoreState
+    participant AC as AttackController<br/>(Unity)
+    participant HUD as Hud<br/>(Unity)
+
+    %% ================= ① 装配期 =================
+    rect rgb(232, 244, 255)
+    note over WB, DB: ① 装配期（CombatController.Awake → CombatBridge.Start）
+    WB->>CC: Awake()
+    CC->>ENC: new Encounter()
+    CC->>DB: new DifficultyBridge()
+    CC->>DB: PlayerHpMax = playerHpMax (260)<br/>【构建期一次性·安全·本期补注释】
+    CC->>PL: Combatant.CreatePlayer(0, 260, pos)
+    note right of PL: WCore.HpMax = 260<br/>WCore.Hp = 260
+
+    WB->>CB: Start()
+    CB->>PG: new PlayerProgression()
+    note right of PG: _level=1 / _expInLevel=0<br/>_expTotal=0 / _credited 空
+    CB->>CB: ApplyPlayerDamageModel()
+    CB->>DB: PlayerHpMax = CombatBridge.PlayerHpMax<br/>★ 钉死常量 260（原 L387 写的是 p.HpMax）
+    note over CB, DB: 🚨 本期唯一既有可执行代码改动<br/>1 级时 p.HpMax ≡ 260 ⇒ 改前改后取值完全相同<br/>⇒ t1 64/64 · NUnit 88 条 · 2.5294x 全部零影响
+    CB->>EV: EnemyDied += OnEnemyDied
+    CB->>PG: LeveledUp += OnPlayerLeveledUp
+    CB->>HUD: BindProgression(_progression)
+    HUD->>PG: LeveledUp += ... / ExpGained += ...
+    end
+
+    %% ================= ② 主链路 =================
+    rect rgb(255, 246, 232)
+    note over ENC, HUD: ② 主链路：一次击杀连升两级（1 级 + 50 经验 → 3 级余 5）
+    ENC->>ENC: StepFixed() 判定敌人 Hp <= 0
+    ENC->>EV: Events.OnEnemyDeath(enemy)
+    EV->>EV: PlaySfx("sfx_enemy_death")
+    EV->>CB: EnemyDied(enemy)
+
+    CB->>PG: GainExpFrom(enemy.Id, enemy.ExpValue)
+    note right of PG: ExpValue 出厂已含 ×2.0/×3.0<br/>成长系统绝不二次相乘（AC-33/34）
+
+    PG->>PG: _credited.Add(srcId) 幂等闸门<br/>重复死亡事件直接返回 0（AC-35）
+    PG->>PG: amount = (int)ExpValue，<=0 直接返回（AC-16）
+    PG->>PG: _expInLevel += 50 ; _expTotal += 50
+
+    loop while 未封顶 且 _expInLevel >= ExpToNext(_level)
+        PG->>CV: ExpToNext(_level)
+        CV-->>PG: 20（1级）/ 25（2级）
+        PG->>PG: _expInLevel -= 需求 ; _level++
+        PG->>CV: HpMaxAt(_level) / AtkBonusAt(_level)
+        CV-->>PG: 286,+1（2级） / 312,+2（3级）
+        PG-->>CB: LeveledUp(LevelUpInfo{Prev,New,ΔHpMax=26,ΔAtk=1})
+        note right of PG: 连升 N 级抛 N 次事件（AC-13）
+
+        CB->>PL: HpMax = info.NewHpMax
+        CB->>PL: Hp = Hp + info.DeltaHpMax
+        note right of PL: 同额补偿·不回满（AC-17/18/19）<br/>WCoreState 代理写入
+        CB->>CB: RefreshSkillRawFromLevel()
+        CB->>PG: 读 AtkBonus
+        CB->>CB: skillTable[BASIC].Raw = SkillConfig.BASIC_RAW + bonus<br/>[BURST].Raw = BURST_RAW + bonus<br/>[LOTUS].Raw = LOTUS_RAW + bonus
+        note over CB: ★ 从 const 基数重算，绝不 += 累加<br/>⇒ 幂等、可 Reset、1 级严格 == 常量（AC-22）
+
+        PG-->>HUD: LeveledUp(...)
+        HUD->>HUD: 播升级提示 + 刷新等级文本
+    end
+
+    PG-->>CB: 返回实际入账 50
+    PG-->>HUD: ExpGained(50)
+    HUD->>HUD: 刷新经验条 5/35（3 级进度）
+
+    note over CB, DB: ❗ 全程未触碰 DifficultyBridge.PlayerHpMax<br/>它恒为 260 ⇒ d_eff = 260/65 = 4.0 不漂移（AC-23/24）
+    end
+
+    %% ================= ③ 伤害生效 =================
+    rect rgb(238, 255, 238)
+    note over AC, ENC: ③ 攻击力生效 —— 两条 raw 注入点（PRD 只提到其一，务必都改）
+    AC->>CB: 读 PlayerAtkBonus
+    CB->>PG: AtkBonus
+    PG-->>CB: +2
+    CB-->>AC: +2
+    AC->>ENC: DamageResolver.ResolvePlayerAttack(player, e, raw + 2, Events)
+    note right of AC: 路径 A：AttackController.cs:219<br/>raw 字段来自 AttackController.AttackRaw = 12.0f<br/>⚠ 与 SkillConfig.BASIC_RAW 是两个独立常量
+
+    ENC->>ENC: StepFixed 技能命中阶段
+    ENC->>ENC: DamageResolver.ResolveSkillHit(p, tgt, def, ComboMult, ...)
+    note right of ENC: 路径 B：Encounter.cs:893<br/>内部算 def.Raw * mult<br/>def.Raw 已在 ② 中被刷新为 12+2=14<br/>⇒ 内核签名零改动
+    end
+
+    %% ================= ④ 重开 =================
+    rect rgb(250, 238, 250)
+    note over CB, PG: ④ 重开一局（P0-4：按 R 重载场景）
+    CB->>CB: SceneManager.LoadScene(当前场景)
+    note right of CB: 世界整体重建 ⇒ 新的 PlayerProgression 实例<br/>天然回到 1 级（局内成长口径）
+    CB->>PG: Reset()（非重载路径 / 单测路径的显式复位）
+    PG->>PG: _level=1 / _expInLevel=0 / _expTotal=0 / _credited.Clear()
+    note right of PG: 不清订阅者 —— 沿用 RunPhaseTracker.Reset() 的约定<br/>「谁订阅谁负责退订」（AC-29/30/31）
+    CB->>PL: HpMax = 260 ; Hp = 260
+    CB->>CB: RefreshSkillRawFromLevel() ⇒ Raw 回到 12/20/8
+    end

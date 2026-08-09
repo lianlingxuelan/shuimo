@@ -1,0 +1,454 @@
+{
+  "_comment": "世界唯一真源。zone_id 一经确定不得改名（它是存档 key）。tier 用于掉落分级，与 base_level 解耦。中文只允许出现在 display_name / desc / boss.display_name 三类字段。",
+  "_version": 1,
+
+  "_schema_notes": {
+    "tier": "0 = 安全区（不参与掉落分级）；战斗区 1..5 逐级递增。W13 公式 rolls += tier-1，稀有权重 ×(1+0.35×(tier-1))，灵石 ×tier。",
+    "unlock": "level / realm_rank 为 -1 表示不校验；kills_in 为 {} 表示不校验；boss_cleared 为 [] 表示不校验。四项全满足才解锁。realm_rank 比较 ProgressionState.rank（0 基）。",
+    "theme.algo": "地形算子族：forest | volcanic | frozen | town。town 走手绘布局，忽略 operators。",
+    "theme.operators": "按序应用的算子链。op ∈ noise_blob | vein | scatter | lake | ring | grove；target ∈ rock | water。",
+    "enemies.armor_add": "★ 与设计文档 §3.1 的 armor 字段同位，但取 PRD §7.2 的『armor 加值』语义（整数平坦加值，非 0..1 减伤率）。",
+    "boss": "安全区为 null。level_offset 相对 base_level。drop_extra 在常规 roll 之外额外结算。"
+  },
+
+  "zones": [
+    {
+      "zone_id": "zone_fangshi",
+      "display_name": "青岚坊市",
+      "desc": "青石长街，灯笼彻夜不熄。修士在此易物、锻器、问道。",
+      "order": 1,
+      "is_safe": true,
+      "is_hub": true,
+      "tier": 0,
+      "rec_level": [0, 0],
+      "base_level": 0,
+
+      "unlock": {
+        "level": -1,
+        "realm_rank": -1,
+        "kills_in": {},
+        "boss_cleared": []
+      },
+
+      "theme": {
+        "size": [120, 80],
+        "algo": "town",
+        "palette": {
+          "ground": "#6b5b45",
+          "ground2": "#7d6c52",
+          "water": "#3f6b78",
+          "rock": "#4a3f30",
+          "accent": "#d9a441"
+        },
+        "water_rate": 0.02,
+        "rock_rate": 0.10,
+        "operators": [],
+        "decor": { "kind": "lantern", "density": 0.5 },
+        "weather": "none"
+      },
+
+      "enemies": {
+        "count": 0,
+        "kinds": [],
+        "hp_mult": 1.0,
+        "atk_mult": 1.0,
+        "armor_add": 0,
+        "elite_rate": 0.0,
+        "affix_rate": 0.0
+      },
+
+      "boss": null,
+      "encounter_count": [0, 0],
+      "exclusive_material": "",
+      "npcs": [
+        {
+          "npc_id": "npc_xuanzhen",
+          "display_name": "玄真子",
+          "sprite_key": "elder",
+          "tile": [58, 40],
+          "service": "",
+          "quest_chain": [
+            {"quest_id": "quest_01", "offer": "dlg_xuanzhen_intro", "turn_in": "dlg_xuanzhen_complete"},
+            {"quest_id": "quest_02", "offer": "dlg_xuanzhen_quest02", "turn_in": "dlg_xuanzhen_complete02"}
+          ],
+          "idle_dialogue": ""
+        },
+        {
+          "npc_id": "npc_heiyao",
+          "display_name": "黑曜道人",
+          "sprite_key": "witch",
+          "tile": [95, 25],
+          "service": "forge",
+          "quest_chain": [
+            {"quest_id": "quest_03", "offer": "dlg_heiyao_forge", "turn_in": "dlg_heiyao_complete"}
+          ],
+          "idle_dialogue": ""
+        },
+        {
+          "npc_id": "npc_yunxiao",
+          "display_name": "云霄仙子",
+          "sprite_key": "musician",
+          "tile": [25, 55],
+          "service": "realm",
+          "quest_chain": [
+            {"quest_id": "quest_04", "offer": "dlg_yunxiao_realm", "turn_in": "dlg_yunxiao_complete"}
+          ],
+          "idle_dialogue": ""
+        },
+        {
+          "npc_id": "npc_linglong",
+          "display_name": "玲珑",
+          "sprite_key": "companion_lotus",
+          "tile": [95, 55],
+          "service": "",
+          "quest_chain": [
+            {"quest_id": "quest_05", "offer": "dlg_linglong_artifact", "turn_in": "dlg_linglong_complete"}
+          ],
+          "idle_dialogue": ""
+        },
+        {
+          "npc_id": "npc_qingniang",
+          "display_name": "卿娘",
+          "sprite_key": "musician",
+          "tile": [25, 25],
+          "service": "shop",
+          "quest_chain": [],
+          "idle_dialogue": "dlg_qingniang_idle"
+        }
+      ]
+    },
+
+    {
+      "zone_id": "zone_youhuang",
+      "display_name": "幽篁竹海",
+      "desc": "万竿修竹蔽日，溪流穿石而过。妖物初生，尚不识杀气。",
+      "order": 2,
+      "is_safe": false,
+      "tier": 1,
+      "rec_level": [1, 8],
+      "base_level": 3,
+
+      "unlock": {
+        "level": -1,
+        "realm_rank": -1,
+        "kills_in": {},
+        "boss_cleared": []
+      },
+
+      "theme": {
+        "size": [120, 80],
+        "algo": "forest",
+        "palette": {
+          "ground": "#42563f",
+          "ground2": "#4d6349",
+          "water": "#3a6b6e",
+          "rock": "#4a4f42",
+          "accent": "#8fd97a"
+        },
+        "water_rate": 0.05,
+        "rock_rate": 0.16,
+        "operators": [
+          { "op": "vein", "target": "water", "count": 3, "len": [22, 48] },
+          { "op": "grove", "target": "rock", "count": 14, "radius": [2, 4], "density": 0.55 },
+          { "op": "scatter", "target": "rock", "density": 0.02 }
+        ],
+        "decor": { "kind": "bamboo", "density": 0.6 },
+        "weather": "none"
+      },
+
+      "enemies": {
+        "count": 6,
+        "kinds": ["blood", "witch"],
+        "hp_mult": 1.0,
+        "atk_mult": 1.0,
+        "armor_add": 0,
+        "elite_rate": 0.05,
+        "affix_rate": 0.0
+      },
+
+      "boss": {
+        "boss_id": "boss_zhuxiaowang",
+        "display_name": "竹魈王",
+        "kind": "witch",
+        "level_offset": 2,
+        "hp_mult": 10.0,
+        "atk_mult": 1.6,
+        "drop_extra": {
+          "materials": { "mat_bamboo_marrow": 2 },
+          "equipment_quality_cap": true
+        }
+      },
+
+      "encounter_count": [4, 4],
+      "exclusive_material": "mat_bamboo_marrow",
+      "npcs": []
+    },
+
+    {
+      "zone_id": "zone_chiyan",
+      "display_name": "赤焰熔谷",
+      "desc": "熔岩自地缝涌出，焦岩上还留着前人炼器失败的残渣。",
+      "order": 3,
+      "is_safe": false,
+      "tier": 2,
+      "rec_level": [8, 16],
+      "base_level": 12,
+
+      "unlock": {
+        "level": 10,
+        "realm_rank": -1,
+        "kills_in": { "zone_youhuang": 25 },
+        "boss_cleared": []
+      },
+
+      "theme": {
+        "size": [120, 80],
+        "algo": "volcanic",
+        "palette": {
+          "ground": "#5c3428",
+          "ground2": "#6b3d2c",
+          "water": "#8a3a1e",
+          "rock": "#3a241c",
+          "accent": "#e2662a"
+        },
+        "water_rate": 0.06,
+        "rock_rate": 0.22,
+        "operators": [
+          { "op": "noise_blob", "target": "rock", "scale": 0.06, "weight": 1.0 },
+          { "op": "vein", "target": "water", "count": 5, "len": [18, 42] },
+          { "op": "scatter", "target": "rock", "density": 0.03 }
+        ],
+        "decor": { "kind": "ember", "density": 0.4 },
+        "weather": "ash"
+      },
+
+      "enemies": {
+        "count": 8,
+        "kinds": ["blood", "sword", "alchemy"],
+        "hp_mult": 1.35,
+        "atk_mult": 1.2,
+        "armor_add": 2,
+        "elite_rate": 0.09,
+        "affix_rate": 0.06
+      },
+
+      "boss": {
+        "boss_id": "boss_yanxiao",
+        "display_name": "焰魈",
+        "kind": "blood",
+        "level_offset": 3,
+        "hp_mult": 12.0,
+        "atk_mult": 1.7,
+        "drop_extra": {
+          "materials": { "mat_flame_crystal": 2 },
+          "equipment_quality_cap": true
+        }
+      },
+
+      "encounter_count": [5, 5],
+      "exclusive_material": "mat_flame_crystal",
+      "npcs": []
+    },
+
+    {
+      "zone_id": "zone_hantan",
+      "display_name": "寒潭秘境",
+      "desc": "千年不化的冰湖之下，似有巨物缓缓游弋。",
+      "order": 4,
+      "is_safe": false,
+      "tier": 3,
+      "rec_level": [16, 26],
+      "base_level": 22,
+
+      "unlock": {
+        "level": 20,
+        "realm_rank": -1,
+        "kills_in": {},
+        "boss_cleared": ["zone_chiyan"]
+      },
+
+      "theme": {
+        "size": [120, 80],
+        "algo": "frozen",
+        "palette": {
+          "ground": "#4a5c68",
+          "ground2": "#566b78",
+          "water": "#6f9fc0",
+          "rock": "#35434d",
+          "accent": "#a8e4ff"
+        },
+        "water_rate": 0.12,
+        "rock_rate": 0.18,
+        "operators": [
+          { "op": "lake", "target": "water", "count": 3, "radius": [7, 12] },
+          { "op": "ring", "target": "rock", "source": "water", "thickness": 1, "density": 0.6 },
+          { "op": "grove", "target": "rock", "count": 8, "radius": [2, 3], "density": 0.5 },
+          { "op": "scatter", "target": "rock", "density": 0.02 }
+        ],
+        "decor": { "kind": "snow", "density": 0.5 },
+        "weather": "snow"
+      },
+
+      "enemies": {
+        "count": 9,
+        "kinds": ["witch", "sword", "alchemy"],
+        "hp_mult": 1.75,
+        "atk_mult": 1.4,
+        "armor_add": 5,
+        "elite_rate": 0.13,
+        "affix_rate": 0.1
+      },
+
+      "boss": {
+        "boss_id": "boss_xuanbingjiao",
+        "display_name": "玄冰蛟",
+        "kind": "witch",
+        "level_offset": 3,
+        "hp_mult": 14.0,
+        "atk_mult": 1.8,
+        "drop_extra": {
+          "materials": { "mat_frost_pearl": 2 },
+          "equipment_quality_cap": true
+        }
+      },
+
+      "encounter_count": [5, 5],
+      "exclusive_material": "mat_frost_pearl",
+      "npcs": []
+    },
+
+    {
+      "zone_id": "zone_jianzhong",
+      "display_name": "万剑冢",
+      "desc": "断剑插满荒原，每一柄下都埋着一个未瞑目的剑修。",
+      "order": 5,
+      "is_safe": false,
+      "tier": 4,
+      "rec_level": [26, 38],
+      "base_level": 33,
+
+      "unlock": {
+        "level": -1,
+        "realm_rank": 5,
+        "kills_in": {},
+        "boss_cleared": ["zone_hantan"]
+      },
+
+      "theme": {
+        "size": [120, 80],
+        "algo": "forest",
+        "palette": {
+          "ground": "#5a5348",
+          "ground2": "#675f52",
+          "water": "#4a5560",
+          "rock": "#3d382f",
+          "accent": "#d8c98a"
+        },
+        "water_rate": 0.03,
+        "rock_rate": 0.24,
+        "operators": [
+          { "op": "grove", "target": "rock", "count": 22, "radius": [2, 5], "density": 0.6 },
+          { "op": "vein", "target": "water", "count": 2, "len": [14, 30] },
+          { "op": "noise_blob", "target": "rock", "scale": 0.08, "weight": 0.6 },
+          { "op": "scatter", "target": "rock", "density": 0.03 }
+        ],
+        "decor": { "kind": "brokensword", "density": 0.7 },
+        "weather": "none"
+      },
+
+      "enemies": {
+        "count": 11,
+        "kinds": ["sword", "blood", "witch"],
+        "hp_mult": 2.2,
+        "atk_mult": 1.65,
+        "armor_add": 9,
+        "elite_rate": 0.17,
+        "affix_rate": 0.14
+      },
+
+      "boss": {
+        "boss_id": "boss_jianzhongshouling",
+        "display_name": "剑冢守灵",
+        "kind": "sword",
+        "level_offset": 3,
+        "hp_mult": 16.0,
+        "atk_mult": 1.9,
+        "drop_extra": {
+          "materials": { "mat_sword_soul": 2 },
+          "equipment_quality_cap": true
+        }
+      },
+
+      "encounter_count": [6, 6],
+      "exclusive_material": "mat_sword_soul",
+      "npcs": []
+    },
+
+    {
+      "zone_id": "zone_moyuan",
+      "display_name": "归墟魔渊",
+      "desc": "天地尽头的裂口，血雾自渊底翻涌，白骨堆成阶梯。",
+      "order": 6,
+      "is_safe": false,
+      "tier": 5,
+      "rec_level": [38, 60],
+      "base_level": 45,
+
+      "unlock": {
+        "level": -1,
+        "realm_rank": 8,
+        "kills_in": {},
+        "boss_cleared": ["zone_jianzhong"]
+      },
+
+      "theme": {
+        "size": [120, 80],
+        "algo": "volcanic",
+        "palette": {
+          "ground": "#3a2b42",
+          "ground2": "#46344f",
+          "water": "#6b2340",
+          "rock": "#261c2c",
+          "accent": "#b45cd8"
+        },
+        "water_rate": 0.08,
+        "rock_rate": 0.26,
+        "operators": [
+          { "op": "noise_blob", "target": "rock", "scale": 0.05, "weight": 1.2 },
+          { "op": "vein", "target": "water", "count": 7, "len": [20, 50] },
+          { "op": "grove", "target": "rock", "count": 10, "radius": [2, 4], "density": 0.5 },
+          { "op": "scatter", "target": "rock", "density": 0.04 }
+        ],
+        "decor": { "kind": "bone", "density": 0.6 },
+        "weather": "bloodmist"
+      },
+
+      "enemies": {
+        "count": 13,
+        "kinds": ["blood", "witch", "sword", "alchemy"],
+        "hp_mult": 2.8,
+        "atk_mult": 1.95,
+        "armor_add": 14,
+        "elite_rate": 0.22,
+        "affix_rate": 0.2
+      },
+
+      "boss": {
+        "boss_id": "boss_guixumozun",
+        "display_name": "归墟魔尊",
+        "kind": "blood",
+        "level_offset": 4,
+        "hp_mult": 20.0,
+        "atk_mult": 2.0,
+        "drop_extra": {
+          "materials": { "mat_abyss_ink": 2 },
+          "equipment_quality_cap": true
+        }
+      },
+
+      "encounter_count": [7, 7],
+      "exclusive_material": "mat_abyss_ink",
+      "npcs": []
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+classDiagram
+    class AnimState {
+        <<enumeration>>
+        Idle
+        WalkDown
+        WalkUp
+        WalkSide
+        Attack
+        Hurt
+        Dodge
+        Death
+    }
+
+    class PoseDef {
+        <<struct>>
+        +string FilePrefix
+        +int FrameCount
+        +int FrameW
+        +int FrameH
+        +Vector2 Pivot
+        +float Fps
+        +bool Loop
+        +string PathOf(int frameIndex)
+    }
+
+    class HeroineFrames {
+        <<static>>
+        +const string RootDir$
+        +const int TotalFrames$
+        +PoseDef Get(AnimState st)$
+        +AnimState FromMovement(Vector2 facing, bool moving)$
+        +bool ShouldFlipX(AnimState st, Vector2 facing)$
+    }
+
+    class SpriteFactory {
+        <<static>>
+        -Dictionary~string,Sprite~ _sprites$
+        -Dictionary~string,Texture2D~ _textures$
+        -HashSet~string~ _pngWarned$
+        +const int TilePixels$
+        +const int ShapePixels$
+        +Clear()$
+        +Sprite WhiteTile()$
+        +Sprite SolidRect(string key, int w, int h, Color fill)$
+        +Sprite Circle(string key, Color fill, Color outline, float outlinePx)$
+        +Sprite Crescent(string key, Color tint, float arcDeg, float thick)$
+        +Sprite UiPixel()$
+        +Sprite TryLoadPng(string relPath, int w, int h, Vector2 pivot, Color tint)$
+        +int PreloadPngSequence(string dir, string prefix, int count, int w, int h, Vector2 pivot, Color tint)$
+        +bool PngAvailable(string relPath)$
+        -string PngKey(string relPath, int w, int h, Vector2 pivot, Color tint)$
+        -byte[] ReadBytes(string absPath)$
+        -Texture2D NewTexture(string key, int w, int h)$
+        -void SafeDestroy(Object o)$
+    }
+
+    class HeroineAnimator {
+        -SpriteRenderer _sr
+        -PlayerController _pc
+        -AttackController _atk
+        -DodgeController _dodge
+        -CombatBridge _bridge
+        -AnimState _state
+        -int _frame
+        -float _clock
+        -float _oneShotRemain
+        -int _lastSwingCount
+        -float _lastHp
+        -bool _deathLatched
+        +bool IsReady
+        +AnimState State
+        +int Frame
+        +Awake()
+        +Update()
+        +SetState(AnimState st, bool force)
+        +Sprite CurrentSprite()
+        -bool Warmup()
+        -AnimState Evaluate()
+        -void Advance(float dt)
+        -void Apply()
+    }
+
+    class PlayerController {
+        +Vector2 LastFacing
+        +Vector2 MoveDir
+        +bool IsMoving
+        +float FacingDegrees
+    }
+
+    class AttackController {
+        +int SwingCount
+        +float CooldownRemain
+    }
+
+    class DodgeController {
+        +bool IsDodging
+        +int DodgeStartCount
+    }
+
+    class CombatBridge {
+        +float PlayerHp
+        +bool IsGameplayBlocked
+        +bool IsRunOver
+    }
+
+    class WorldBuilder {
+        <<static>>
+        +const int PlayerBodySize$
+        +BuildScene()$
+        -Transform BuildPlayer(Transform parent, Vector2 spawn)$
+    }
+
+    HeroineFrames "1" --> "8" PoseDef : 静态表持有
+    HeroineAnimator ..> HeroineFrames : 查表
+    HeroineAnimator ..> SpriteFactory : TryLoadPng / Preload
+    HeroineAnimator --> PlayerController : 只读轮询 IsMoving/LastFacing
+    HeroineAnimator --> AttackController : 只读轮询 SwingCount 增长沿
+    HeroineAnimator --> DodgeController : 只读轮询 IsDodging
+    HeroineAnimator --> CombatBridge : 只读轮询 PlayerHp / IsGameplayBlocked
+    WorldBuilder ..> HeroineAnimator : AddComponent + IsReady 分支
+    WorldBuilder ..> SpriteFactory : Clear / SolidRect 兜底

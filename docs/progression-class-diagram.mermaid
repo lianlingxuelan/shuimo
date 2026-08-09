@@ -1,0 +1,185 @@
+%% P1-6 玩家成长曲线 —— 数据结构与接口类图
+%% 生成者：高见远（架构师）　｜　配套文档：docs/unity-p1-6-progression-architecture.md
+%%
+%% 图例：
+%%   实线空心三角箭头 (<|--)  继承 / 实现
+%%   实线菱形        (*--)   组合（生命周期从属）
+%%   实线箭头        (-->)   单向引用 / 调用依赖
+%%   虚线箭头        (..>)   仅读取常量，无对象引用
+%%
+%% 分层：
+%%   【纯逻辑层】Xianxia.Combat（asmdef noEngineReferences=true，禁 UnityEngine）
+%%   【Unity 层】Xianxia.Unity.T2（允许 UnityEngine）
+%%   【接线层】  Xianxia.Combat.Unity
+
+classDiagram
+    direction TB
+
+    %% =========================================================
+    %% 【纯逻辑层】新增 —— Assets/Scripts/Systems/Combat/Progression.cs
+    %% =========================================================
+
+    class ProgressionCurve {
+        <<static 曲线表 · 新增>>
+        +int MAX_LEVEL$ = 10
+        +float BASE_HP_MAX$ = 260.0f
+        +float HP_PER_LEVEL$ = 26.0f
+        +float ATK_PER_LEVEL$ = 1.0f
+        -int[] EXP_TO_NEXT$
+        -int[] EXP_CUMULATIVE$
+        +HpMaxAt(int level)$ float
+        +AtkBonusAt(int level)$ float
+        +ExpToNext(int level)$ int
+        +CumulativeExpAt(int level)$ int
+        +Clamp(int level)$ int
+    }
+
+    class PlayerProgression {
+        <<纯观察者 · 新增>>
+        -int _level
+        -int _expInLevel
+        -int _expTotal
+        -HashSet~int~ _credited
+        +event Action~LevelUpInfo~ LeveledUp
+        +event Action~int~ ExpGained
+        +int Level
+        +int ExpInLevel
+        +int ExpToNext
+        +int ExpTotal
+        +bool IsMaxLevel
+        +float HpMax
+        +float AtkBonus
+        +GainExp(int amount) int
+        +GainExpFrom(int srcId, float expValue) int
+        +Reset() void
+        -TryLevelUp() bool
+    }
+
+    class LevelUpInfo {
+        <<readonly struct · 新增>>
+        +int PrevLevel
+        +int NewLevel
+        +float DeltaHpMax
+        +float NewHpMax
+        +float DeltaAtkBonus
+        +float NewAtkBonus
+    }
+
+    %% =========================================================
+    %% 【纯逻辑层】既有 —— 一行不改（仅 DifficultyBridge 改注释）
+    %% =========================================================
+
+    class Combatant {
+        <<既有 · 不改>>
+        +int Id
+        +Faction Faction
+        +int Level = 1
+        +float ExpValue
+        +float Hp
+        +float HpMax
+        +bool IsElite
+        +bool IsBoss
+        +WCoreState WCore
+        +CreatePlayer(int, float, Vec2)$ Combatant
+    }
+
+    class WCoreState {
+        <<既有 · 不改>>
+        +float Hp
+        +float HpMax
+        +Func~float,float~ DamageFilter
+    }
+
+    class DifficultyBridge {
+        <<既有 · 仅改注释>>
+        +float PlayerHpMax = 260.0f
+        +float PlayerDef
+        +SpawnEnemy(...) Combatant
+        -SolveEffectiveAtkMult(float, float, float) float
+    }
+
+    class RunPhaseTracker {
+        <<既有 · 范式参照>>
+        +event Action~RunPhase~ PhaseChanged
+        +RunPhase Phase
+        +Evaluate(bool, bool, int) RunPhase
+        +Reset() void
+    }
+
+    class ICombatEvents {
+        <<interface · 既有 · 不改>>
+        +OnEnemyDeath(Combatant e) void
+    }
+
+    class SkillConfig {
+        <<static · 既有 · 不改>>
+        +float BASIC_RAW$ = 12.0f
+        +float BURST_RAW$ = 20.0f
+        +float LOTUS_RAW$ = 8.0f
+        +BuildDefaultTable()$ SkillTable
+    }
+
+    class SkillDef {
+        <<既有 · 实例字段被刷新>>
+        +int Id
+        +float Raw
+    }
+
+    %% =========================================================
+    %% 【Unity 层】Xianxia.Unity.T2
+    %% =========================================================
+
+    class CombatEventsUnity {
+        <<既有 · 不改>>
+        +Action~Combatant~ EnemyDied
+        +OnEnemyDeath(Combatant e) void
+    }
+
+    class CombatBridge {
+        <<既有 · 本期主改造点>>
+        +const float PlayerHpMax = 260.0f
+        -PlayerProgression _progression
+        -SkillTable _skillTable
+        +PlayerProgression Progression
+        +float PlayerAtkBonus
+        +ApplyPlayerDamageModel() void
+        -OnEnemyDied(Combatant e) void
+        -OnPlayerLeveledUp(LevelUpInfo i) void
+        -RefreshSkillRawFromLevel() void
+    }
+
+    class AttackController {
+        <<既有 · 改 1 行>>
+        +const float AttackRaw = 12.0f
+        -float raw
+        -Swing() int
+    }
+
+    class Hud {
+        <<既有 · 新增等级/经验条>>
+        -Text _levelText
+        -Image _expFill
+        +BindProgression(PlayerProgression p) void
+        -RefreshProgression() void
+    }
+
+    %% =========================================================
+    %% 关系
+    %% =========================================================
+
+    PlayerProgression ..> ProgressionCurve : 读静态曲线表
+    PlayerProgression --> LevelUpInfo : 抛出
+    PlayerProgression --|> RunPhaseTracker : 同范式（非继承·仅示意）
+
+    Combatant *-- WCoreState : 玩家 HpMax 代理到此
+    ICombatEvents <|.. CombatEventsUnity
+
+    CombatBridge *-- PlayerProgression : 唯一持有者
+    CombatBridge --> CombatEventsUnity : 订阅 EnemyDied
+    CombatBridge --> Combatant : 写玩家 HpMax / Hp
+    CombatBridge --> DifficultyBridge : 钉死 PlayerHpMax=260
+    CombatBridge --> SkillDef : 刷新 Raw = 常量 + AtkBonus
+    CombatBridge ..> SkillConfig : 读 *_RAW 常量做基数
+    AttackController --> CombatBridge : 读 PlayerAtkBonus
+    Hud --> PlayerProgression : 订阅 LeveledUp / ExpGained
+    CombatEventsUnity --> Combatant : 回调携带死亡敌人
