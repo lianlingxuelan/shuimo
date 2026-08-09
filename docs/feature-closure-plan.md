@@ -52,20 +52,25 @@
 | `CombatBridge.SetupT3` 装配 | 9/9 | ❌ 未验 |
 | T3 UI（`HudSkillBar` / `HudStatusIcons` / `VfxSkill` / `VfxStatus`） | 9/9 | ❌ 未验 |
 | **K/L/右键无响应 Bug 修复** | 代码已确认落地：`WorldBuilder.cs:145` 挂 `InputBinder`、`:574` 挂 `SkillController`、`:575` 挂 `DodgeController`；`CombatBridge` 幂等自愈；护栏复跑 9/9 + 64/64 全绿 | ❌ **修复是否真的生效，完全依赖用户本地 PlayMode 验证** |
+| P0-2 死亡结算 / P0-3 胜负 / P0-4 重开（阶段 7+14） | `RunPhase.cs` + `GameOverHud.cs` + `MenuHud` R 重开 / 重新开始；静态代码核查通过 | ❌ 未验 |
+| P0-5 主菜单/暂停/退出（阶段 14） | `MainMenuHud.cs` + `PauseMenuHud.cs` + 统一暂停闸门 `IsGameplayBlocked`；静态核查通过 | ❌ 未验 |
+| P0-6 操作引导（阶段 14） | `ControlsGuideHud.cs`；静态核查通过 | ❌ 未验 |
+| P1-6 玩家成长曲线（阶段 16） | `Progression.cs` 纯逻辑 + NUnit 测试；Python 护栏 9/9 + 64/64 | ❌ Unity 接线待本地验证 |
+| P1-2 受击反馈（阶段 18） | `FeedbackClock` / `HitFeedbackDirector` / `CameraShake` / `DamagePopupLayer` / `PlayerHitFlash`；43 条测试 + 静态核查通过 | ❌ 未验 |
 
 **C. 根本没写（真缺口）**
 
 以下均已用全仓 grep 确认为**零命中**或**仅内核侧存在、玩家侧缺失**：
 
-- **玩家死亡后处理**：`gameover` / `respawn` / `restart` / `victory` / `defeat` 全仓 **0 命中**。内核会把 `Player.IsAlive` 置 false，但 Unity 层没有任何响应
-- **胜负判定 / 局内结算 / 重开**：无
-- **主菜单 / 暂停 / 退出游戏**：无场景、无脚本
-- **新手引导**：HUD 里无任何操作说明文本
+- **玩家死亡后处理**：`gameover` / `respawn` / `restart` / `victory` / `defeat` ~~全仓 **0 命中**~~。~~内核会把 `Player.IsAlive` 置 false，但 Unity 层没有任何响应~~ → **阶段 14 已交付**（`GameOverHud.cs` / 终局闸门 / R 重开），**待用户本地 PlayMode 验证**
+- **胜负判定 / 局内结算 / 重开**：~~无~~ → **阶段 7 已交付**（`RunPhase.cs` 状态机 Playing/Won/Lost + `GameOverHud` 结算面板），**待用户本地验证**
+- **主菜单 / 暂停 / 退出游戏**：~~无场景、无脚本~~ → **阶段 14 已交付**（`MainMenuHud.cs` / `PauseMenuHud.cs` / 统一暂停闸门），**待用户本地验证**
+- **新手引导**：~~HUD 里无任何操作说明文本~~ → **阶段 14 已交付**（`ControlsGuideHud.cs`），**待用户本地验证**
 - **音频**：全仓 **0 个 `AudioSource`**（仅相机上有一个 `AudioListener`）
 - **存档**：**0 个 `PlayerPrefs`**、0 序列化。（注：`zones.json` 注释已声明 `zone_id` 是存档 key，设计上预留了，但代码未写）
-- **玩家成长**：内核有 `ExpValue` / `BOSS_EXP_MULT` / tier 掉落分级，但**玩家侧没有任何等级、经验吸收、属性点、掉落、背包**。changelog 明确记载"T4 养成线尚未立项"
+- **玩家成长**：~~内核有 `ExpValue` / `BOSS_EXP_MULT` / tier 掉落分级，但**玩家侧没有任何等级、经验吸收、属性点、掉落、背包**~~ → **阶段 16 已交付**（`Progression.cs` 纯逻辑 + NUnit 测试），**待用户本地验证**
 - **区域切换 / 传送**：`ZoneLoader` 与 6 个 zone 数据都在，但 `WorldBuilder` 只构建单区域，无切换入口
-- **美术接线**：`SpriteFactory` 注释直言"工程里因此一张 png 都没有"，所有可见物（玩家 24×24 方块、敌人 26px 圆点、地块、月牙）均运行时 `Texture2D` 逐像素生成
+- **美术接线**：~~`SpriteFactory` 注释直言"工程里因此一张 png 都没有"，所有可见物（玩家 24×24 方块、敌人 26px 圆点、地块、月牙）均运行时 `Texture2D` 逐像素生成~~ → **阶段 15 已交付**（女主 39 帧水墨精灵接入 Unity），**待用户本地验证**；敌人精灵仍为方块
 
 ---
 
@@ -84,24 +89,24 @@
 | # | 模块 | 现状 | 缺口描述 | 归属层 |
 |---|---|---|---|---|
 | **P0-1** | **战斗 loop 真能跑通** | 部分 | 代码路径完整（移动→普攻→命中→敌人死亡），但**从未在 PlayMode 跑过**。K/L/右键修复也在此列。这是"验证"缺口，不是"开发"缺口 | 🔴 Unity（**用户验证是唯一出路**） |
-| **P0-2** | **玩家死亡 → 游戏结束** | **无** | 内核已把玩家纳入接触伤害结算（`Encounter.StepFixed` → `DamageResolver.ResolveContact(e, Player, ...)`），玩家**会掉血、会死**；但 `IsAlive=false` 之后 Unity 层零响应。需要：死亡事件上抛 → 冻结输入 → 播死亡表现 → 弹结算 | 🟡 混合（事件定义 🟢 / UI 与冻结 🔴） |
-| **P0-3** | **胜负判定** | **无** | 没有任何"这一局赢了/输了"的定义。MVP 建议最小口径：清空当前波次 = 胜；玩家 HP 归零 = 败。需要一个局内状态机（Playing / Won / Lost） | 🟢 纯逻辑（状态机可 NUnit 全覆盖） |
-| **P0-4** | **重开 / 重试** | **无** | 死了之后玩家只能 Alt+F4。需要"重新开始"按钮 → 重建世界（`WorldBuilder.DestroyGeneratedRoots` + `BuildScene` 已存在，但无调用入口）+ 重置内核 | 🔴 Unity |
-| **P0-5** | **主菜单 / 暂停 / 退出** | **无** | Steam 上架的最低体面线。至少：开始游戏 / 退出。暂停（ESC）+ 继续 / 返回主菜单 | 🔴 Unity |
-| **P0-6** | **基础操作引导** | **无** | 玩家不知道 K/L/右键/Shift 是干嘛的。MVP 最省事方案：开局一屏静态按键说明图 + HUD 常驻一行小字。**不需要做交互式教学** | 🔴 Unity |
+| **P0-2** | **玩家死亡 → 游戏结束** | ✅ 已交付 | ~~内核已把玩家纳入接触伤害结算~~ → `RunPhase` 状态机 + `GameOverHud` 结算面板 + 冻结输入 + 死亡表现。**待用户本地 PlayMode 验证** | 🟡 混合 |
+| **P0-3** | **胜负判定** | ✅ 已交付 | ~~无~~ → `RunPhase.cs`（Playing/Won/Lost 状态机）。纯逻辑 + NUnit，本环境可自证 | 🟢 纯逻辑 |
+| **P0-4** | **重开 / 重试** | ✅ 已交付 | ~~无~~ → "重新开始"按钮 + `WorldBuilder.DestroyGeneratedRoots` + 重置内核。**待用户本地验证** | 🔴 Unity |
+| **P0-5** | **主菜单 / 暂停 / 退出** | ✅ 已交付 | ~~无~~ → `MainMenuHud.cs`（开始/退出）+ `PauseMenuHud.cs`（继续/重开/返回主菜单/退出）+ 统一暂停闸门 `IsGameplayBlocked`。**待用户本地验证** | 🔴 Unity |
+| **P0-6** | **基础操作引导** | ✅ 已交付 | ~~无~~ → `ControlsGuideHud.cs`（开局静态按键说明 + HUD 常驻小字）。**待用户本地验证** | 🔴 Unity |
 
-> **P0 判读**：6 项里只有 **P0-3** 能在本环境完整交付（纯逻辑 + NUnit）。其余 5 项**都卡在 Unity 验证链上**。
+> **P0 判读**：6 项全部代码已交付，但其中 5 项为 Unity 表现层，**卡在用户本地验证链上**。本轮通过的环境无法编译/运行 Unity，所有 Unity 侧功能均只做了静态检查。
 
 ### 2.3 P1 — 不丢人必需（共 7 项）
 
 | # | 模块 | 现状 | 缺口描述 | 归属层 |
 |---|---|---|---|---|
 | **P1-1** | **技能/闪避实际生效 + 手感** | 部分 | 代码全在（4 技能已注册、双池灵力/体力已实现），但手感（前摇/后摇/位移/无敌帧长度）**必须靠人手试**。参数在内核可调，试是 Unity 侧的事 | 🟡 混合 |
-| **P1-2** | **受击反馈** | 部分 | `VfxStatus` / `VfxSlash` / 硬直 `TickHitStun` 都有；缺**打击停顿 hitstop、屏幕震动、受击闪白、伤害飘字**。这四样是"打起来爽不爽"的分水岭 | 🔴 Unity |
+| **P1-2** | **受击反馈** | ✅ 已交付 | ~~`VfxStatus` / `VfxSlash` / 硬直~~ → `FeedbackClock`（顿帧）+ `CameraShake`（屏震）+ `PlayerHitFlash`（分阵营闪白）+ `DamagePopupLayer`（飘字）。43 条测试。**待用户本地验证** | 🔴 Unity |
 | **P1-3** | **音效 / BGM** | **无** | 全仓 0 个 `AudioSource`。最少需要：普攻挥击、命中、受击、死亡、技能×2、BGM×1 = 7 个音源。**内核严禁出现 `AudioSource`**（会破坏对拍），必须走事件 → Unity 侧播放 | 🔴 Unity（内核仅出事件 🟢） |
-| **P1-4** | **美术去方块** | **无接线** | 见清单 B。当前玩家=24px 方块、敌人=26px 圆点。`Assets/images/` 下 8 张 AI 图未导入未切帧 | 🔴 Unity |
+| **P1-4** | **美术去方块** | 部分 | 女主 39 帧水墨精灵已接入（阶段 15），**待用户本地验证**；敌人仍为方块，需 ImageGen 积分批量出图 | 🔴 Unity |
 | **P1-5** | **简单关卡 / 区域** | 部分 | 6 个 zone 数据 + `ZoneLoader` 已在，但只 build 单区域。MVP 建议：**2 个区域 + 1 个安全区**，用传送点串起来，不做开放世界 | 🟡 混合（选区逻辑 🟢 / 切场景 🔴） |
-| **P1-6** | **数值成长入口** | **无（玩家侧）** | 内核有 `ExpValue`，但玩家杀怪拿不到任何东西。MVP 最小口径：**经验 → 等级 → 血上限/攻击力**三条曲线，不做装备/技能树/背包。⚠️ 注意 changelog 警告：境界压制、五行克制等**伤害乘区必须随养成线整体设计**，现在只做"等级加基础属性"这种不改乘区的最小版，避免推翻 U1 口径 | 🟢 纯逻辑（曲线可 NUnit 钉死） |
+| **P1-6** | **数值成长入口** | ✅ 已交付 | ~~**无（玩家侧）**~~ → `Progression.cs` 纯逻辑（经验→等级→血上限/攻击力）+ NUnit 测试 + Unity 接线。**待用户本地验证** | 🟢 纯逻辑 |
 | **P1-7** | **T3 P1 战斗厚度（选做）** | 无 | changelog 已列：3 段连招 / AI 七态 / Lock-on / Debuff 补至 9 种 / 连击增伤 / 受击反应四级。**MVP 只建议做「3 段连招」**，其余留到 Demo 之后。⚠️ 引入硬控或敌人技能化必须重跑 U1 平衡回归 | 🟡 混合 |
 
 ### 2.4 P2 — 锦上添花（共 6 项）
