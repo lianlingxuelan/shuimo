@@ -1,0 +1,363 @@
+%% P1-3 音效系统 —— 数据结构与接口类图
+%% 生成者：高见远（架构师）　｜　配套文档：docs/unity-p1-3-audio-architecture.md
+%%
+%% 图例：
+%%   实线箭头        (-->)   单向引用 / 调用依赖 / 委托派发
+%%   虚线箭头        (..>)   仅读取常量或静态状态，无对象引用
+%%   实线菱形        (*--)   组合（生命周期从属）
+%%
+%% 分层与 asmdef（依赖方向单向，不可成环）：
+%%   Xianxia.Unity.T2  ──references──►  Xianxia.Combat.Unity  ──►  Xianxia.Combat  ──►  Xianxia.Core
+%%   ★ 本期**全部**新增类型落在 Xianxia.Unity.T2（Assets/_Project/Scripts/Runtime/）。
+%%     内核（Assets/Scripts/）零改动 —— 这是 PRD §7.2 / B-2 / B-6 的硬约束。
+%%
+%% ★ 关于 FeedbackClock 的位置（简报有一处小误）：
+%%   它实际住在 Assets/Scripts/Systems/Combat/Unity/FeedbackClock.cs（asmdef
+%%   Xianxia.Combat.Unity），不在 _Project 下。本期音频系统**完全不依赖它**，
+%%   理由见架构文档 §2.5 —— 图中用虚线标出"刻意不连"的这条边。
+
+classDiagram
+    direction TB
+
+    %% ==================================================================
+    %% 内核出口层（Xianxia.Combat / Xianxia.Combat.Unity）—— 本期零改动
+    %% ==================================================================
+
+    class Encounter {
+        <<kernel · Xianxia.Combat>>
+        +ICombatEvents Events
+        +ICombatEventsT3 EventsT3
+        +bool IsRunOver
+        --
+        零改动。只负责喊"发生了什么"
+    }
+
+    class CombatEventsUnity {
+        <<Xianxia.Combat.Unity · 零改动>>
+        +Action~string~ PlaySfx
+        +Action~Combatant,Combatant,float~ HitFeedback
+        +Action~Combatant~ EnemyDied
+        +Action~BossPhase~ BossPhaseChanged
+        --
+        出口① · 8 个 key
+        :124 sfx_player_hurt / sfx_enemy_hit
+        :143 sfx_enemy_death / sfx_boss_death
+        :160 sfx_boss_phase
+        :177 sfx_boss_summon
+        :196 sfx_boss_shockwave
+        :216 sfx_poise_break
+    }
+
+    class CombatEventsT3Unity {
+        <<Xianxia.Unity.T2 · 零改动>>
+        +Action~string~ PlaySfx
+        +Func~int,CombatView~ ViewOf
+        --
+        出口② · 4 个裸技能 id
+        :127 PlaySfx(def.Id)
+        :181 PlaySfx(SKILL_DODGE_ROLL)
+        ★ 采纳 Q1 方案(a)：本文件一行不改
+    }
+
+    class FeedbackClock {
+        <<static · Xianxia.Combat.Unity>>
+        +bool Frozen
+        +float Delta
+        --
+        ★ 音频系统刻意**不**依赖本类
+        理由见架构文档 §2.5
+    }
+
+    %% ==================================================================
+    %% 编排层
+    %% ==================================================================
+
+    class CombatBridge {
+        <<Xianxia.Unity.T2 · 唯一修改的既有文件>>
+        +bool IsGameplayBlocked
+        +bool IsRunOver
+        +CombatEventsT3Unity EventsT3
+        -AudioDirector _audio
+        --
+        +SetMenuPaused(bool) void
+        -SetupAudio() void
+        -TeardownAudio() void
+        --
+        ★ 新增两个私有方法 + 一个字段
+        ★ Start() 内追加 1 行调用
+        ★ OnDestroy() 内追加 1 行调用
+    }
+
+    %% ==================================================================
+    %% 音频总控（本期核心新增）
+    %% ==================================================================
+
+    class AudioDirector {
+        <<MonoBehaviour · 新增>>
+        -CombatBridge _bridge
+        -Voice[] _voices
+        -Dictionary~string,KeyState~ _keyStates
+        -HashSet~string~ _warnedKeys
+        -System.Random _rng
+        -AmbienceLayer _ambience
+        -int _cursor
+        -bool _suppressNew
+        -float _resolveRetry
+        --
+        +Bind(CombatBridge) void
+        +Prewarm() void
+        +Play(string key) void
+        +SetMuted(bool) void
+        +ToggleMute() void
+        +StopAllVoices() void
+        +ClearAll() void
+        -LateUpdate() void
+        -ApplyPauseConvergence() bool
+        -EnsureSingleAudioListener() void
+        -PickVoice(SfxSpec) int
+        -ResolveGain(SfxSpec, KeyState) float
+        -TickVoices(float dt) void
+        --
+        ★ [DisallowMultipleComponent]
+        ★ [DefaultExecutionOrder(130)]
+        ★ Play() 全体包 try/catch —— 它跑在内核 OnHit 栈上
+    }
+
+    class Voice {
+        <<nested struct/class>>
+        +AudioSource Source
+        +string Key
+        +float Age
+        +float Length
+        +bool Alive
+        +bool Exempt
+    }
+
+    class KeyState {
+        <<nested class>>
+        +float SinceLastPlay
+        +int ConsecutiveCount
+        +int LiveVoices
+        +bool Broken
+    }
+
+    %% ==================================================================
+    %% 合成与资源管理
+    %% ==================================================================
+
+    class AudioClipFactory {
+        <<static · 新增 · 对标 SpriteFactory>>
+        -Dictionary~string,AudioClip~ _clips
+        -HashSet~string~ _failed
+        -HashSet~string~ _warned
+        --
+        +Get(string key) AudioClip
+        +Prewarm(string[] keys) int
+        +Clear() void
+        -Build(SfxSpec) AudioClip
+        -SafeDestroy(Object) void
+        --
+        ★ AudioClip 与 Texture2D 同为非托管资源
+        ★ Clear() 不是可选项（PRD R-03 / A-19）
+        ★ 未知 key 只警告一次（抄 SpriteFactory:35）
+    }
+
+    class SfxRecipes {
+        <<static · 新增>>
+        +Render(SfxSpec, System.Random) float[]
+        -EnemyHit(...) float[]
+        -PlayerHurt(...) float[]
+        -EnemyDeath(...) float[]
+        -BossDeath(...) float[]
+        -BossPhase(...) float[]
+        -BossSummon(...) float[]
+        -BossShockwave(...) float[]
+        -PoiseBreak(...) float[]
+        -BasicSlash(...) float[]
+        -CircleBurst(...) float[]
+        -BloodLotus(...) float[]
+        -DodgeRoll(...) float[]
+        -WindLoop(...) float[]
+        --
+        13 张配方，每张一个私有函数
+        DSP 内部数字就近 private const
+        （理由见架构文档 §6.1）
+    }
+
+    class SfxSynth {
+        <<static · 新增 · 纯 DSP 原语库>>
+        +WhiteNoise(Random) float
+        +OnePoleLP(ref float, float, float) float
+        +OnePoleHP(ref float, ref float, float, float) float
+        +SvfStep(ref SvfState, float, float, float) float
+        +ExpEnv(float t, float atk, float tau) float
+        +ArEnv(float t, float atk, float rel, float dur) float
+        +SweepPhase(ref float, float, float) float
+        +InharmonicBell(float[], float, float, float) float
+        +CombReverb(float[], int[], float) void
+        +Normalize(float[], float) void
+        +SoftClip(float) float
+        +CrossfadeLoop(float[], int) float[]
+        --
+        零 Unity 依赖（除 Mathf 可选）
+        纯函数 —— 可被 EditMode 测试直接跑
+    }
+
+    class SvfState {
+        <<struct>>
+        +float Low
+        +float Band
+    }
+
+    %% ==================================================================
+    %% 常量表
+    %% ==================================================================
+
+    class AudioConfig {
+        <<static · 新增 · 对标 HitFeedbackConfig>>
+        +float MasterVolume
+        +float SfxVolume
+        +float BgmVolume
+        +bool Muted
+        --
+        +const float MasterDefault = 0.80
+        +const float SfxDefault = 0.90
+        +const float BgmDefault = 0.50
+        +const int VoiceCapacity = 16
+        +const int PerKeyVoiceLimit = 3
+        +const float DecayFactor = 0.70
+        +const float DecayFloor = 0.40
+        +const float DecayResetSec = 0.20
+        +const float ConcurrencyDuck = 0.06
+        +const float ConcurrencyFloor = 0.45
+        +const float PitchJitterMin = 0.94
+        +const float PitchJitterMax = 1.06
+        +const float GainJitterMin = 0.92
+        +const float DuckLevel = 0.30
+        +const float DuckFadeSec = 0.30
+        +const int RateLow = 22050
+        +const int RateHigh = 44100
+        +const KeyCode MuteKey = KeyCode.M
+        +static readonly SfxSpec[] Table
+        --
+        +ResetStatics() void
+        +TryGetSpec(string, out SfxSpec) bool
+        +LoadPrefs() void
+        +SavePrefs() void
+        --
+        ★ [RuntimeInitializeOnLoadMethod(SubsystemRegistration)]
+        ★ 4 个可写 static —— 复位纪律见文档 §6.4
+    }
+
+    class SfxSpec {
+        <<readonly struct>>
+        +string Key
+        +RecipeKind Kind
+        +int SampleRate
+        +float DurationSec
+        +float Gain
+        +float ThrottleSec
+        +float NormalizePeak
+        +bool ExemptPreempt
+        +bool Loop
+        +Channel Bus
+    }
+
+    class RecipeKind {
+        <<enum>>
+        EnemyHit
+        PlayerHurt
+        EnemyDeath
+        BossDeath
+        BossPhase
+        BossSummon
+        BossShockwave
+        PoiseBreak
+        BasicSlash
+        CircleBurst
+        BloodLotus
+        DodgeRoll
+        WindLoop
+    }
+
+    class Channel {
+        <<enum>>
+        Sfx
+        Bgm
+        --
+        ★ Bgm 通道本期只跑环境衬底
+        R-16 旋律 BGM 挂起，但枚举位预留
+    }
+
+    %% ==================================================================
+    %% 环境衬底（P1）
+    %% ==================================================================
+
+    class AmbienceLayer {
+        <<MonoBehaviour · 新增 · P1>>
+        -AudioSource _source
+        -float _targetLevel
+        -float _currentLevel
+        --
+        +Begin() void
+        +Duck(bool) void
+        +StopAndRelease() void
+        -Update() void
+        --
+        R-10 无缝循环风声
+        LFO 周期整除循环长度 + 200ms crossfade
+    }
+
+    %% ==================================================================
+    %% 参考范本（不修改，仅标注同构关系）
+    %% ==================================================================
+
+    class SpriteFactory {
+        <<static · 既有 · 不改>>
+        +Clear() void
+        -Dictionary~string,Texture2D~ _textures
+        -HashSet~string~ _pngWarned
+    }
+
+    class HitFeedbackDirector {
+        <<既有 · 不改>>
+        -ApplyPauseConvergence() bool
+        -ResolveDependencies() void
+    }
+
+    %% ==================================================================
+    %% 关系
+    %% ==================================================================
+
+    Encounter --> CombatEventsUnity : 内核喊事件
+    Encounter --> CombatEventsT3Unity : 内核喊 T3 事件
+
+    CombatEventsUnity --> AudioDirector : PlaySfx += Play<br/>（出口① · 8 key）
+    CombatEventsT3Unity --> AudioDirector : PlaySfx += Play<br/>（出口② · 4 key）
+
+    CombatBridge *-- AudioDirector : SetupAudio / TeardownAudio<br/>严格对称
+    CombatBridge --> CombatEventsT3Unity : 持有 _eventsT3
+
+    AudioDirector *-- Voice : 定长池 16
+    AudioDirector *-- KeyState : 12 条 · 按 key
+    AudioDirector *-- AmbienceLayer : P1
+    AudioDirector --> AudioClipFactory : Get / Prewarm / Clear
+    AudioDirector ..> AudioConfig : 读常量 + 读音量
+    AudioDirector --> CombatBridge : 只读 IsGameplayBlocked<br/>（轮询，不订阅）
+
+    AmbienceLayer --> AudioClipFactory : Get("amb_wind_loop")
+    AmbienceLayer ..> AudioConfig : DuckLevel / DuckFadeSec
+
+    AudioClipFactory --> SfxRecipes : Render
+    AudioClipFactory ..> AudioConfig : TryGetSpec
+    SfxRecipes --> SfxSynth : 调 DSP 原语
+    SfxSynth *-- SvfState
+
+    AudioConfig *-- SfxSpec : static readonly Table[13]
+    SfxSpec --> RecipeKind
+    SfxSpec --> Channel
+
+    AudioClipFactory ..> SpriteFactory : 同构范式<br/>（缓存 / Clear / 警告去重）
+    AudioDirector ..> HitFeedbackDirector : 同构范式<br/>（轮询暂停 / 惰性解析 / isActiveAndEnabled 守卫）
+
+    FeedbackClock ..> AudioDirector : ★ 刻意不连<br/>音频只吃 Time.deltaTime

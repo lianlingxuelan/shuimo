@@ -115,6 +115,21 @@ namespace Xianxia.Unity.T2
         private HitFeedbackDirector _feedback;
 
         /// <summary>
+        /// P1-3 音效总调度。与本组件同体（同一个 GameObject）。
+        ///
+        /// 【为什么同体 —— 与 _feedback 完全同一条理由】
+        /// 它要读本组件的 IsGameplayBlocked / IsRunOver 做暂停三态收敛，同体时
+        /// GetComponent 一次即得；也让"暂停判定权在 Bridge、发声权在 Director"
+        /// 这条拓扑在场景层级上一眼可见。
+        ///
+        /// 【为什么不做成静态单例】
+        /// 它持有 16 路 AudioSource 与一批 AudioClip（非托管资源）。做成静态单例
+        /// 就必须自己管跨场景的释放时机，而挂成组件则天然跟随"一局"的生命周期，
+        /// 释放点唯一且确定（见 TeardownAudio）。
+        /// </summary>
+        private AudioDirector _audio;
+
+        /// <summary>
         /// P1-2 伤害飘字层。**独立** GameObject —— 它自带一个 Canvas，
         /// 与 GameOverHud / MainMenuHud 是同款套路（本工程不落场景文件，
         /// 所有 UI 都在运行时搭出来）。
@@ -342,6 +357,17 @@ namespace Xianxia.Unity.T2
             //   再播击杀强调。反过来的话，击杀强调会在"玩家属性尚未更新"的瞬间播出，
             //   将来若给升级加一档专属反馈，两者的先后就会显出差别。现在先把顺序钉死。
             SetupHitFeedback();
+
+            // ★ P1-3 音效接线。
+            //   放在 SetupHitFeedback 之后有两条硬理由，不要随手上移：
+            //   1) 两者都订阅 CombatEventsUnity.EnemyDied 一族的事件，委托按订阅
+            //      顺序调用。先屏震/飘字、后发声，与"看见了才听见"的直觉一致；
+            //      反过来则会在极端帧里出现"声音先于画面"的错位感。
+            //   2) SetupAudio 内部会同步跑一次全量预合成（约几十毫秒）。本方法
+            //      末尾无论走哪条分支都会 SetMenuPaused(true) 并弹面板，
+            //      也就是说这一卡顿必然落在"玩家正在看静态面板"的窗口里。
+            //      若把它挪到 SpawnFirstWave 之前，卡顿就会暴露在世界淡入的那一刻。
+            SetupAudio();
 
             _ready = true;
 
@@ -583,6 +609,124 @@ namespace Xianxia.Unity.T2
             }
 
             FeedbackClock.Frozen = false;
+        }
+
+        // =====================================================================
+        // P1-3 音效（编排层：同样只负责"造出来 + 接上线 + 拆干净"）
+        // =====================================================================
+
+        /// <summary>
+        /// 造出音效总调度并把两个 PlaySfx 出口接上去，然后同步做一次全量预合成。
+        ///
+        /// 【拓扑 —— 两个出口，一个入口】
+        ///   CombatEventsUnity.PlaySfx   ──┐
+        ///                                 ├──► AudioDirector.Play(string)
+        ///   CombatEventsT3Unity.PlaySfx ──┘
+        ///
+        /// 内核那两个事件都是 <c>Action&lt;string&gt;</c>，签名与 <c>Play</c> 逐字匹配，
+        /// 所以直接挂方法组，不包 lambda —— 包了就再也 -= 不掉（lambda 每次
+        /// 求值都是一个新委托实例，退订必然失败，这是 C# 事件最经典的一个坑）。
+        ///
+        /// 【为什么两个出口都接，而不是只接一个】
+        /// 它们是两套独立的事件面：CombatEventsUnity 出的是 T2 的命中 / 死亡 /
+        /// BOSS 阶段（8 个 key，内核里写死字面量），CombatEventsT3Unity 出的是
+        /// T3 的技能 / 闪避（4 个 key，引 SkillConfig 常量）。少接一个的症状是
+        /// "普攻有声、技能没声"，而且控制台干干净净 —— 与 T3 控制器漏挂那次
+        /// （见 EnsurePlayerT3Controllers 的注释）是同一类静默失效。
+        ///
+        /// 【为什么不改 CombatEventsT3Unity / CombatEventsUnity】
+        /// 它们已经**自带** PlaySfx 出口，只是从来没人订阅（内核侧 `if (PlaySfx != null)`
+        /// 一直为假，等于空转）。本批要做的只是在编排层把订阅者补上，
+        /// 事件面一行都不用碰 —— 这正是当初把 PlaySfx 预留在那里的用意。
+        ///
+        /// 【★ baselineMode 的边界，先说清楚免得被当成 bug】
+        /// baselineMode 开启时 SetupT3 会立刻转调 TeardownT3 并直接返回，
+        /// <c>_eventsT3</c> 保持为 null，所以下面第二根线接不上。这是**正确**的：
+        /// 基线模式下玩家根本没有 Skills / Action 组件，技能与闪避不可能触发，
+        /// 也就没有任何 T3 音效需要转达。唯一的残留边界是"运行期把 baselineMode
+        /// 从 true 改回 false" —— 那条路径下 _eventsT3 是在本方法之后才被 new 出来的，
+        /// 技能音效要等下一次场景重载才恢复。baselineMode 是对拍开关（看数字，不听声），
+        /// 为它加一套重接线机制不值当，这里只把结论写明。
+        /// </summary>
+        private void SetupAudio()
+        {
+            // Director 与本组件同体。先 GetComponent 再 AddComponent —— 与
+            // SetupHitFeedback 里对 HitFeedbackDirector 的处理完全同款：
+            // 允许别人（场景 / PlayMode 测试）先手工挂一个，不会被这里覆盖成第二份
+            // （它带 [DisallowMultipleComponent]，硬加会直接失败）。
+            _audio = GetComponent<AudioDirector>();
+            if (_audio == null)
+            {
+                _audio = gameObject.AddComponent<AudioDirector>();
+            }
+
+            // 注入暂停状态来源。Director 自己也带惰性解析（0.25 s 节流）做兜底，
+            // 但此刻 this 的引用最确定，显式传比赌解析稳 —— 与 _popupLayer 同理。
+            _audio.Bind(this);
+
+            // 出口 ①：T2 事件面（8 个 key）。
+            if (controller != null && controller.EventsUnity != null)
+            {
+                controller.EventsUnity.PlaySfx += _audio.Play;
+            }
+
+            // 出口 ②：T3 事件面（4 个 key）。baselineMode 下为 null，见方法头。
+            if (_eventsT3 != null)
+            {
+                _eventsT3.PlaySfx += _audio.Play;
+            }
+
+            // 全量预合成。放在接线**之后**：万一某张配方抛异常，前面的线已经接好，
+            // 那些能合成的音效照常发声（AudioClipFactory 对失败 key 单独拉黑）。
+            // 反过来先预合成再接线的话，一次异常会把整条接线一起带走。
+            _audio.Prewarm();
+        }
+
+        /// <summary>
+        /// 拆掉音效的全部接线，并把 AudioClip 真正释放掉。
+        ///
+        /// 【★ 为什么音频的收尾比飘字严格得多】
+        /// 飘字层清空只是"熄灯"，漏了顶多留几个看不见的 Text；而 AudioClip 是
+        /// **非托管资源**，Unity 的 GC 不会替你回收由 AudioClip.Create 造出来的那块
+        /// PCM 缓冲。13 条音效里光环境衬底一条就是 12 s × 44100 × 4 B ≈ 2.1 MB，
+        /// 每重开一局漏一份，按 R 连点二十次就是 40 MB 有去无回。
+        ///
+        /// 【三步顺序不可交换】Stop() → source.clip = null → Destroy(clip)。
+        /// 具体理由写在 AudioDirector.ClearAll 的注释里（在 AudioSource 仍持有并
+        /// 播放某个 clip 时销毁它，Unity 的行为未定义，可能播出一段刺耳噪声）。
+        /// 本方法只负责按顺序发起，不重复实现。
+        ///
+        /// 【为什么不 Destroy voice 池的 GameObject】
+        /// 与上面 TeardownHitFeedback 对飘字层的裁定同款：GameObject / Component
+        /// 归场景管，手动销毁反而引入销毁顺序依赖。分界线是"AudioClip 不归任何
+        /// GameObject 管，必须显式 Destroy"。
+        /// </summary>
+        private void TeardownAudio()
+        {
+            // 与 SetupAudio 里的两次 += 严格一一对应，连判空条件都逐字相同。
+            // CombatEventsUnity 的生命周期跟随 CombatController，可能比本组件活得久；
+            // 不退订的话重开后旧回调会打到已销毁的 Director 上，Play 里那句
+            // isActiveAndEnabled 守卫会挡住发声，但订阅链本身会一直堆积。
+            if (_audio != null && controller != null && controller.EventsUnity != null)
+            {
+                controller.EventsUnity.PlaySfx -= _audio.Play;
+            }
+
+            if (_audio != null && _eventsT3 != null)
+            {
+                _eventsT3.PlaySfx -= _audio.Play;
+            }
+
+            if (_audio != null)
+            {
+                // 第 ① 步（全停）在编排层显式写出来，让"三步释放"在这里也读得出来。
+                // ClearAll 内部会再全停一次 —— 它是幂等的，重复执行零代价，
+                // 而少写这一句就得让读者跳到另一个文件才能确认顺序对不对。
+                _audio.StopAllVoices();
+
+                // 第 ②③ 步（摘引用 + 销毁 clip）。含环境衬底那一份引用。
+                _audio.ClearAll();
+            }
         }
 
         // =====================================================================
@@ -1366,6 +1510,12 @@ namespace Xianxia.Unity.T2
             // ★ P1-2：与 SetupHitFeedback 里的两次 += 严格对称，
             //   并在最后兜底放开 FeedbackClock.Frozen（防"下一局开局即全局冻结"）。
             TeardownHitFeedback();
+
+            // ★ P1-3：与 SetupAudio 里的两次 += 严格对称，并在最后按
+            //   Stop → clip = null → Destroy(clip) 的顺序真正释放全部 AudioClip。
+            //   这一句是**唯一**在正常路径上释放非托管音频资源的地方（Director 的
+            //   OnDestroy 里还有一道幂等兜底，防止本组件之外的销毁路径漏掉）。
+            TeardownAudio();
         }
 
         /// <summary>

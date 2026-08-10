@@ -1,0 +1,220 @@
+%% P1-3 音效系统 —— 程序调用流程时序图
+%% 生成者：高见远（架构师）　｜　配套文档：docs/unity-p1-3-audio-architecture.md
+%%
+%% 覆盖四条链路（按主理人指定顺序）：
+%%   ① 装配期接线：预合成 → AudioListener 保障 → 双出口 += （本图 §1）
+%%   ② 一次命中的完整音频链路：四层闸门 → voice 分配 → 增益合成（本图 §2）
+%%   ③ 暂停 / 终局 / 重开的音频收敛（本图 §3）
+%%   ④ 拆线与非托管资源释放（本图 §4）
+%%
+%% 铁律提醒（每一条都在图中有对应步骤）：
+%%   · 内核零改动：图中 Encounter / CombatEventsUnity 只出不进
+%%   · 禁 Time.timeScale：全图零命中
+%%   · 音频只吃 Time.deltaTime，永不读 FeedbackClock.Delta（§2.5）
+%%   · 随机数走 AudioDirector 私有 System.Random，绝不碰内核 SkillRng/PCG32
+%%   · 暂停走既有唯一闸门 CombatBridge.IsGameplayBlocked（轮询，不新增标志）
+%%   · 每一处 += 在 §4 都有严格一一对应的 -=
+
+sequenceDiagram
+    autonumber
+
+    participant U as 玩家
+    participant CB as CombatBridge<br/>(T2·编排)
+    participant AD as AudioDirector<br/>(T2·新增总控)
+    participant ACF as AudioClipFactory<br/>(T2·新增·静态)
+    participant SR as SfxRecipes<br/>+ SfxSynth
+    participant CFG as AudioConfig<br/>(常量表)
+    participant AL as AmbienceLayer<br/>(P1)
+    participant EU as CombatEventsUnity<br/>(出口① · 零改动)
+    participant ET3 as CombatEventsT3Unity<br/>(出口② · 零改动)
+    participant ENC as Encounter<br/>(内核 · 零改动)
+    participant UA as UnityEngine<br/>AudioSource 池
+
+    %% ================================================================
+    %% ① 装配期接线
+    %% ================================================================
+    rect rgb(232, 240, 250)
+    Note over CB,UA: ① 装配期接线（CombatBridge.Start，玩法此刻为 SetMenuPaused(true)，是最佳合成窗口）
+
+    CB->>CB: Start() … SetupT3() → SetupProgression() → SetupHitFeedback()
+    Note right of CB: SetupAudio() 排在 SetupHitFeedback 之后：<br/>_eventsT3 已由 SetupT3 建好（:865），<br/>此刻两个出口对象都确定存在
+
+    CB->>+AD: SetupAudio() → AddComponent&lt;AudioDirector&gt;()
+    AD->>AD: Awake() → ResolveDependencies()（惰性，带 0.25s 节流）
+    CB->>AD: Bind(this)
+    Note right of AD: 只存引用，不订阅任何事件。<br/>暂停状态靠 LateUpdate 轮询 IsGameplayBlocked
+
+    AD->>CFG: LoadPrefs()（R-11：三通道音量 + 静音跨会话）
+    CFG-->>AD: Master=0.80 / Sfx=0.90 / Bgm=0.50 / Muted=false
+
+    Note over AD,UA: R-08（P0）：AudioListener 有且仅有一个
+    AD->>UA: EnsureSingleAudioListener()<br/>FindObjectsByType&lt;AudioListener&gt;()
+    alt count == 0
+        AD->>UA: Camera.main.AddComponent&lt;AudioListener&gt;()<br/>（相机为 null 则挂自己身上）
+        AD->>AD: 警告一次
+    else count > 1
+        AD->>UA: 保留 Camera.main 上那个，其余 enabled = false
+        AD->>AD: 警告一次
+        Note right of AD: 用 enabled=false 而非 Destroy：<br/>相机是场景自带对象（WorldBuilder:638），<br/>删组件不可逆且破坏 Clean And Rebuild 幂等
+    else count == 1
+        Note right of AD: 什么都不做，一条日志都不打
+    end
+
+    AD->>UA: 建 voice 池：AudioVoicePool 子物体 × 16<br/>playOnAwake=false / spatialBlend=0（2D）/ loop=false
+    UA-->>AD: Voice[16]
+
+    Note over AD,SR: R-03：预合成，不允许第一次命中时现场合成
+    AD->>+ACF: Prewarm(12 个 P0 key [+ amb_wind_loop])
+    loop 每个 key
+        ACF->>CFG: TryGetSpec(key) → SfxSpec{Kind,SampleRate,Duration,Gain,…}
+        ACF->>+SR: Render(spec, new System.Random(SynthSeed ^ keyHash))
+        SR->>SR: 噪声 / 包络 / 滤波 / 调制 → float[]
+        SR->>SR: Normalize(buf, spec.NormalizePeak)
+        SR-->>-ACF: float[] samples
+        ACF->>UA: AudioClip.Create(key, n, 1, rate, stream:false)
+        ACF->>UA: clip.SetData(samples, 0)
+        ACF->>ACF: _clips[key] = clip
+        Note right of ACF: 抛异常 / 返回 null →<br/>_failed.Add(key) 永久标记不可用，<br/>警告一次，绝不冒泡（R-07）
+    end
+    ACF-->>-AD: 成功数 / 失败数（合计 ≈ 1.5 MB，约 39 万样本）
+
+    AD->>+AL: Begin()（P1 · R-10 环境衬底）
+    AL->>ACF: Get("amb_wind_loop")
+    AL->>UA: source.loop = true; Play()
+    AL-->>-AD: ok
+
+    Note over CB,ET3: ★ 双出口接线 —— 每一处 += 在 §4 都有严格对应的 -=
+    CB->>EU: controller.EventsUnity.PlaySfx += _audio.Play
+    CB->>ET3: _eventsT3.PlaySfx += _audio.Play
+    deactivate AD
+    Note right of CB: Q1 采纳方案(a)：两套命名空间由映射表<br/>同时接受，CombatEventsT3Unity.cs 零改动（B-6）
+    end
+
+    %% ================================================================
+    %% ② 一次命中的音频链路
+    %% ================================================================
+    rect rgb(235, 248, 235)
+    Note over U,UA: ② 一次命中的完整音频链路（一次成功普攻 = 挥击 + 命中，先后两声，是设计意图）
+
+    U->>ENC: 按 J 普攻
+    ENC->>ET3: OnSkillCast(caster, def)
+    ET3->>AD: PlaySfx("skill_basic_slash")　※ def.Id 原样，不加前缀
+
+    Note over ENC,UA: …数帧后，伤害结算…
+    ENC->>EU: OnHit(attacker, defender, dmg, applied:true)
+    EU->>EU: HitFeedback(...) → HitFeedbackDirector（P1-2，视觉侧）
+    EU->>+AD: PlaySfx("sfx_enemy_hit")
+
+    Note right of AD: ★ 整个 Play() 包在 try/catch 里：<br/>本方法跑在内核 OnHit 的调用栈上，<br/>一个音频异常掀掉整场战斗是绝对不可接受的（R-07）
+
+    AD->>AD: 守卫 0：!isActiveAndEnabled → return<br/>（抄 HitFeedbackDirector:368/439，QA 抓出的真缺陷）
+    AD->>AD: 守卫 1：_suppressNew（暂停/终局）→ return
+    AD->>CFG: 守卫 2：Muted 或 通道音量 ≈ 0 → return（跳过 Play 本身，不是把音量设 0）
+    AD->>CFG: TryGetSpec("sfx_enemy_hit")
+    alt key 未注册
+        CFG-->>AD: false
+        AD->>AD: _warnedKeys 去重 → 警告一次 → return（静默降级，R-07）
+    end
+    CFG-->>AD: SfxSpec{rate:44100, dur:0.10, gain:0.85, throttle:0.05, exempt:false}
+
+    Note over AD: ── R-05 四层保护 ──
+    AD->>AD: ① 同 key 节流：SinceLastPlay < 0.05s → 丢弃
+    AD->>AD: ② 同 key 并发：LiveVoices ≥ 3 → 丢弃
+    AD->>AD: ④ 连触递减：gain ×= max(0.7^(n-1), 0.40)<br/>（该 key 静默 0.20s 后 n 复位）
+
+    AD->>ACF: Get("sfx_enemy_hit")
+    ACF-->>AD: AudioClip（已缓存，零合成开销）
+
+    AD->>AD: ③ PickVoice()：空闲优先（从 _cursor 环形扫）
+    alt 池满
+        AD->>AD: 抢占 Age 最大者，**跳过** ExemptPreempt 的 voice
+        Note right of AD: sfx_boss_death / sfx_boss_shockwave 豁免抢占。<br/>若全池都是豁免音 → 丢弃新声，绝不挤掉 BOSS 预警（R-05）
+    end
+
+    AD->>AD: ResolveGain()<br/>= Master × Channel × KeyGain × 连触递减 × 随机增益<br/>× 并发补偿 1/(1+0.06×(active-1))，下限 0.45，最后 Clamp01
+    AD->>AD: pitch = Lerp(0.94, 1.06, _rng.NextDouble())
+    Note right of AD: ★ _rng 是 AudioDirector 私有的 System.Random。<br/>不用 UnityEngine.Random（那是全局共享状态），<br/>更绝不碰内核 SkillRng / PCG32（B-8 头号嫌疑）。<br/>音高抖动同时兼任削波防护：让叠加相位去相关
+
+    AD->>UA: voice.Source.clip / volume / pitch = …; Play()
+    AD->>AD: voice.Alive=true; Age=0; Length=clip.length<br/>KeyState.LiveVoices++; SinceLastPlay=0; ConsecutiveCount++
+    deactivate AD
+
+    loop 每帧 LateUpdate
+        AD->>AD: TickVoices(Time.deltaTime)<br/>Age += dt；Age ≥ Length → Alive=false, LiveVoices--
+        Note right of AD: ★ 记账吃 Time.deltaTime，绝不吃 FeedbackClock.Delta。<br/>顿帧期间 Delta 恒为 0，而顿帧（≤0.12s）恰好长于<br/>节流窗口（0.05s）—— 用冻结时钟计时会让连击后续命中<br/>被永久误判为"仍在节流窗口内"而静音。见文档 §2.5
+    end
+    end
+
+    %% ================================================================
+    %% ③ 暂停 / 终局 / 重开的音频收敛
+    %% ================================================================
+    rect rgb(252, 244, 232)
+    Note over U,UA: ③ 暂停 / 终局 / 重开的音频收敛（复用既有唯一闸门，不新增音频专用暂停标志）
+
+    U->>CB: 按 ESC
+    CB->>CB: TogglePauseMenu() → SetMenuPaused(true) → ApplyPauseState()
+    Note right of CB: IsGameplayBlocked = IsRunOver || _menuPaused<br/>唯一写入点仍是 SetMenuPaused（:1433），音频侧只读
+
+    AD->>CB: LateUpdate 轮询 IsGameplayBlocked / IsRunOver
+    CB-->>AD: blocked=true, runOver=false ⇒ 菜单暂停
+
+    AD->>AD: _suppressNew = true（不新起任何战斗音效）
+    Note right of AD: 已在播的短音效**允许自然放完** —— 都 &lt; 1s，<br/>强行 Stop 会在瞬态中间切断，产生咔哒声，比放完更突兀
+    AD->>AL: Duck(true)
+    AL->>AL: _targetLevel = 0.30，按 0.30s 线性趋近（吃 Time.deltaTime）
+    Note right of AL: 压低而不是停：完全静音会造成明显的听觉断裂（R-09）
+
+    U->>CB: 关闭暂停面板
+    CB->>CB: SetMenuPaused(false)
+    AD->>CB: 轮询
+    CB-->>AD: blocked=false
+    AD->>AD: _suppressNew = false
+    AD->>AL: Duck(false) → 300ms 内平滑回到原音量，无跳变（A-17）
+
+    Note over ENC,AL: —— 终局：玩家死亡 / 通关 ——
+    ENC->>CB: RunState.PhaseChanged(Defeat/Victory) → OnRunPhaseChanged → ApplyPauseState()
+    AD->>CB: 轮询
+    CB-->>AD: blocked=true, runOver=true ⇒ 终局
+    AD->>AD: _suppressNew = true
+    AD->>UA: StopAllVoices()　★ 与菜单暂停的关键差异
+    Note right of AD: 终局要"停止所有战斗音效"（R-09）。<br/>IsRunOver 不可逆，"恢复后接着播"的语义不存在；<br/>与 HitFeedbackDirector 对飘字的三态处理完全同构
+    AD->>AL: Duck(true) → 30%
+
+    Note over U,UA: —— 重开：按 R / 暂停菜单「重新开始」——
+    U->>CB: 按 R → ReloadScene()
+    Note right of CB: 场景重载 → CombatBridge.OnDestroy → §4 拆线。<br/>上一局的声音不允许漏到新一局或主菜单（A-18）
+    end
+
+    %% ================================================================
+    %% ④ 拆线与资源释放
+    %% ================================================================
+    rect rgb(250, 236, 236)
+    Note over CB,UA: ④ 拆线与非托管资源释放（B-7 对称性 / A-19 无泄漏）
+
+    CB->>CB: OnDestroy() … TeardownHitFeedback() → TeardownAudio()
+
+    Note over CB,ET3: 第一步：退订。与 SetupAudio 的两次 += 严格一一对应
+    CB->>EU: controller.EventsUnity.PlaySfx -= _audio.Play
+    CB->>ET3: _eventsT3.PlaySfx -= _audio.Play
+    Note right of CB: CombatEventsUnity 的生命周期跟随 CombatController，<br/>可能比本组件活得久。不退订 = 重开后旧回调打到<br/>已销毁的 Director 上（与 P1-2 同一条理由）
+
+    CB->>+AD: ClearAll()
+    AD->>AL: StopAndRelease()
+    AD->>UA: StopAllVoices()：每个 voice.Stop()
+
+    Note over AD,UA: ★★ 顺序陷阱：必须先摘 clip 引用，再销毁 clip ★★
+    AD->>UA: 遍历 voice：source.clip = null
+    Note right of AD: 若 AudioSource 仍持有正在播放的 clip 就 Destroy 它，<br/>Unity 会报错或播出垃圾数据。Stop → 摘引用 → 销毁，<br/>三步顺序不可交换
+
+    AD->>+ACF: Clear()
+    loop 每个已缓存 AudioClip
+        ACF->>UA: Object.Destroy(clip)
+    end
+    ACF->>ACF: _clips.Clear(); _failed.Clear(); _warned.Clear()
+    Note right of ACF: ★ AudioClip 与 Texture2D 一样是**非托管资源**，GC 不回收。<br/>世界每次 Clean And Rebuild 都 new 一批而不释放 = 稳定泄漏。<br/>逐条对标 SpriteFactory.Clear()（:48）。<br/>_warned 一并清空：清缓存后旧的"缺失"判断不再有效
+    ACF-->>-AD: done
+    AD->>AD: _keyStates.Clear(); _warnedKeys.Clear(); _cursor = 0
+    deactivate AD
+
+    Note over CB,UA: voice 池的 GameObject **不**手动 Destroy —— 场景卸载会一并回收。<br/>手动销毁反而引入销毁顺序依赖（沿用 DamagePopupLayer 的既有裁定）。<br/>但 AudioClip 不属于任何 GameObject，必须显式销毁 —— 这正是两者的分界
+    end

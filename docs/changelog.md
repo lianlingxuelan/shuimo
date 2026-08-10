@@ -791,6 +791,59 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 23 · P1-3 音效系统全栈落地（程序化合成，零二进制资源，2026-08-10）
+
+- **触发**：三态表复核后确认 P1-3 是 P1 中**唯一一行代码都没有**的项（全仓 `grep AudioSource` 零命中，两个 `PlaySfx` 委托定义了却零订阅——事件一直在空发）。
+- **工作流**：📋 标准 SOP（PM → 架构师 → 工程师 → QA），工程师分两批派工规避轮次上限。
+
+**PM 阶段** — `docs/unity-p1-3-audio-prd.md`（573 行）
+PM 抓出 3 处「主理人简报与代码不符」，全部经 grep 复核后按代码为准：
+1. **技能 id 实为 `skill_*` 前缀**（`skill_basic_slash` / `skill_circle_burst` / `skill_blood_lotus` / `dodge_roll`），简报写的短名 `basic` / `circle_burst` 是错的。若照简报实现，**4 个技能里 3 个音效会静默哑掉且不报错**。
+2. 闪避不会双触发（`Encounter.cs:753-760` 是严格 if/else）。
+3. 6 个调用点实际产出 **8 个** key（含三元分支）。
+另发现 `WorldBuilder.cs:652` 的 AudioListener 仅在兜底分支添加 → 列为 R-08 P0 隐患，由 `AudioDirector` 兜底保障。
+
+**架构阶段** — `docs/unity-p1-3-audio-architecture.md`（1129 行）+ 2 张 mermaid 图
+- 拓扑同构 `HitFeedbackDirector`，接线范式同构 `SetupHitFeedback`/`TeardownHitFeedback`。
+- **关键裁定：音频吃 `Time.deltaTime`，永不吃 `FeedbackClock.Delta`**。论证：顿帧期 `FeedbackClock.Delta ≡ 0`，节流窗口不推进，连击第二击会被误判为「同 key 重复」而静音丢弃——顿帧恰恰发生在每次命中时，等于连击必哑。
+- 16 路 voice 池 + 启动预合成；合成用固定种子私有 `System.Random`（**绝不碰内核 `SkillRng`/`PCG32`**，否则污染 2.5294x 指纹）。
+- `AudioClipFactory.Clear()` 三步释放顺序钉死：`Stop()` → `source.clip = null` → `Destroy(clip)`。
+
+**工程阶段** — 6 新增 + 1 修改 + 1 测试，共 **8075 行**
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `AudioConfig.cs` | 769 | 常量 + 13 行 `SfxSpec` 表 + `ResetStatics()` + PlayerPrefs |
+| `SfxSynth.cs` | 844 | 纯 DSP 原语库（**零 UnityEngine 依赖**） |
+| `SfxRecipes.cs` | 1415 | 13 张配方，单一入口 `Render(spec, rng) → float[]` |
+| `AudioClipFactory.cs` | 350 | key→AudioClip 缓存 / Prewarm / Clear / 失败黑名单 / 警告去重 |
+| `AudioDirector.cs` | 1216 | 16 路 voice 池 / 四层闸门 / 增益 / Listener 保障 / M 键静音 / 暂停收敛 |
+| `AmbienceLayer.cs` | 357 | 环境衬底风声循环 + duck + 延迟启动 |
+| `CombatBridge.cs` | +150 | `SetupAudio()`(:651) / `TeardownAudio()`(:704)，两 `+=` 对两 `-=` |
+| `Tests/P1_3_AudioTests.cs` | 1487 | 53 个 EditMode NUnit `[Test]` |
+
+工程师有一处**优于架构设计**的判断：技能 key 不写字面量，改引 `Xianxia.Combat.SkillConfig.SKILL_*` 常量，让编译期保证与内核一致——正好根除 PM 抓到的那条坑。
+
+**QA 阶段** — `docs/unity-p1-3-audio-qa-report.md`，`IS_PASS: YES` / `ROUTE_TO: QA`
+- P0 缺陷 **0**。DSP 用 Python 复刻验算 4 张配方：无削波（max|s| < 1）、无 NaN/Inf、`amb_wind_loop` 首尾连续（循环不爆音）。
+- P1 三条全在测试侧；P2 三条为建议。
+
+**主理人独立核实**（不轻信任何回执）
+- `git status --short Assets/Scripts/` **为空** → 内核零改动；`CombatEventsUnity.cs` / `CombatEventsT3Unity.cs` / `WorldBuilder.cs` 均零改动。
+- 8 个内核 key 与表逐字比对一致；4 个技能 key 走常量引用。
+- 复跑 **t1 64/64、t3 9/9，2.5294x 指纹未漂移**。
+
+**护栏加固**（主理人亲自补 QA 的 P1-1）
+QA 指出 key 守卫是单向的、测不出内核侧字面量漂移。改法不是加 C# 测试（本机跑不了），而是把 `Assets/_Project/audio_syntax_check.py` 升级为**跨文件双向差集**校验：直接解析三份**源文件**（`CombatEventsUnity.cs` / `SkillConfig.cs` / `AudioConfig.cs`），不依赖任何副本，方向 A 查「发出了但表里没有」（致命，静默哑掉），方向 B 查「表里有但没人发」（死 key）。
+新增 `Assets/_Project/audio_guard_mutation_test.py` —— **变异测试，防止护栏本身变成摆设**：注入 4 种已知会导致线上事故的变异（key 拼错 / 技能 key 退回历史错误短名 / 删除表项 / 插入死 key），**4/4 全部被捕获**。首版探针曾因用了不存在的 key 名导致 replace 空操作、假阴性 2 条，已加 assert 前置自检堵死。
+
+**P2 补丁**（主理人直接补，未再派工）
+- `AudioClipFactory.cs:85` 补 `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)] ResetStatics() → Clear()`，与 `AudioConfig` 取齐防御等级（关闭 Domain Reload 时 static 不自动清空）。
+- `AudioDirector.cs:358` 补维护约束注释：守卫 1 位于查表之前，将来加 UI 音效必须下移并加 `spec.Bus != Channel.Ui` 例外，否则暂停菜单点击音会被静默吞掉。
+
+**遗留给用户**：① 首次在 Unity 打开后**务必提交自动生成的 7 个 `.meta`**（否则换机导入 GUID 错乱）；② Test Runner 跑 `P1_3_AudioTests` 53 条；③ 戴耳机实听 12 个音效 + 环境衬底，确认无爆音/削波、暂停收敛、重开无残留。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
