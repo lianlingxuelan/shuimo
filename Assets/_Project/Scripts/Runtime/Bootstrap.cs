@@ -202,7 +202,19 @@ namespace Xianxia.Unity.T2
             {
                 return;
             }
-            BuildWorldIfNeeded();
+
+            // 【按 R 重开 / 暂停菜单"重新开始"修复】
+            // 场景已整体重载，旧世界根节点必然失效（LoadScene 会销毁所有场景对象），
+            // 必须**无条件完整重建**，不能再走 BuildWorldIfNeeded() 的 IsWorldLive() 判定。
+            //
+            // 旧逻辑依赖 IsWorldLive() = HasGeneratedWorld() && Grid != null。
+            // 在「旧世界根 GameObject 壳还在、但其运行时 Sprite/Tile/Texture 已随域重载丢失」
+            // 的边界下，HasGeneratedWorld() 仍可能返回 true 且 Grid 也非 null，从而误判为
+            // "世界还活着"并跳过 BuildAll() —— 这就是复活/重开后黑屏（地图与人物不重建、
+            // 只剩旧敌人 + 黑背景）的根因。BuildScene 自身第一步就是 DestroyGeneratedRoots()，
+            // 幂等自清理，因此无条件重建绝不会堆叠或退化。
+            Debug.Log("[T2] 场景重载完成，无条件强制重建世界（修复重开黑屏）。");
+            ShuimoSceneBuilder.BuildAll();
         }
     }
 }
