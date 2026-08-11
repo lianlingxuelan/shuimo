@@ -867,6 +867,22 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 27 · 分叉单点风险消除：第 10/11 轮产出落盘为本地 commit（feature/2.5d，2026-08-11 第12轮自动化）
+
+- **触发 / 选题**：自动化第 12 轮，用户不在场。`TaskList` 仍空（跨会话不持久）。按第 11 轮「下一轮候选」**最高优先项**——消除全场唯一单点风险：feature/2.5d 工作树上**未提交、无任何 git 备份**的第 10/11 轮产出（约 5416 行）。本轮**不新增任何待验证的 Unity 表现层模块**（库存积压警告已连续三轮），只做能在无 Unity 环境自证的保护性 Git 操作。
+- **工作流**：⚡ 快速模式（主理人直接执行 + 护栏自证，非代码改动，无需 PM/架构/工程/QA 子 agent）。用户「重点关注」清单（P0-5 主菜单/ESC/退出、P0-6 操作引导、PlayMode 场景名、按 R 重开）经 grep 核实均属前 11 轮已交付项（`MainMenuHud.cs`/`Bootstrap.cs`/`P0_5_MenuHudTests.cs` 等工作树均在，memory 第 1/2/4/7 轮有完整记录；`SampleScene` 已是真实战斗场景）——**差距是用户感知滞后于进度，非真缺口，本轮未重复实现**。
+- **交付（核心）**：本地 commit `4803840`「P2-1 BOSS 接线 + 黑屏完整修复（第10/11轮产出）落盘：保护性本地 commit」，**30 文件 / +6476 / -10**，工作树已干净。
+  - **12 个已跟踪改动**：`Encounter.cs` / `RunPhase.cs` / `RunPhaseTests.cs` / `Combat/Unity/CombatController.cs`（内核 BOSS 状态机 + 接线）/ `Bootstrap.cs`（黑屏完整修复）/ `CombatBridge.cs` / `EnemySpawner.cs` / `Hud.cs` / `WorldBuilder.cs`（表现层 BOSS 接线）/ `docs/changelog.md` / 3× `.workbuddy/memory/*`。
+  - **14 个未跟踪新文件**：`BossFlowConfig.cs`(+`.meta`) / `FxAutoDespawn.cs`(+`.meta`) / `HudBossBar.cs`(+`.meta`) / `Tests/P0_4_BootstrapResetTests.cs`(+`.meta`) / `Tests/P2_1_BossWiringTests.cs`(+`.meta`) / `docs/boss-*-diagram.mermaid` / `docs/branch-merge-plan.md` / `docs/p2-1-bosspending-qa-report.md` / `docs/round11-overview.md` / `docs/unity-p2-1-boss-architecture.md` / `.workbuddy/memory/2026-08-11.md`。
+  - 计划 §8 阶段 1 显式清单外的 3 个文档资产（branch-merge-plan.md / round11-overview.md / 2026-08-11.md）经核对确属第 10/11 轮合法产物，一并纳入。
+- **★ 关键决策（遵循第 11 轮裁定）**：**仅落盘 commit，不合并不推送**。`git reset --soft HEAD~1` 即可无损回退。合并仍需用户按 `docs/branch-merge-plan.md` §8 阶段 2+ 手动推进（含 `CombatBridge.cs -1366` 唯一冲突人工裁决、`Bootstrap.cs` 自动合并但**禁用 `-X ours/theirs`**、合并后把 main 侧「阶段 23 · P1-3」改 24 并移位）。
+- **护栏（提交前主理人亲自复跑，独立确认）**：`t1` **64/64**，围攻/单挑倍率 **2.5294x 未漂**（端到端 4.300 / 1.700）；`t3` **9/9**（90 .cs 全可解析）；`bosspending_selfcheck` **53/53**。`Encounter.cs`/`RunPhase.cs` 提交前后 SHA-256 逐字节一致（commit 仅打包对象、不改内容）。
+- **⚠️ 与任务书模板的偏差（须告知）**：任务书 step 4② 要求回写 `F:/AI-project/xianxia-rpg/2026-07-30-00-16-54/.workbuddy/memory/YYYY-MM-DD.md`，但该路径是**严禁触碰**的 Godot/Web 原型仓（硬约束：前任 QA 跑错仓库误报过"代码不存在"）。故本轮记忆全部落在 shuimofeng 工程内（changelog + automation memory + 项目日报），**未触碰 xianxia-rpg**。
+- **遗留给用户**：① 本地按需 `git push origin feature/2.5d` 把保护 commit 推到远端，完成最终备份（本自动化**未代推送**）；② 仍按 `branch-merge-plan.md` §8 推进合并（阶段 2–5）；③ 本地 Unity 编译 + Test Runner（B 栏 14 项闸门：RP15–RP19 / `P0_4_BootstrapResetTests` 9 条 / `P2_1_BossWiringTests` / `P1_3_AudioTests` 53 条）；④ 拍板 `.py` 护栏是否开 gitignore 白名单；⑤ 待办 D-1（R-4 超时判胜的诊断痕迹）。
+- **诚实边界**：无 Unity / 无 dotnet。落盘操作不编译、不跑 NUnit；护栏只证明内核数值/类型/状态机语义未漂，不等于 C# 编译通过、不等于 NUnit 通过。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
