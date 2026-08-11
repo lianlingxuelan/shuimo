@@ -901,6 +901,26 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 29 · 竹林 2.5D 轮次 B 骨架（feature/2.5d，2026-08-11 第14轮 主理人接管后）
+
+- **触发 / 选题**：用户在跨空间接管 2.5D 线（原由另一 agent GoodX 在 shuimofeng 空间「翻车方式」试建、与 2D 分开跑），要求主理人 sole owner 接手并继续推进。轮次 B 目标：在已落的 IsometricCameraRig（轮次 A）+ BambooInkImporter（GoodX 演示）基础上，搭 3D 竹林 + 砍竹特效，验证 2.5D 技术计划 1.1（坐标复用）+1.3（水墨观感）。
+- **工作流**：🏗️ 标准 SOP（架构师高见远 → 工程师寇豆码 → QA 严过关），主理人独立 grep/ls 双复核 + 落档。D4/D5/D6 用户全回「自行斟酌」→ 主理人定：D4=Built-in RP 兼容（实测工程即 Built-in、非 URP，复用 BambooInkImporter）/ D5=叠加 SampleScene / D6=竹子只冻自身（严守 A-1 顿帧红线、不扩 HitFeedbackDirector）。
+- **交付（3 文件 + 1 README，零内核改动）**：
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`（50KB）：`Load/Unload/BindPlayer` + 确定性撒点（`ZoneSeed.CreateRng`→`PCG32`）+ 地面+雾 + 轮询 `AttackController.SwingCount` 增长沿做 90° 扇形 `DetectHarvest` + 暂停读 `IsGameplayBlocked` + 深度轴 `autoDepthAxisFromCamera`（默认 -Z、从相机 z 推导）+ `ApplyDepthSort` Y 伪深度排序。
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/BambooVfx.cs`（31KB）：`OnHit` 晃动/断裂全走 `FeedbackClock.Delta`、`SyncFxPause` 在 `Delta==0` 显式 `ps.Pause/Play` 同步顿帧；`Configure`（6 参）强制 `_restCaptured=false` 重抓静止姿态；`BuildRuntimeFx` 运行时构造粒子（无 prefab 文件兜底）。
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/Prefabs/BambooHitFx.README.md`（prefab 转正步骤；运行时构造代替手写 YAML 防污染 `Library/`）+ `Prefabs/`（目录，无 .prefab）。
+- **★ 工程师自查修 2 个真实 Bug**：① 相机 up 向量 `new Vector3(0, cos, _depthAxis.z*sin)` 正交化（原 `-dz*sin` 在 tilt=45° 退化与 forward 平行、LookRotation 失效）；② `Configure` 内 `_restCaptured=false` 强制重抓权威竹竿静止姿态（原 `Awake` 先置真导致注入姿态被忽略）。
+- **★ 主理人独立复核（不轻信 IS_PASS，逐行读原文）全过**：红线 API（Time.timeScale/Scheduler/RunPhase/CombatScheduler/DamageResolver）命中 12 行**全部是注释**，代码 0 行；`ShuimoGenerated` 0 代码引用（根节点刻意不挂标记）；`IsGameplayBlocked` 唯一读取点（BSC:431）只读；`FeedbackClock.Frozen` 本文件直写 0 次；`Time.deltaTime` 3 处命中全注释；`BambooInkImporter` 仅注释提及、无 Editor 引用（正确识别 Editor-only 不可引用）；`git diff` 内核零改动（仅 .csproj/.sln 由 Unity 再生，无害）。
+- **★ 深度轴偏差（QA 独立核实为正确修正，需转告架构师）**：设计文档 §6.2 原写「+Z 朝向相机」，但 `WorldBuilder.cs` 相机实测 `z=-100`（朝 +Z 看），沿 +Z 会长到相机背面、遮挡验收项（§2.4）永远不成立。实现改为「深度轴=朝向相机（默认 -Z）+ 自动从相机推导符号」，消灭朝向错误于运行时。已就地更正设计文档 §6.2（避免后人误解）。
+- **QA 严过关静态走查 = NoOne（干净）**：5 条红线全过、A–G 逻辑自洽、跨文件 6 参契约对齐、外部类型（ZoneSeed/PCG32/FeedbackClock/AttackController/CombatBridge/PlayerController/IsometricCameraRig）全部存在可解析。**IS_PASS: YES**。`git status` 确认 `Combat/**`/`WorldBuilder.cs`/`HeroineAnimator.cs`/`AttackController.cs`/`CombatBridge.cs` 字节级未动。
+- **⚠️ 非红线缺口（D3，设计特性，不计入失败）**：竹子为 `isTrigger`，「手动软碰撞把玩家推出竹身」未实现 → 女主可穿模。属待拍板项，建议后续补或显式放弃。
+- **诚实边界**：本环境无 Unity/dotnet，未编译未跑 NUnit。所有"通过"指源码层符合红线与逻辑契约，最终放行以用户本地 Unity 真机验收为准。
+- **遗留给用户（2.5D 线，本地验证清单）**：① Unity 2022.3 编译 0 error；② PlayMode 竹林生成/遮挡/砍竹特效/顿帧同步；③ `IsometricCameraRig.orthographicSize` 由 `BambooSceneContext` 重配≈352（rig 默认 9 是占位）；④ 把 `Xianxia/Ink/*`（BambooTrunk/BambooLeaf/InkGround，`Assets/_Project/Shaders/Ink/`）加进 Project Settings > Graphics > Always Included Shaders（代码用 `Shader.Find`，打包后仅入库 Shader 生效）；⑤ 粒子转正正式 prefab（拖存 `BambooHitFx.prefab` 回 `inkLeafPrefab` 字段，代码零改动）；⑥ 路线 A 用真 `bamboo_ink.fbx`（菜单 `Shuimo/2.5D/Apply Ink Bamboo Materials` 套材质后拖入 `bambooModelPrefab`）。
+- **★ 收尾补遗（架构师回写，主理人 ls/git 复核抓到「仅文档」声明不实）**：架构师在轮次 B 收尾时除 4 处文档修正外，**实际还加了代码**（非纯文档）：① 新增 `Assets/_Project/Scripts/Editor/BambooHitFxPrefabBaker.cs`（356 行，`Shuimo.EditorTools` + `UnityEditor`，Editor-only）→ 菜单 `Shuimo/2.5D/烘焙 BambooHitFx.prefab` 把运行时粒子层级一键烘焙成正式 prefab（落地 README 的「粒子转正」路径，比手改 YAML 可靠）；② `BambooVfx.cs` 增 `CreateFxTemplate(...)` 静态模板构造 + `FxResourcePath` 常量（+2.3KB 即此）。**安全性复核**：烘焙器 Editor-only 运行时够不着、不碰内核红线（已读全文）；`CreateFxTemplate` 方法体 0 红线命中；`BambooSceneContext.cs` 字节级未变（仍 50258）；`git status` 确认 `Combat/**`/`WorldBuilder`/`HeroineAnimator`/`AttackController`/`CombatBridge` 零改动。**结论**：属正向增强（把「粒子转正」从手改 YAML 升级为一键烘焙），红线与内核零改动均守住；但架构师「仅文档、无实现代码」表述不实，已据独立复核更正记录。残留编译核对：烘焙器 `BambooVfx.CreateFxTemplate(FxRootName, DefaultRadius, DefaultDepthAxis, sharedMat)` 与运行时定义签名对齐，需用户本地 Unity 编译确认。
+- **仍挂起的跨线待办（非本轮）**：① **合并债（高优先）**：`feature/2.5d` 未合回 `main`，1 处冲突 `CombatBridge.cs -1366`（保留双方机械解），`Bootstrap.cs` 禁用 `-X ours/theirs`，按 `docs/branch-merge-plan.md §8` 推进；② 验证空白：阶段 E 及多轮 C# 从未本地 Unity 编译/Test Runner 跑过；③ `.py` 护栏白名单（`t1`/`t3`/`bosspending` 被 `.gitignore` 排除，clone 即丢）；④ 轮次 C（Spine 角色）待做；⑤ P0-5/6 已交付但用户感知滞后、敌人/NPC 美术未启动。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -924,4 +944,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-11，阶段 28）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-11，阶段 29）*

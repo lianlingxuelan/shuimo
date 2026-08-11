@@ -60,7 +60,9 @@
     <Analyzer Include="E:\tools\UnityHub\2022.3.62f3c1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\_Project\Scripts\Runtime\Tests\P0_4_BootstrapResetTests.cs" />
     <Compile Include="Assets\_Project\Scripts\Runtime\Tests\P0_2_GameOverHudTests.cs" />
+    <Compile Include="Assets\_Project\Scripts\Runtime\Tests\P2_1_BossWiringTests.cs" />
     <Compile Include="Assets\_Project\Scripts\Runtime\Tests\P0_5_MenuHudTests.cs" />
     <Compile Include="Assets\_Project\Scripts\Runtime\Tests\P1_2_HitFeedbackTests.cs" />
     <Compile Include="Assets\_Project\Scripts\Runtime\Tests\P1_6_ProgressionIntegrationTests.cs" />
