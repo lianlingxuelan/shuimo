@@ -883,6 +883,24 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 28 · 验证收束 + closure-plan 校正 + 合并就绪复核（feature/2.5d，2026-08-11 第13轮自动化）
+
+- **触发 / 选题**：自动化第 13 轮，用户不在场。`TaskList` 仍空（跨会话不持久）。用户「重点关注」清单（P0-5/P0-6/PlayMode 场景名/按 R 重开可见性/美术方向样品）经 grep 核实均为前 11 轮已交付项——`MainMenuHud.cs`/`PauseMenuHud.cs`/`ControlsGuideHud.cs`/`CombatBridge.cs:1451`（`KeyCode.R`）/`SkipOnNextLoad`/`SetMenuPaused`/`SampleScene` 真实战斗场景均在盘。**差距仍是用户感知滞后，非真缺口，本轮未重复实现**。
+- **工作流**：📋 部分工作流（验证 + 文档收束，**零代码改动**）。严格遵循「产出无法在本环境自证就不做」铁律——不新增待验证 Unity 模块，不擅自烧 ImageGen 积分（美术方向样品等用户在场拍板）。
+- **交付 ①·三道护栏最新复跑（证据保鲜）**：`t1` **64/64 @ 2.5294x 未漂**、`t3` **9/9 @ 90 .cs 全可解析**、`bosspending_selfcheck` **53/53**。用户连续 6 轮未本地验证、且即将合并，本次刷新"双绿"证据，确认内核零漂移、跨文件引用零断链。
+- **交付 ②·合并就绪复核**：`git merge-tree --write-tree main feature/2.5d` 现 **exit=1，仅 `CombatBridge.cs` 1 处冲突**——与 `branch-merge-plan.md §6.1`「仅 CombatBridge 1 处冲突、保留双方机械解」完全一致（此前"干净"是因为第 10 轮 BOSS 接线还在未提交工作树，落盘 commit `4803840` 后即暴露此冲突，已在计划中）。合并仍需用户按 §8 阶段 2+ 授权推进。
+- **交付 ③·`docs/feature-closure-plan.md` 校正至 v1.1**：修复两处过时假阴性（正是 round 7 预警的"用户感知滞后"根源）——P1-3 音效由「无」改为「✅ 第8轮已交付（53 测试，12 音效+1 环境衬底全程序化合成，零二进制资源）」；P2-1 BOSS 战由「Unity 未接线」改为「✅ 第10/11轮已接线（含 BossPending 内核护栏 53/53 + 变异 26/26）」。新增 §0.5「当前状态（2026-08-11 校正）」快照 + 静态护栏清单补 `bosspending_selfcheck.py` + §1.1 资产盘点计数对齐 90 .cs。
+- **焦点项静态核验结论（无需 Unity 即可确认落盘）**：
+  - **P0-5 主菜单/ESC 暂停/退出**：`MainMenuHud.cs` + `PauseMenuHud.cs` + `CombatBridge.SetMenuPaused`（L1936）统一闸门 `IsGameplayBlocked` 均在；ESC → 面板 → `SetMenuPaused(true)` 冻结链路完整。
+  - **P0-6 操作引导**：`ControlsGuideHud.cs` 已接线（`CombatBridge.cs:394` `OnPanelClosed → SetMenuPaused(false)`）。
+  - **PlayMode 场景名**：`GameplaySceneName="SampleScene"` 已是真实战斗场景（zoneId=zone_youhuang，playerHpMax=260），无需改。
+  - **按 R 重开可见性**：`CombatBridge.cs:1451` `if (IsRunOver && Input.GetKeyDown(KeyCode.R))` → 置 `SkipOnNextLoad=true`（L1454）→ 重载跳过主菜单；暂停面板「重新开始」按钮同理（`PauseMenuHud.cs:100` `RestartButton` → `OnRestartClicked`）。可见性由 `SkipOnNextLoad` 控制，逻辑闭环完整。
+- **护栏**：三道全绿（见交付①）。内核零改动、零新增文件。
+- **遗留给用户**：① **最优先**：本地 Unity 编译 + Test Runner 跑一遍把技术债清零（`P0_2_P0_4` PlayMode / `P1_2_HitFeedback` 43 条 / `P1_3_Audio` 53 条 / `P2_1_BossWiring` / `P0_4_BootstrapReset`）；② 授权合并：按 `branch-merge-plan.md §8` 阶段 2+ 在 `feature/2.5d` `git merge main`（CombatBridge 保留双方、Bootstrap 禁 `-X`、changelog 阶段 23→24 移位）再 `git push`；③ 拍板 `.py` 护栏 gitignore 白名单（`t1`/`t3`/`bosspending` 被 `.gitignore:44` 排除，clone 即丢）；④ 美术方向样品（ImageGen 积分，等用户在场）；⑤ 2.5D 轮次B（竹林场景+砍竹特效，验证通道打通前不建议）。
+- **诚实边界**：无 Unity/dotnet，本轮零代码改动；护栏只证明内核数值/类型/状态机语义未漂，不等于 C# 编译通过、不等于 NUnit 通过。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -906,4 +924,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-11，阶段 28）*

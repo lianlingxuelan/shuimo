@@ -1,6 +1,6 @@
 # 功能闭环规划：从当前切片到可玩 Demo
 
-> 文档版本：v1.0 · 落盘日期：2026-08-08
+> 文档版本：v1.1 · 落盘日期：2026-08-08 · 校正于 2026-08-11（第13轮自动化，仅文档更新，零代码改动）
 > 作者：许清楚（Xu，产品经理）
 > 工程路径：`F:/AI-project/ancientGame/shuimofeng/shuimofeng`（Unity 2022.3.62f3c1）
 > 适用阶段：T3 P0 收尾后 → MVP 可玩 Demo
@@ -16,16 +16,33 @@
 
 ---
 
+## 0.5 当前状态（2026-08-11 校正 · v1.1）
+
+> 本小节是 v1.0（08-08）落盘后到 2026-08-11 的增量快照，用于纠正下方三态表因"用户感知滞后"产生的过时标记（详见 changelog 阶段 28 / 第13轮自动化）。**结论：所有 P0 功能代码已交付，P1 已交付 4/7，P2-1 已接线；唯一硬阻塞是用户本地验证（本环境无 Unity）。**
+
+| 模块 | v1.0 标记 | 2026-08-11 实际 | 差异性质 |
+|---|---|---|---|
+| P0-5 主菜单/暂停/退出 | ✅ 已交付 | ✅ 已交付（`MainMenuHud.cs`/`PauseMenuHud.cs`，统一闸门 `IsGameplayBlocked`） | 一致，待验 |
+| P0-6 操作引导 | ✅ 已交付 | ✅ 已交付（`ControlsGuideHud.cs`） | 一致，待验 |
+| **P1-3 音效** | ❌ **无** | ✅ **已交付（第8轮 · 53 测试，12 音效+1 环境衬底全程序化合成，零二进制资源）** | **假阴性已纠正** |
+| **P2-1 BOSS 战** | 🟡 逻辑已写/Unity 未接线 | ✅ **已接线（第10/11轮 · 含 BossPending 内核状态机护栏 53/53 + 变异 26/26）** | **假阴性已纠正** |
+| 2.5D 方向 | 未提及 | `feature/2.5d` 分支已建（等距相机骨架 + 竹林场景计划），`main` 保留 2D 可玩版 | 新增方向 |
+| 合并状态 | 未提及 | `feature/2.5d` 落盘 commit `4803840` 就位；merge 仅 `CombatBridge.cs` 1 处冲突（计划 §6.1 已规划），**需用户授权合并/推送** | 新增 |
+
+> ⚠️ 本表与下方 §1.2 / §2.3 / §2.4 的差异以**本表为准**（v1.1 校正）。用户连续 6 轮未做本地验证，所有 Unity 侧功能仍标"待验"——这不是"没写"，是"写了没人证"。
+
+---
+
 ## 1. 现状核实（本次逐文件复查结论）
 
 ### 1.1 代码资产盘点
 
 | 层 | 位置 | 文件数 | 状态 |
 |---|---|---|---|
-| 纯逻辑内核 | `Assets/Scripts/Core/` + `Assets/Scripts/Systems/Combat/` | 33 个 `.cs` | ✅ 有测试护栏 |
-| Unity 表现层 | `Assets/_Project/Scripts/Runtime/` | 26 个 `.cs`（含 `Input/` 6 个） | ⚠️ 静态检查过，运行时未验 |
+| 纯逻辑内核 | `Assets/Scripts/Core/` + `Assets/Scripts/Systems/Combat/` | 33 个 `.cs`（T3 表面清单） | ✅ 有测试护栏 |
+| Unity 表现层 | `Assets/_Project/Scripts/Runtime/` + `Assets/_Project/Scripts/Runtime/2.5D/` | 含 2.5D 骨架；全工程 T3 类型宇宙 = 90 个 `.cs` / 155 类型 | ⚠️ 静态检查过，运行时未验 |
 | Editor 工具 | `Assets/_Project/Scripts/Editor/` | 1 个（`ShuimoSceneRebuilder`） | ⚠️ 未验 |
-| 静态护栏 | `Assets/Scripts/Systems/Combat/Tests/t1_selfcheck.py`（84 KB）<br>`Assets/Scripts/Systems/Combat/Tests/t3_selfcheck.py`（33 KB）<br>`Assets/_Project/t2_static_check.py`（6 KB） | 3 个 | ✅ 可在本环境跑 |
+| 静态护栏 | `Assets/Scripts/Systems/Combat/Tests/t1_selfcheck.py`（64/64 · 倍率 2.5294x）<br>`Assets/Scripts/Systems/Combat/Tests/t3_selfcheck.py`（9/9 · 90 .cs 全解析）<br>`Assets/Scripts/Systems/Combat/Tests/bosspending_selfcheck.py`（53/53 · BossPending 状态机）<br>`Assets/Scripts/Core/wcore_selfcheck.py`（T0 对拍）<br>`Assets/_Project/t2_static_check.py`（6 KB） | 4 主 + 1 辅助 | ✅ 可在本环境跑（⚠️ 三道 `*_selfcheck.py` 被 `.gitignore:44` 排除，**clone 即丢**，需拍板白名单） |
 | 数据 | `Assets/Data/zones.json`（13 KB，6 个 zone）+ `codex.json` | 2 个 | ✅ 已就位 |
 | 场景 | `Assets/Scenes/SampleScene.unity` + `T2Slice.unity` | 2 个 | ⚠️ 未验 |
 | 美术源图 | `Assets/images/`（3 张 samples + 5 张 heroine，均 1.2–1.7 MB） | 8 张 PNG | ❌ **无 `.meta`，未导入 Unity，非精灵帧，未接线** |
@@ -103,7 +120,7 @@
 |---|---|---|---|---|
 | **P1-1** | **技能/闪避实际生效 + 手感** | 部分 | 代码全在（4 技能已注册、双池灵力/体力已实现），但手感（前摇/后摇/位移/无敌帧长度）**必须靠人手试**。参数在内核可调，试是 Unity 侧的事 | 🟡 混合 |
 | **P1-2** | **受击反馈** | ✅ 已交付 | ~~`VfxStatus` / `VfxSlash` / 硬直~~ → `FeedbackClock`（顿帧）+ `CameraShake`（屏震）+ `PlayerHitFlash`（分阵营闪白）+ `DamagePopupLayer`（飘字）。43 条测试。**待用户本地验证** | 🔴 Unity |
-| **P1-3** | **音效 / BGM** | **无** | 全仓 0 个 `AudioSource`。最少需要：普攻挥击、命中、受击、死亡、技能×2、BGM×1 = 7 个音源。**内核严禁出现 `AudioSource`**（会破坏对拍），必须走事件 → Unity 侧播放 | 🔴 Unity（内核仅出事件 🟢） |
+| **P1-3** | **音效 / BGM** | ✅ **已交付（第8轮）** | 全仓 0 个 `AudioSource`（内核红线保持）。`CombatBridge` 订阅内核 `PlaySfx` 事件，12 音效 + 1 环境衬底**全部程序化合成，零二进制资源**；`P1_3_AudioTests` 53 条。**待用户本地验证**：戴耳机实听 + 跑 53 条测试 + 首次 Unity 打开后提交自动生成的 7 个 `.meta` | 🔴 Unity（内核仅出事件 🟢） |
 | **P1-4** | **美术去方块** | 部分 | 女主 39 帧水墨精灵已接入（阶段 15），**待用户本地验证**；敌人仍为方块，需 ImageGen 积分批量出图 | 🔴 Unity |
 | **P1-5** | **简单关卡 / 区域** | 部分 | 6 个 zone 数据 + `ZoneLoader` 已在，但只 build 单区域。MVP 建议：**2 个区域 + 1 个安全区**，用传送点串起来，不做开放世界 | 🟡 混合（选区逻辑 🟢 / 切场景 🔴） |
 | **P1-6** | **数值成长入口** | ✅ 已交付 | ~~**无（玩家侧）**~~ → `Progression.cs` 纯逻辑（经验→等级→血上限/攻击力）+ NUnit 测试 + Unity 接线。**待用户本地验证** | 🟢 纯逻辑 |
@@ -113,7 +130,7 @@
 
 | # | 模块 | 现状 | 缺口描述 | 归属层 |
 |---|---|---|---|---|
-| **P2-1** | **BOSS 战** | 逻辑已写 | `BossController` 三相位/召唤/震荡波都在纯逻辑层，**Unity 未接线**。接线成本不高，性价比高，若时间允许可提到 P1 | 🟡 混合 |
+| **P2-1** | **BOSS 战** | ✅ **已接线（第10/11轮）** | `BossController` 三相位/召唤/震荡波（内核）+ Unity 接线（`CombatBridge`/`EnemySpawner`/`HudBossBar`/`BossFlowConfig`/`FxAutoDespawn`）。`BossPending` 内核状态机护栏 **53/53** + 变异测试 **26/26** 已自证语义未漂。**待用户本地验证**：`P2_1_BossWiringTests` + `P0_4_BootstrapResetTests` + B 栏 14 项闸门 | 🟡 混合 |
 | **P2-2** | **多技能扩展** | 部分 | 现有 2 主动技能。扩到 4–6 个才有 build 感 | 🟢 纯逻辑为主 |
 | **P2-3** | **剧情 / 文本** | 无 | `codex.json` 已有词条框架。MVP 阶段一段开场字幕即可 | 🔴 Unity |
 | **P2-4** | **存档** | **无** | 0 `PlayerPrefs` / 0 序列化。`zone_id` 作为存档 key 的约定已在数据层预留。单机买断游戏最终必须有，但 Demo 可先不做 | 🟡 混合 |
