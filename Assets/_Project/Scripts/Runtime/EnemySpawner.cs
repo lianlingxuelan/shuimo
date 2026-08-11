@@ -171,6 +171,68 @@ namespace Xianxia.Unity.T2
             }
         }
 
+        /// <summary>
+        /// 给 BOSS 的占位圆上色、放大，然后激活视图。
+        ///
+        /// 【为什么必须由 T2 层显式调这一下（GAP-6）】
+        /// BOSS 的视图模板和杂兵模板一样是 <c>SetActive(false)</c> 的
+        /// （WorldBuilder 建模板时的统一约定：先建、后上色、再放出来，避免闪一帧白圆）。
+        /// <c>CombatController.AttachView</c> 只 Instantiate，**不会帮你激活** ——
+        /// 杂兵靠 <see cref="Dress"/> 收尾，BOSS 走的是另一条生成路径（SpawnBoss），
+        /// 没人收尾就会出现"BOSS 在打你，但屏幕上什么都看不见"这种最难查的故障：
+        /// 内核完全正常，日志一片干净，就是没图。
+        ///
+        /// 【为什么不直接复用 Dress】
+        /// Dress 是 private 且只认 IsElite 分支；BOSS 需要独立的深红描边与更大的体型，
+        /// 塞进 Dress 会让那个方法变成三分支的意大利面。两者共用 <see cref="ColorOf"/>
+        /// 与 SpriteFactory.Circle 已经足够复用了。
+        /// </summary>
+        /// <param name="boss">已由 <c>CombatController.SpawnBoss</c> 生成并入列的 BOSS 实体。</param>
+        public void DressBoss(Combatant boss)
+        {
+            if (boss == null || _ctrl == null)
+            {
+                return;
+            }
+
+            CombatView view = _ctrl.FindView(boss.Id);
+            if (view == null)
+            {
+                // 视图没建出来是硬故障：AttachView 里 prefab 为 null 才会走到这。
+                // 必须叫出声，否则就是"BOSS 隐身"。
+                Debug.LogError(string.Format(
+                    "[T2] DressBoss 找不到 BOSS(id={0}) 的视图，BOSS 将不可见。" +
+                    "请检查 CombatController 的 bossPrefab / enemyPrefab 是否都为 null。", boss.Id));
+                return;
+            }
+
+            GameObject go = view.gameObject;
+            SpriteRenderer sr = go.GetComponent<SpriteRenderer>();
+            if (sr != null)
+            {
+                Color body = ColorOf(boss.Kind);
+                Color outline = new Color(BossFlowConfig.BossOutlineR,
+                                          BossFlowConfig.BossOutlineG,
+                                          BossFlowConfig.BossOutlineB, 1.0f);
+
+                // 贴图缓存键带上 kind，不同区域的 BOSS 不会互相串色。
+                sr.sprite = SpriteFactory.Circle("boss_" + boss.Kind, body, outline,
+                                                 BossFlowConfig.BossOutlinePx);
+            }
+
+            go.transform.localScale = Vector3.one * BossFlowConfig.BossViewScale;
+
+            // ★压轴的一行：模板未激活，副本也未激活，上完色才放出来。
+            if (!go.activeSelf)
+            {
+                go.SetActive(true);
+            }
+
+            Debug.Log(string.Format("[T2] BOSS 出场：{0} Lv.{1} HP={2:F0} 落点=({3:F0},{4:F0})",
+                string.IsNullOrEmpty(boss.DisplayName) ? boss.Kind : boss.DisplayName,
+                boss.Level, boss.HpMax, boss.Position.X, boss.Position.Y));
+        }
+
         /// <summary>kind ⇒ 占位色。未知 kind 回落到巫蛊紫，与内核的 kind 回落口径一致。</summary>
         public static Color ColorOf(string kind)
         {

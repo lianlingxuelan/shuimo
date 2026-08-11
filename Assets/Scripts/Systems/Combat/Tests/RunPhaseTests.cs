@@ -30,6 +30,13 @@
 //   RP-13  端到端：Clear() 之后可以正常打第二局
 //   RP-14  红线：判负之后内核照常空转，不提前 return（观察者不干预）
 //
+// 【P2-1 追加 —— BOSS 债（BossPending）不变量】RP01–RP14 一条未改。
+//   RP-15  I-2：欠着 BOSS 债时连推 100 步也判不出 Won；但 Lost 不受影响
+//   RP-16  零跨越竞态：一步带走全部敌人仍不判胜，销债后下一步才判胜（本切片核心回归）
+//   RP-17  I-1：PendingAwareEnemyCount 与 AliveEnemyCount 的差恰为债的有无
+//   RP-18  I-4 / R-3：Clear() 之后债与两个计时器全部归零
+//   RP-19  Q-1 计时语义：Idle 只在"场上零敌人"时累加，有敌人立刻归零；Total 无条件累加
+//
 // 【禁止事项】不得引用 UnityEngine。本文件受 CI 的 grep 守卫约束，只允许 BCL + NUnit。
 // -----------------------------------------------------------------------------
 
@@ -428,6 +435,218 @@ namespace Xianxia.Combat.Tests
                 "判负后阶段 ⑥ 收尸仍须执行 —— 尸体没被收走说明内核已被提前 return 短路");
             Assert.AreEqual(1, enc.AliveEnemyCount, "只应少掉被打死的那一只");
             Assert.AreEqual(RunPhase.Lost, enc.Phase, "空转期间阶段不许改变");
+        }
+
+        // ---------------------------------------------------------------------
+        // E. ★P2-1 BOSS 债（BossPending）不变量
+        //
+        // 这一组守的是整个 P2-1 切片唯一的致命故障模式：
+        // BOSS 是"清完杂兵之后才生成"的，若裁判按 AliveEnemyCount 判，
+        // 清掉最后一只杂兵的那一步就会当场判 Won，而幂等闸门单向不可逆 ——
+        // 这一局的 BOSS 战直接蒸发，玩家会以为"设计如此"，连报障都不会来。
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// RP-15 不变量 I-2：欠着 BOSS 债时，即使场上一只敌人都没有，
+        /// 连推 100 个固定步也**不可能**落定 Won；而 Lost 分支完全不受影响。
+        ///
+        /// 后半段同样重要：失败判定只看玩家死活，与敌人数无关。
+        /// "欠玩家一只怪"绝不能变成"玩家死不了" —— 那会让 GameOverHud 永远弹不出来。
+        /// </summary>
+        [Test]
+        public void RP15_BossPending_BlocksWinButNotLoss()
+        {
+            Encounter enc = MakeEncounter(2, 260.0f);
+
+            // 先跑一步让裁判布防（见过活敌人才允许判胜）。
+            Step(enc, 1);
+            Assert.AreEqual(RunPhase.Playing, enc.Phase);
+            Assert.IsTrue(enc.RunState.IsArmed, "见过活敌人之后应当已布防");
+            Assert.IsFalse(enc.BossPending, "尚未置位时不该欠债");
+
+            enc.MarkBossPending();
+            Assert.IsTrue(enc.BossPending, "置位后应当欠着一只 BOSS");
+
+            KillAllEnemies(enc);
+            Step(enc, 100);
+
+            Assert.AreEqual(0, enc.AliveEnemyCount, "杂兵尸体应已全部被阶段 ⑥ 收走");
+            Assert.AreEqual(1, enc.PendingAwareEnemyCount, "给裁判看的敌人数应为 0 + 1（欠的那只 BOSS）");
+            Assert.AreEqual(RunPhase.Playing, enc.Phase,
+                "★核心红线：BOSS 债未销，连推 100 步也绝不许判胜");
+            Assert.IsTrue(enc.Player.IsAlive, "玩家应仍然活着");
+
+            // Lost 不受影响：失败分支只看 playerAlive。
+            enc.Player.Hp = 0.0f;
+            Step(enc, 1);
+
+            Assert.AreEqual(RunPhase.Lost, enc.Phase,
+                "欠着 BOSS 债不该妨碍判负 —— 否则玩家死了也弹不出结算面板");
+        }
+
+        /// <summary>
+        /// RP-16 ★本切片的核心回归用例：零跨越竞态。
+        ///
+        /// 血莲 / 范围技一次性把最后 3 只杂兵全部带走，本步 ⑥ 收尸后
+        /// AliveEnemyCount 直接从 3 跳到 0 —— 中间没有"1"这个中间态给上层反应。
+        /// 有了 BOSS 债，本步 ⑦ 读到的是 0 + 1 = 1，判不出 Won；
+        /// 且**幂等闸门未被触发**，Won 仍然可以在将来正确落定（这一点必须验，
+        /// 否则"没早判"也可能是"永远判不了"）。
+        /// </summary>
+        [Test]
+        public void RP16_BossPending_SurvivesZeroCrossingRace()
+        {
+            Encounter enc = MakeEncounter(3, 260.0f);
+            Step(enc, 1);
+            Assert.AreEqual(3, enc.AliveEnemyCount, "初始应有 3 只活怪");
+
+            enc.MarkBossPending();
+
+            // 一步之内全部置死 —— 模拟范围技一次带走。
+            KillAllEnemies(enc);
+            Step(enc, 1);
+
+            Assert.AreEqual(0, enc.AliveEnemyCount, "3 只应在同一步被收尸");
+            Assert.AreEqual(RunPhase.Playing, enc.Phase,
+                "★零跨越：一步从 3 掉到 0，仍不许判胜");
+
+            // 模拟 BOSS 真身入列后上层销债（不变量 I-3：Add 之后才清）。
+            Assert.IsTrue(enc.ClearBossPending(), "首次销债应返回 true");
+            Assert.IsFalse(enc.BossPending, "销债后不该再欠");
+
+            Step(enc, 1);
+
+            Assert.AreEqual(RunPhase.Won, enc.Phase,
+                "债销完且场上无敌，下一固定步必须正常判胜 —— 否则就是从早判变成了永远判不了");
+        }
+
+        /// <summary>
+        /// RP-17 不变量 I-1：<c>PendingAwareEnemyCount >= AliveEnemyCount</c> 恒成立，
+        /// 且两者之差恰好等于"债的有无"（1 或 0）。
+        ///
+        /// 顺带验 <c>MarkBossPending</c> 的幂等性：重复置位不该把计数抬到 +2。
+        /// </summary>
+        [Test]
+        public void RP17_PendingAwareCount_TracksDebtExactly()
+        {
+            Encounter enc = MakeEncounter(2, 260.0f);
+
+            // 未置位：两个口径应完全一致。
+            Assert.AreEqual(enc.AliveEnemyCount, enc.PendingAwareEnemyCount,
+                "没欠债时两个口径必须相等");
+            Assert.AreEqual(2, enc.PendingAwareEnemyCount);
+
+            enc.MarkBossPending();
+            Assert.AreEqual(3, enc.PendingAwareEnemyCount, "欠债时应比存活敌人数多 1");
+
+            // 幂等：连调三次也只多 1。
+            enc.MarkBossPending();
+            enc.MarkBossPending();
+            Assert.AreEqual(3, enc.PendingAwareEnemyCount, "重复置位不该把债累加成 2");
+
+            // 场上敌人清零，差值仍恒为 1。
+            KillAllEnemies(enc);
+            Step(enc, 1);
+            Assert.AreEqual(0, enc.AliveEnemyCount);
+            Assert.AreEqual(1, enc.PendingAwareEnemyCount);
+            Assert.GreaterOrEqual(enc.PendingAwareEnemyCount, enc.AliveEnemyCount, "I-1 恒成立");
+
+            // 销债后恢复原语义。
+            enc.ClearBossPending();
+            Assert.AreEqual(enc.AliveEnemyCount, enc.PendingAwareEnemyCount,
+                "销债后两个口径必须重新相等");
+
+            // 重复销债返回 false，且不抛。
+            Assert.IsFalse(enc.ClearBossPending(), "本来就没欠债时应返回 false");
+        }
+
+        /// <summary>
+        /// RP-18 不变量 I-4 / 防线 R-3：<c>Clear()</c> 之后债与两个计时器全部归零。
+        ///
+        /// 当前重开路径走的是整场景重载（<c>Encounter</c> 必然重建），这行复位不会被触发；
+        /// 但 <c>Clear()</c> 是公开 API，契约就是"清空整场战斗 = 重开一局"，
+        /// 而 RP13 已经在用"复用同一个 Encounter 打第二局"的写法。
+        /// 不复位的话，第二局起手就带着上一局欠下的 BOSS 债 —— 表现为"第二局永远赢不了"。
+        /// </summary>
+        [Test]
+        public void RP18_Clear_ResetsBossPendingDebt()
+        {
+            Encounter enc = MakeEncounter(1, 260.0f);
+            Step(enc, 1);
+
+            enc.MarkBossPending();
+            KillAllEnemies(enc);
+            Step(enc, 30);
+
+            Assert.IsTrue(enc.BossPending, "Clear 之前应当确实欠着债");
+            Assert.Greater(enc.BossPendingTotalSeconds, 0.0f, "Clear 之前 Total 应已累加");
+            Assert.Greater(enc.BossPendingIdleSeconds, 0.0f, "Clear 之前 Idle 应已累加");
+
+            enc.Clear();
+
+            Assert.IsFalse(enc.BossPending, "Clear 后不该再欠 BOSS 债");
+            Assert.AreEqual(0.0f, enc.BossPendingTotalSeconds, 1e-6f, "Clear 后 Total 必须归零");
+            Assert.AreEqual(0.0f, enc.BossPendingIdleSeconds, 1e-6f, "Clear 后 Idle 必须归零");
+            Assert.AreEqual(0, enc.PendingAwareEnemyCount, "Clear 后判定口径应为 0");
+            Assert.AreEqual(RunPhase.Playing, enc.Phase, "Clear 后裁判应回到 Playing");
+
+            // 第二局：不再欠债，能正常判胜。
+            enc.SetPlayer(Combatant.CreatePlayer(1, 260.0f, Vec2.Zero));
+            enc.Add(Combatant.CreateEnemy(200, new Vec2(1000.0f, 0.0f), 30.0f, 4.0f, 70.0f));
+            Step(enc, 1);
+            Assert.AreEqual(RunPhase.Playing, enc.Phase, "第二局刚开始应为 Playing");
+
+            KillAllEnemies(enc);
+            Step(enc, 1);
+            Assert.AreEqual(RunPhase.Won, enc.Phase,
+                "第二局不该带着上一局的 BOSS 债 —— 否则永远赢不了");
+        }
+
+        /// <summary>
+        /// RP-19 Q-1 计时语义：这是软锁兜底（4s 重试 / 12s 强制清位）的判据基础。
+        ///
+        /// <c>Idle</c> 只在"欠债 且 场上零敌人"时累加，场上一旦有敌人**立刻归零**；
+        /// <c>Total</c> 无条件累加，仅供诊断。
+        ///
+        /// 为什么必须这么分：建场即置位的语义下，玩家正常清杂兵要花几十秒到几分钟，
+        /// 拿"自置位起的总时长"做超时判据会 100% 误触发 ——
+        /// 结果不是"防住软锁"，而是"BOSS 永远不出场"。
+        /// </summary>
+        [Test]
+        public void RP19_BossPendingTimers_IdleCountsOnlyWhenFieldIsEmpty()
+        {
+            Encounter enc = MakeEncounter(2, 260.0f);
+            enc.MarkBossPending();
+
+            Assert.AreEqual(0.0f, enc.BossPendingTotalSeconds, 1e-6f, "置位瞬间 Total 应为 0");
+            Assert.AreEqual(0.0f, enc.BossPendingIdleSeconds, 1e-6f, "置位瞬间 Idle 应为 0");
+
+            // 第一段：场上有敌人，推 60 步（= 1 秒）。
+            Step(enc, 60);
+
+            Assert.AreEqual(2, enc.AliveEnemyCount, "这一段敌人应全都活着");
+            Assert.AreEqual(1.0f, enc.BossPendingTotalSeconds, 0.02f, "Total 应无条件累加到约 1 秒");
+            Assert.AreEqual(0.0f, enc.BossPendingIdleSeconds, 1e-6f,
+                "场上有敌人时 Idle 必须恒为 0 —— 否则玩家慢慢清怪也会被兜底误杀");
+
+            // 第二段：清空敌人，再推 60 步。
+            KillAllEnemies(enc);
+            Step(enc, 60);
+
+            Assert.AreEqual(0, enc.AliveEnemyCount);
+            Assert.AreEqual(2.0f, enc.BossPendingTotalSeconds, 0.03f, "Total 应继续累加到约 2 秒");
+            Assert.AreEqual(1.0f, enc.BossPendingIdleSeconds, 0.02f,
+                "场上清空后 Idle 应从 0 起跳，累加到约 1 秒");
+
+            // 第三段：又冒出一只怪（模拟 BOSS 召唤物先于 BOSS 入列这类怪事）
+            //         → Idle 必须**立刻归零**，而不是暂停累加。
+            enc.Add(Combatant.CreateEnemy(300, new Vec2(1000.0f, 0.0f), 30.0f, 4.0f, 70.0f));
+            Step(enc, 1);
+
+            Assert.AreEqual(1, enc.AliveEnemyCount);
+            Assert.AreEqual(0.0f, enc.BossPendingIdleSeconds, 1e-6f,
+                "只要场上有敌人，Idle 必须立刻归零 —— 软锁判据要的是**连续**滞留时长");
+            Assert.Greater(enc.BossPendingTotalSeconds, 2.0f, "Total 不受影响，继续累加");
         }
     }
 }

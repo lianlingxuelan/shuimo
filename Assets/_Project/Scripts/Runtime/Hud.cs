@@ -61,6 +61,15 @@ namespace Xianxia.Unity.T2
         private HudSkillBar _skillBar;
         private HudStatusIcons _statusIcons;
 
+        /// <summary>P2-1 BOSS 血条。与本组件同体，由 <c>BuildBossBar</c> 装配。</summary>
+        private HudBossBar _bossBar;
+
+        /// <summary>BOSS 血条（供 <c>CombatBridge</c> 与集成测试取用）。未 Build 前为 null。</summary>
+        public HudBossBar BossBar
+        {
+            get { return _bossBar; }
+        }
+
         private Image _hpFill;
         private Image _cdFill;
         private Image _qiFill;
@@ -154,6 +163,25 @@ namespace Xianxia.Unity.T2
             BuildCombo(canvasGo.transform);
             BuildLevelUpToast(canvasGo.transform);
             BuildT3Widgets(canvasGo.transform);
+            BuildBossBar(canvasGo.transform);
+        }
+
+        /// <summary>
+        /// 装配 P2-1 的 BOSS 血条。与 <see cref="BuildT3Widgets"/> 同款套路
+        /// （GetComponent 兜底 → AddComponent → Build），理由见那个方法的注释。
+        ///
+        /// 放在最后建：血条在顶部中央、层级上应当压在既有控件之上，
+        /// 而 uGUI 的绘制顺序就是 Hierarchy 顺序，后建即在上。
+        /// </summary>
+        /// <param name="canvasRoot">HUD Canvas 变换。</param>
+        private void BuildBossBar(Transform canvasRoot)
+        {
+            _bossBar = GetComponent<HudBossBar>();
+            if (_bossBar == null)
+            {
+                _bossBar = gameObject.AddComponent<HudBossBar>();
+            }
+            _bossBar.Build(canvasRoot);
         }
 
         /// <summary>
@@ -698,6 +726,16 @@ namespace Xianxia.Unity.T2
             else
             {
                 _sb.Append("t3       off (baseline)\n");
+            }
+
+            // ★P2-1 C3 防线：把 BOSS 出场编排的内部状态摊在开发期面板上。
+            //   软锁最可怕的不是发生，是发生了没人知道 —— 有了这一行，
+            //   "清完怪但 BOSS 不出来"的那几秒里，pending / idle 会当着开发者的面往上涨。
+            if (bridge != null)
+            {
+                _sb.Append("boss     ").Append(bridge.BossFlowStateName)
+                   .Append("  pending=").Append(bridge.IsBossPending ? 1 : 0)
+                   .Append("  idle=").Append(bridge.BossPendingIdleSeconds.ToString("F1")).Append("s\n");
             }
 
             DeterminismDump dump = ResolveDump();

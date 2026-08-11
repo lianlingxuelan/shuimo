@@ -419,12 +419,22 @@ namespace Xianxia.Combat.UnityBridge
             }
         }
 
-        /// <summary>生成本区 BOSS，并接上 R5 的召唤委托。</summary>
-        public void SpawnBoss(Vector2 at)
+        /// <summary>
+        /// 生成本区 BOSS，并接上 R5 的召唤委托。
+        ///
+        /// 【为什么返回 <see cref="Combatant"/> 而不是 void】T2 层（<c>CombatBridge</c>）
+        /// 拿到 BOSS 实体之后还有三件必须做的事：给视图上色放大并激活（<c>EnemySpawner.DressBoss</c>）、
+        /// 销掉 BOSS 债（<c>Encounter.ClearBossPending</c>）、把血条挂上（<c>HudBossBar.Show</c>）。
+        /// 依赖方向是单向的 T2 → Combat.Unity → Combat，桥接层不许反向引用 T2，
+        /// 所以只能把实体**交回去**让上层自己处理。
+        /// </summary>
+        /// <param name="at">出场世界坐标（调用方须保证可通行）。</param>
+        /// <returns>生成并已入列的 BOSS 实体；未配置 BOSS 或战场未就绪时返回 <c>null</c>。</returns>
+        public Combatant SpawnBoss(Vector2 at)
         {
             if (_zoneBoss == null || Encounter == null)
             {
-                return;
+                return null;
             }
 
             Combatant boss = Encounter.Bridge.BuildBoss(_zoneBoss, _zoneEnemies, ZoneBaseLevel, Encounter.Rng);
@@ -449,8 +459,22 @@ namespace Xianxia.Combat.UnityBridge
                 };
             }
 
+            // ★不变量 I-3 的时序基石：Add 是**直接** Combatants.Add，不走 _pendingAdd 队列，
+            //   所以这一行返回的瞬间 AliveEnemyCount 就已经 +1。上层必须等到这之后才允许
+            //   ClearBossPending()，否则会出现"债清了怪没到"的空窗，照样早判。
             Encounter.Add(boss);
+
+            // ★C1 防线：bossPrefab 缺失时回落到杂兵外观是可以接受的降级（有实体总比没实体强），
+            //   但**必须叫出声**。GAP-2 曾经就是这么静默复发的：BindScene 第 4 参传了 null，
+            //   BOSS 顶着杂兵的皮出场，谁也没发现配置断了。
+            if (bossPrefab == null)
+            {
+                Debug.LogWarning("[CombatController] bossPrefab 未装配，BOSS 视图回落为 enemyPrefab。" +
+                                 "请检查 WorldBuilder.BuildCombat 是否把 BuildBossTemplate 的产物传给了 BindScene 第 4 参。");
+            }
+
             AttachView(boss, bossPrefab != null ? bossPrefab : enemyPrefab);
+            return boss;
         }
 
         /// <summary>为一个内核实体实例化视图并建立双向绑定。</summary>

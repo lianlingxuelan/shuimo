@@ -789,6 +789,82 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 **遗留给用户**：① 本地 Unity 验证收尾（P0 六项 + P1-6 + P1-2 全链路 PlayMode 走通）；② 2.5D 方向 5 项决策待拍板（Spine vs DragonBones / URP vs Built-in / 相机视角 / 水墨 Shader 方案 / 是否保留 2D 版）。
 
+### 阶段 23 · P2-1「BOSS 战接线」（08-09 夜）
+
+- **触发**：BOSS 的内核（`BossController` 三阶段 / 召唤 / 冲击波）、配置（`zone_youhuang.boss`）、生成入口（`CombatController.SpawnBoss`）早已就绪，但**六根线一根都没插上**——BOSS 全程不出场。架构由高见远出品 `docs/unity-p2-1-boss-architecture.md`（1426 行），工程 寇豆码 施工。
+- **核心设计：`BossPending` 虚拟计数**。原胜负口径 `AliveEnemyCount == 0 → Won` 存在无解竞态：范围技能一步带走最后 3 只，`StepFixed` 同一步的第 ⑦ 步当场判胜，上层再快也插不进手。解法是在内核 `Encounter` 加一个**纯 C#** 的债位，把口径改成 `PendingAwareEnemyCount = AliveEnemyCount + (BossPending ? 1 : 0)`——这一局从头到尾都欠着一只 BOSS，等真身入列再销账。
+- **八处缺口（PRD 原称五处）全数修复**：GAP-1 `InjectZoneConfig` 把 boss 段传 null；GAP-2 `BindScene` 第 4 参传 null 致 BOSS 顶杂兵皮；GAP-3 无人调用 `SpawnBoss`；GAP-4 `BossPhaseChanged` 零订阅者；GAP-5 `ShockwaveFxPrefab` 无人赋值；**GAP-6** BOSS 视图模板未激活（"BOSS 在打你但屏幕上什么都没有"）；**GAP-7** FX 缩放差 32 倍（无补偿则有效半径 6400 单位，满屏纯色）；**GAP-8** 血条压住 `HudStatusIcons` 目标状态行。
+- **四道纵深防线（防软锁）**：R-1 置位与出场条件强绑定，三前提缺一即退化 `Disabled` 全程不置位；R-2 状态机单向推进 `Pending→Entering→Fighting→Done`；R-3 `Encounter.Clear()` 内复位；R-4 双层兜底 **4.0s 重试（≤2 次）→ 12.0s 强制清位 + LogError**。宁可这局没打到 BOSS，绝不让玩家卡在空地图上。
+- **改动 12 个文件**：内核 3（`Encounter.cs` / `RunPhase.cs:249` 单行 / `RunPhaseTests.cs` 追加 RP15–RP19）、桥接 1（`CombatController.SpawnBoss` 改返回 `Combatant`）、表现层 8（新增 `BossFlowConfig.cs` / `HudBossBar.cs` / `FxAutoDespawn.cs` / `P2_1_BossWiringTests.cs`，修改 `CombatBridge.cs` / `WorldBuilder.cs` / `EnemySpawner.cs` / `Hud.cs`）。`zones.json`、`DifficultyBridge.BuildBoss`、`CombatConfig`、`DamageResolver`、`RunPhase` 纯查询重载与 RP01–RP14 **零改动**。
+- **纪律守卫**：内核 `Assets/Scripts/` 三文件去注释后 `UnityEngine` 命中 **0**（`noEngineReferences: true` 未破）；`Scheduler.Paused` 全工程唯一赋值点仍是 `CombatBridge.ApplyPauseState`；BOSS 落点只用 `Encounter.Rng`，新代码零 `UnityEngine.Random`。
+- **护栏**：t1 **64/64 @ 2.5294x**（围攻 4.300 / 单挑 1.700，未漂）、t3 **9/9**、`t2_static_check` 53 文件跨类型解析全通过、12 个改动文件括号配平全平。
+
+**本文档对 PRD 的 5 处纠正（架构 §11.4，已随本轮落地）**：① 「RP01–RP11 共 11 条」实际是 **RP01–RP14 共 14 条**；② 「五处真实缺口」实际 **八处**；③ Q-1 建议的「10 秒兜底」**不可用**，计时基准须从"自置位起"改为"置位且场上无敌"，取值改 4.0s/12.0s；④ 血条「距顶 40」**必须改 72**，否则压住目标状态行；⑤ R-3「Clear 复位」不是主防线（重开走整场景重载，`Encounter` 必然重建），但仍必须实现以兜底"复用 Encounter 打第二局"。
+
+**遗留给用户**：① 本轮所有 C# **未经编译**（本机无 Unity 无 dotnet），需本地 Unity 编译 + Test Runner 跑 RP15–RP19 与 `P2_1_BossWiringTests` 14 条；② 4 个新增 .cs 的 `.meta` 由脚本生成（GUID 已与全工程 176 个既有 GUID 去重），首次导入请确认 Unity 不报重复；③ 手测项 AC-T05-5～8（端到端出场时序 / 重开复位 / 软锁 12s 兜底 / 暂停 30s 连续性）与 AC-T04-6～8（特效 bounds、模板 activeSelf、实例泄漏）需 PlayMode 目视；④ 架构 §10 T05 列的 `audio_syntax_check.py` 在工程内**不存在**，本轮未跑。
+
+---
+
+### 阶段 25 · 黑屏完整修复（ResetStatics + 幂等订阅 + 回归测试）+ P2-1 BOSS 接线（feature/2.5d，2026-08-10 第10轮）
+
+- **触发 / 背景**：自动化第 10 轮。工作树在 `feature/2.5d`（`git log --all` 揭示 `main` 已含 P1-3 音效 `98ee5ed` 与黑屏**基础**修复 `b7c3ad7`，但 `feature/2.5d` 分支点早于这两次提交，故本分支工作树看不到它们）。用户重点清单（P0-5/P0-6/PlayMode 场景名/R 重开）前数轮已交付。本轮回应的两件事均在 `feature/2.5d` 工作树**未提交**。
+- **(A) 黑屏完整修复（相对 `main` `b7c3ad7` 的增强）**：`Bootstrap.cs` 补 `ResetStatics()` `@164`（`SubsystemRegistration`，复位 `_firstSceneLoaded`/`_registered`）+ 幂等 `sceneLoaded -= / +=` `@261-262` + 只读访问器 `FirstSceneBootstrapped`/`DelegateRegistered` + `OnSceneLoaded` 无条件 `BuildAll()` `@325`。新增 `Tests/P0_4_BootstrapResetTests.cs`（562 行，BR01–BR09）+ `.meta`（`GUID cb7993bf…` 全仓唯一）。
+  - **关键差异**：`main` 的 `b7c3ad7` 只做了 `OnSceneLoaded` 无条件 `BuildAll`（修常见重开黑屏），**缺** static 复位（关 Domain Reload 后第 2 次进 PlayMode 仍黑屏）与幂等订阅（重复重开把世界重建 N 遍）。本版补齐这两处，是关闭 Domain Reload 下真正根治的版本。
+- **(B) P2-1 BOSS 接线（A′方案，RunPhase 纯查询重载零改动）**：内核 `Encounter.cs` +175（`BossPending` 三字段/三 getter/`MarkBossPending`/`ClearBossPending`/`TickBossPending`；`Clear()` 调 `ClearBossPending()` 即 R-3；`StepFixed` ⑥⑦间插 `TickBossPending`）+ `RunPhase.cs` +13（`Evaluate(Encounter)` 读 `PendingAwareEnemyCount`）+ `RunPhaseTests.cs` +219（RP15–RP19，BossPending 不变量）。Unity：`CombatController.cs` +30 / `CombatBridge.cs` +509（`ArmBossPending()`→`enc.MarkBossPending()` `@1591`；`TickBossFlow()`→`enc.ClearBossPending()` `@1819`，且必在 `TrySpawnBossNow()` 成功 `Add` 之后）/ `EnemySpawner.cs` +62 / `Hud.cs` +38 / `WorldBuilder.cs` +109；新增 `BossFlowConfig.cs`(203)/`FxAutoDespawn.cs`(62)/`HudBossBar.cs`(341)；文档 `boss-class-diagram.mermaid`/`boss-sequence-diagram.mermaid`/`unity-p2-1-boss-architecture.md`。
+- **并发冲突核实**：并发 agent 改 `WorldBuilder.cs`（`Bootstrap.IsWorldLive()` 依赖 `HasGeneratedWorld()`/`Grid`）→ grep 实证 `HasGeneratedWorld()` `@217` 与 `Grid` 属性 `@90` **仍在** → 误报，无冲突；boot 关键路径已无条件 `BuildAll`，不依赖 `IsWorldLive()` 判定。
+- **护栏（主理人亲自复跑）**：`t1` **64/64 @ 2.5294x**（端到端围攻 4.300 / 单挑 1.700，未漂）；`t3` **9/9**（89 .cs → 类型宇宙 154 / 命名空间 17，全可解析）。内核零数值改动，倍率生命线守住。
+- **⚠️ 分支协调（合并回 `main` 必读）**：上述全部为 `feature/2.5d` **未提交**改动。`main` 已含 `阶段 23`（P1-3，`98ee5ed`）与黑屏基础修复（`b7c3ad7`）。合并时注意：① `Bootstrap.cs` 应以 `feature/2.5d` 版为准（含 `ResetStatics`+幂等订阅+测试访问器，`main` 版缺这些，否则第 2 次 PlayMode 仍黑屏）；② 把 `P0_4_BootstrapResetTests.cs` + `.meta` 一并带过去；③ 阶段编号：~~本回合记为 `阶段 24` 以免合并冲突~~ —— **此判断已于第 11 轮订正并作废**，见下方「阶段 26」的编号裁定。当时只看到 `main` 占用了 `阶段 23`，却漏看 `feature/2.5d` 自己也已有一个 `阶段 23`（P2-1 BOSS 战接线，08-09 夜），导致 `阶段 24` 这个选择并没有真正避开冲突。本条已重编为 `阶段 25`。
+- **遗留给用户**：① 本地 Unity 编译 `feature/2.5d`，验证黑屏完整修复（**关 Domain Reload 连进 3 次 PlayMode**）+ P2-1 BOSS 全链路；② 跑 `P0_4_BootstrapResetTests` 9 条 + `RunPhaseTests`（含 RP15–RP19）；③ 提交 `feature/2.5d` 改动；④ 合并/协调回 `main` 时 `Bootstrap.cs` 取舍（以本分支版为准）+ 带 `P0_4` 测试；⑤ 首次 Unity 打开提交自动生成 `.meta`（`P0_4` 测试 `GUID cb7993bf…` + P2-1 三新文件 `BossFlowConfig`/`FxAutoDespawn`/`HudBossBar`）。
+
+---
+
+### 阶段 26 · 分叉风险收束 + BossPending 内核状态机护栏（feature/2.5d，2026-08-11 第11轮）
+
+- **触发 / 选题**：自动化第 11 轮，用户不在场。`TaskList` 为空（跨会话不持久，已成常态）。开局按第 10 轮沉淀的教训先跑 `git log --all` + `git branch -a`，确认分叉现状。**本轮刻意不新增任何待验证的 Unity 表现层模块**——库存积压警告已连续两轮（P0 全交付 + P1 交付 4/7 + P2-1 已接线，但全部"待用户本地验证"且从未被验证过），继续堆代码边际收益已在快速下降。改为收束两个**能在无 Unity 环境下自证**的真实风险。
+- **风险 1 · 分支分叉正在扩大**：`feature/2.5d` 相对 `main` **缺** P1-3 音效全套（21 文件 / +10449 行），而 P2-1 的 PRD 在 `main`、实现却在 `feature/2.5d`；第 10 轮的约 5416 行产出**全部停在未提交工作树，无任何 git 备份**。
+- **风险 2 · 内核护栏盲区**：第 10 轮首次在内核引入**新状态机** `BossPending`，但 `t1_selfcheck.py` 只验数值倍率、`t3_selfcheck.py` 只验类型可解析性，**没有任何护栏在看它的状态语义**。
+- **工作流**：📋 部分工作流（架构评审 + QA 护栏），架构师高见远与 QA 严过关**双线并行**派工，主理人亲自复核 + 兜底质量关卡。
+
+**(A) 架构师高见远 · 分支合并协调方案** — `docs/branch-merge-plan.md`（783 行 / 2 张 Mermaid / 259 行表格）
+
+- **★ 最有价值的发现：已提交部分零冲突**。`git merge-tree --write-tree main feature/2.5d` 直接吐出 tree、**退出码 0**（主理人独立复跑确认）。即**本次全部冲突 100% 来自未提交工作树**——这直接决定了推荐策略必须以"先把第 10 轮产出落盘为 commit"开头。
+- **真冲突面收敛到 1 处**：`CombatBridge.cs` 唯一真冲突在 `-1366` 同锚点；此前担心的 `-343`(main, 覆盖 343–348) 与 `-357`(feature, 覆盖 357–362) 间隔 9 行**不重叠**，git 自动合并。
+- **`Bootstrap.cs` 确认为严格超集**：`diff main→feat` 删除行数 = 0，main 的三个改动要点（注释块 / `Debug.Log` / 无条件 `BuildAll()`）逐一核对全部保留，**无遗漏**。合并时自动合成的就是正确答案，且**明令禁用 `-X ours/theirs`**（误用会静默丢掉 `ResetStatics`+幂等订阅，黑屏原样复发，而本环境四项自证全都发现不了——纯 PlayMode 行为，只在第 2 次进 Play 暴露）。
+- **★ 方法论坑（CRLF）**：仓库 `core.autocrlf=true`，blob 纯 LF、工作树纯 CRLF。拿 `git show` 导出的文件直接与工作树文件做三方合并，会得到**整文件冲突的假象**（架构师首次预演即踩，三个文件各报一个横跨全文的冲突块）。归一化后 `Bootstrap`/`changelog` 立刻变干净。真实 `git merge` 不受影响，但**手工比对时必踩**。
+- 架构师对任务简报提出 **11 项订正**（含：`feature-closure-plan.md` 根本不冲突、`CombatController.cs` 实际在 `Assets/Scripts/Systems/Combat/Unity/` 而非 `_Project`、main 的 7 个音频 `.cs` **全部缺 `.meta`**、`audio_syntax_check.py` 等三个护栏脚本只在 main 故合并前跑不了）。
+
+**(B) QA 严过关 · BossPending 无 Unity 自证护栏**
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `Assets/Scripts/Systems/Combat/Tests/bosspending_selfcheck.py` | 1022 | 主护栏 **53/53 PASS**（A 穷举+fuzz / B 定点场景 / C 布防边界 / D 源码静态锚点） |
+| `Assets/Scripts/Systems/Combat/Tests/bosspending_guard_mutation_test.py` | 565 | 变异测试 **26/26 PASS**，捕获率 **18/18**（源码 11/11 + 模型 7/7）+ 1 条登记在案盲区 M-B8 |
+| `docs/p2-1-bosspending-qa-report.md` | 349 | 覆盖矩阵（用例 ↔ 不变量 ↔ 源码锚点）+ 诚实边界 |
+
+- 护栏分两类：**行为对拍**（Python 复刻 `BossPending` + `RunPhase.Evaluate` 语义，穷举/随机序列断言不变量）+ **源码静态锚点**（直接解析 `Encounter.cs`/`RunPhase.cs` 文本，钉住 `PendingAwareEnemyCount` 表达式、`Evaluate(Encounter)` 传参、`Clear()` 内两行顺序、`StepFixed` 内 `TickBossPending` 的夹心位置、Idle 的 else 确为**归零**而非跳过）。后者比行为模型更能防未来手滑。
+- **★ 变异测试抓到 QA 自己写的护栏漏洞**（本轮最有说服力的一幕）：首轮 M-B3（把"失败优先"改成"胜利优先"）**没被捕获**。根因——原 `BP-B2` 用例自带 BOSS 债，有债时 `PendingAware = 0+1 = 1`，判胜分支 `count <= 0` 本就不成立，**债自己把判胜分支挡死了**，对调 ④⑤ 结果照样 Lost，用例依旧全绿。判别性用例必须**无债**。已拆为 `BP-B2a`（无债同归于尽，钉失败优先）/ `BP-B2b`（有债，验 I-2 不挡判负）后捕获。这是测试代码缺陷而非生产代码缺陷，QA 自行修复，**未碰任何 C#**。
+- QA 对简报提出订正：**不变量是 4 条不是 3 条**（源码 `Encounter.cs` L188 还有 **I-4「Clear() ⟹ 三字段全部归零」**，简报漏列）；`Clear()` 内 `ClearBossPending()` 在 **L492**、`RunState.Reset()` 在 **L497**（顺序结论正确）；⑥ 实为 `FlushPendingAdds()`+`RemoveDead()` 两句。简报中其余行号逐条核对**全部准确**。
+
+**★ 主理人裁定（3 条，回应 QA 提交的待决事项）**
+
+| # | 议题 | 裁定 | 理由 |
+|---|---|---|---|
+| D-1 | R-4 硬超时（12s）强制销债后 `_armed` 早被债点亮 → 下一步直接 Won，**玩家没打到 BOSS 却弹胜利结算** | **接受现状，本轮不改代码**；登记为待办，要求 R-4 触发路径留可观测诊断痕迹 | 这是「宁可没 BOSS 也绝不软锁」的既定取舍。软锁（这一局永远赢不了）远比误判胜利严重。且本轮原则是不叠加未验证的 Unity 改动 |
+| D-2 | 是否让内核护栏伸手进 `_Project/Scripts/Runtime/` 去钉 I-3（`Add(boss)` 先于 `ClearBossPending`）的行序 | **不要，维持边界** | 2.5D 路线会**重写整个表现层**。内核护栏一旦引用表现层文件，重写时 t1/t3/bosspending 三套会集体变红，届时无法区分"内核坏了"与"表现层换了"——护栏就此失去信号价值。I-3 由 Unity 侧 `P2_1_BossWiringTests.cs` 负责 |
+| D-3 | 文档统一按 4 条不变量表述 | **采纳，已执行** | 已改 `bosspending_selfcheck.py` 的 D9 检查**由钉 3 条收紧为钉 4 条**（L930-935）+ 文件头描述。改后复跑仍 53/53，非误报 |
+
+**(C) changelog 阶段编号雷（第 10 轮埋下，本轮排除）**
+
+- 第 10 轮记「main 已用阶段 23，本回合记为阶段 24 以免合并冲突」——**只对了一半**：它没发现 `feature/2.5d` 自己**也已有**一个 `### 阶段 23 · P2-1「BOSS 战接线」（08-09 夜）`。合并后会**同时存在两个「阶段 23」**，且 git 报 `rc=0` 无冲突标记——**这是本次合并唯一"工具报绿、结果是错的"地方**，比真冲突更阴。
+- **主理人裁定**：阶段号一律按**落盘时序**递增（changelog 自阶段 1 起的一贯口径），不按"第几轮产出"算。终态为 22 → 23(P2-1 接线, 08-09 夜) → 24(P1-3 音效, 08-10，**合并时把 main 侧 23 改为 24**，main 侧唯一需改的数字) → 25(第 10 轮) → 26(本轮)。
+- 本轮已在 feature 侧执行：原 `## 阶段 24` → `### 阶段 25`（编号让位 + `##`→`###` 层级统一）；第 10 轮那条误导性提示**已就地划删除线并注明作废**。此裁定已覆盖架构师初版建议并固化进 `docs/branch-merge-plan.md §6.3`（含差异对照表与理由）。
+
+- **护栏（主理人亲自复跑，独立确认）**：`t1` **64/64**，围攻/单挑倍率 **2.5294x 未漂**（端到端围攻 4.300 / 单挑 1.700）；`t3` **9/9**（90 个 .cs → 类型宇宙 155 / 命名空间 17，全部可解析）；新增 `bosspending_selfcheck` **53/53**、`bosspending_guard_mutation_test` **26/26**。`Encounter.cs`/`RunPhase.cs` 的 **SHA-256 跑前跑后逐字节一致**（证明变异测试确实只在临时副本上操作、未写回原文件）。
+- **C# 生产代码本轮零改动**：`git status` 的 modified 列表与派工前完全一致，新增内容全部是 `.py` 与 `.md`。
+- **⚠️ 护栏脚本不入库（既有约定，本轮实测确认）**：`.gitignore:44` 的 `Assets/Scripts/**/Tests/*.py` 排除了该目录下全部 Python，`git ls-files "*.py"` 返回**空**——即 `t1_selfcheck.py` / `t3_selfcheck.py` / 本轮新增的 `bosspending_selfcheck.py` / `bosspending_guard_mutation_test.py` **全部只存在于本地工作树，clone 或换机即丢**。这是用户此前主动瘦身时定的约定（护栏脚本不推送），本轮**未擅自更改**。但需知晓其代价：护栏是本项目在无 Unity 环境下唯一的硬凭据，一旦丢失将无法复现任何"双绿"结论。**建议用户拍板**是否为 `*_selfcheck.py` / `*_mutation_test.py` 开白名单例外（`!Assets/Scripts/**/Tests/*_selfcheck.py`）。注意口径目前并不统一：`main` 分支的 `Assets/_Project/audio_syntax_check.py` 因路径不匹配该规则而**是入库的**。
+- **遗留给用户**：① **按 `docs/branch-merge-plan.md` §8 执行合并**，第一步是把第 10 轮产出落盘为 commit（当前约 5416 行无 git 备份，这是全场唯一单点风险）；② 合并时 `CombatBridge.cs` 的 `-1366` 需人工裁决（唯一真冲突），`Bootstrap.cs` 走自动合并且**禁用 `-X ours/theirs`**；③ 合并后把 main 侧「阶段 23 · P1-3」改为「阶段 24」并移到「阶段 23 · P2-1」之后；④ 本地 Unity 编译 + Test Runner（`RunPhaseTests` 含 RP15–RP19、`P0_4_BootstrapResetTests` 9 条、`P2_1_BossWiringTests`、`P1_3_AudioTests` 53 条）；⑤ 待办 D-1（R-4 超时判胜的诊断痕迹）。
+- **诚实边界**：本环境无 Unity / 无 dotnet。新护栏证明的是「Python 参考模型自洽」+「C# 源文本锚点与该模型一致」，**不等于 C# 编译通过，也不等于 NUnit(RP15–RP19) 通过**。全程未执行任何一行 C# 代码。
+
 ---
 
 ## 附录 A · 关键指标速查（全阶段核实）

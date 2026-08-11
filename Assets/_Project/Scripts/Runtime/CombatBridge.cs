@@ -324,6 +324,13 @@ namespace Xianxia.Unity.T2
             InjectZoneConfig();
             SpawnFirstWave();
 
+            // ★P2-1 R-1 建场即置位。
+            //   必须在首波之后：ArmBossPending 的前提之一是 Encounter 已就绪，
+            //   而且置位后 PendingAwareEnemyCount 立刻多 1，放在首波之前会让
+            //   "首波尚未生成的那一小段"也带着债 —— 虽然结果一样，但语义上说不清。
+            //   同时必须早于第一次 FixedUpdate（Start 天然满足），否则头一步就可能被判胜。
+            ArmBossPending();
+
             // T3 装配放在首波之后：SetupT3 会按当前存活敌人数决定不了什么，
             // 但 SeedSkillRng 必须晚于 SpawnFirstWave —— 首波生成消耗的是
             // Encounter.Rng，两条流物理隔离，先后顺序不影响任何一方，
@@ -356,6 +363,17 @@ namespace Xianxia.Unity.T2
             {
                 enc.RunState.PhaseChanged += OnRunPhaseChanged;
             }
+
+            // ★P2-1 GAP-4 / GAP-5 表现层装配。
+            //   为什么卡在这个位置：
+            //   ① 必须晚于 ArmBossPending —— 装配失败（比如特效模板没传进来）只该掉表现，
+            //      不该连"欠债"这条判定口径一起掉；置位在前，出岔子也仍有兜底。
+            //   ② 必须晚于 _gameOverHud —— 两者都要摸 Encounter，让"订阅动作"集中成一段，
+            //      日后查订阅/退订是否成对，只需看这一屏。
+            //   ③ 必须早于 _mainMenuHud —— 主菜单那一串会立刻 SetMenuPaused(true) 并弹面板，
+            //      此后 TickBossFlow 被 IsGameplayBlocked 挡住；装配放在闸门落下之后
+            //      虽然也能跑（Update 里还会惰性解析），但"先装配、后开闸"读起来才是一条直线。
+            SetupBossFlow();
 
             // ★ P0-5 主菜单 / 暂停菜单 + P0-6 操作引导接线。
             //   与 GameOverHud 同款套路：AddComponent → Build()（Build 内部才建 Canvas）。
@@ -763,9 +781,20 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
-            // ★ BOSS 刻意传 null：T2 切片不含 BOSS（属 P1-04）。
-            //   传了配置，任何一处误调 SpawnBoss 就会在切片里刷出竹魈王。
-            controller.SetZoneConfig(_zone.Enemies, null, _zone.BaseLevel);
+            // ★P2-1 GAP-1：BOSS 段现在**必须传真**。
+            //
+            //   这里过去写的是 null，注释理由是"T2 切片不含 BOSS，传了配置就怕误调
+            //   SpawnBoss 刷出竹魈王"。那个顾虑在当时成立，现在已经过期：
+            //   BOSS 战正是本切片要交付的东西，而"什么时候刷"由 BossFlow 状态机
+            //   单向管控（Disabled→Pending→Entering→Fighting→Done），不存在误调。
+            //
+            //   还传 null 的后果不是"安全"，是 CombatController.SpawnBoss 的
+            //   `if (_zoneBoss == null) return null;` 早退分支永远命中 ——
+            //   BOSS 永远生不出来，而且一声不吭。
+            //
+            //   ⚠️ 改这行的人请连注释一起改。上一版就是因为注释没跟着改，
+            //      下一个人照着"刻意传 null"又给改了回去。
+            controller.SetZoneConfig(_zone.Enemies, _zone.Boss, _zone.BaseLevel);
         }
 
         private void SpawnFirstWave()
@@ -1328,6 +1357,14 @@ namespace Xianxia.Unity.T2
             // 但它不会把 _menuPaused 的状态踩掉，也不会被后来的菜单关闭动作反向踩掉。
             ApplyPauseState();
 
+            // ★P2-1：终局必收 BOSS 血条。
+            //   BOSS 被打死那一路血条会自愈（HudBossBar.Update 见 _boss.IsAlive == false 就 Hide），
+            //   但**玩家先死**那一路不会：BOSS 还活蹦乱跳，血条自然不收，于是结算面板顶上
+            //   横着一条满血 BOSS 条，看着像"没打完却弹了结算"。
+            //   这里只动显示，不碰 _bossState —— 终局后 IsGameplayBlocked 恒为 true，
+            //   TickBossFlow 本来就一步都不会再走，状态机停在哪儿都无所谓，重开时整场重建。
+            HideBossBar();
+
             if (_gameOverHud != null)
             {
                 _gameOverHud.Show(p);
@@ -1366,6 +1403,15 @@ namespace Xianxia.Unity.T2
             // ★ P1-2：与 SetupHitFeedback 里的两次 += 严格对称，
             //   并在最后兜底放开 FeedbackClock.Frozen（防"下一局开局即全局冻结"）。
             TeardownHitFeedback();
+
+            // ★P2-1：与 SetupBossFlow 的 += 严格对称。
+            //   BossPhaseChanged 挂在 CombatEventsUnity 上（生命周期跟随 CombatController），
+            //   不退订的话，重开后旧回调会拿着一个已销毁的 HudBossBar 去 SetPhase，
+            //   在 Unity 里就是一条 MissingReferenceException —— 而它抛在事件分发链里，
+            //   会把同一事件的后续订阅者一起带走。顺手清掉 _bossBar / _boss 两个引用，
+            //   免得下一局的惰性解析摸到上一局的残骸（Unity 的 == null 重载能识破，
+            //   但"看起来非空、其实已死"的对象没必要留着让人猜）。
+            TeardownBossFlow();
         }
 
         /// <summary>
@@ -1408,6 +1454,463 @@ namespace Xianxia.Unity.T2
                 MainMenuHud.SkipOnNextLoad = true;
                 ReloadScene();
             }
+
+            // ★P2-1 BOSS 出场编排推进。
+            //
+            // 【为什么放在 Update 而不是 FixedUpdate】
+            // 这里做的全是表现层与场景层的活（生成实体、换贴图、开血条），不参与
+            // 内核的确定性推进。判据本身取自内核的 BossPendingIdleSeconds ——
+            // 那个数是在 StepFixed 里按固定 dt 累加的，暂停时自动冻结，
+            // 所以"用 Update 的频率去读一个 FixedUpdate 的时钟"不会带来任何抖动：
+            // 快慢只影响"发现超时"的延迟上限（一帧），不影响触发阈值本身。
+            //
+            // 【为什么放在最后】ESC / R 两段是输入响应，可能改变闸门状态
+            // （开暂停菜单、重载场景）。先结算输入再推进编排，TickBossFlow 开头那句
+            // IsGameplayBlocked 判的就是本帧的最新结论，不会用上一帧的旧状态多走一步。
+            TickBossFlow();
+        }
+
+        // ---------------------------------------------------------------------
+        // ★P2-1 BOSS 出场编排（唯一置位者 + 唯一清位者 + 唯一兜底者）
+        //
+        // 【为什么这一整块只能有一个主人】
+        // BossPending 是"胜利抑制开关"。只要有第二个地方能置位或清位，
+        // 就必然出现两种灾难之一：
+        //   ① 该清没清 → PendingAwareEnemyCount 永远 ≥ 1 → 玩家清光全场却永远判不出 Won，
+        //      卡死在空地图上。这是本切片唯一的致命故障模式；
+        //   ② 不该清却清了 → 清完杂兵当场判 Won，BOSS 永远不出场，
+        //      而且玩家多半以为"设计如此"，连报障都不会来。
+        // 所以置位、清位、兜底三件事全部锁在本文件本区块，别处一行都不许写。
+        //
+        // 【四道纵深防线】
+        //   R-1 置位与出场条件强绑定：三个前提缺一就退化成 Disabled，全程不置位；
+        //   R-2 状态机单向推进：Disabled / Pending→Entering→Fighting→Done，杜绝抖动；
+        //   R-3 重开必复位：Encounter.Clear() 内已带 ClearBossPending()（内核侧）；
+        //   R-4 双层兜底超时：4s 重试（≤2 次）→ 12s 强制清位 + LogError。
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// BOSS P3 冲击波的特效模板（GAP-5）。由 <c>WorldBuilder.BuildCombat</c> 在装配期写入，
+        /// 本组件在 <see cref="SetupBossFlow"/> 里把它转交给 <c>CombatEventsUnity.ShockwaveFxPrefab</c>。
+        ///
+        /// 【为什么要在这里中转一手】WorldBuilder 建好模板时，Combat 节点还是未激活状态，
+        /// <c>CombatController.Awake</c> 尚未执行，<c>EventsUnity</c> 根本还不存在，
+        /// 当场赋值只会写到一个 null 上。
+        /// </summary>
+        [HideInInspector] public GameObject ShockwaveFxTemplate;
+
+        // BOSS 出场状态机。单向推进，见 BossFlowState 的注释。
+        private BossFlowState _bossState = BossFlowState.Disabled;
+
+        // 下一次生成尝试的**截止时刻**，单位是 Encounter.BossPendingIdleSeconds 的秒数。
+        // 之所以拿内核的 idle 计时而不是 Time.deltaTime 自己攒：
+        // 内核计时在暂停时自动冻结（StepFixed 不被调），玩家开菜单泡茶不会误触发兜底。
+        private float _bossEntryTimer;
+
+        // 已用掉的重试次数。上限 BossFlowConfig.MaxSpawnRetries。
+        private int _bossSpawnRetries;
+
+        // 当前 BOSS 实体。未出场 / 已阵亡时为 null。
+        private Combatant _boss;
+
+        // BOSS 血条。由 Hud 在自己的 Build() 里建出来，这里惰性解析引用
+        // —— Hud.Start 与本组件 Start 的先后顺序是 Unity 不保证的，不能在 Start 里一次性取死。
+        private HudBossBar _bossBar;
+
+        // 诊断日志去重旗标（DiagTimeoutSeconds 一局只打一次）。
+        private bool _bossDiagLogged;
+
+        /// <summary>当前 BOSS 编排状态名（供 HUD 调试面板 C3 显示）。</summary>
+        public string BossFlowStateName
+        {
+            get { return _bossState.ToString(); }
+        }
+
+        /// <summary>当前是否欠着 BOSS 债（供 HUD 调试面板 C3 显示）。</summary>
+        public bool IsBossPending
+        {
+            get
+            {
+                var enc = Encounter;
+                return enc != null && enc.BossPending;
+            }
+        }
+
+        /// <summary>"欠债且场上零敌人"的连续滞留秒数（供 HUD 调试面板 C3 与兜底判据使用）。</summary>
+        public float BossPendingIdleSeconds
+        {
+            get
+            {
+                var enc = Encounter;
+                return enc != null ? enc.BossPendingIdleSeconds : 0.0f;
+            }
+        }
+
+        /// <summary>当前 BOSS 实体（未出场 / 已阵亡为 null）。供集成测试读取。</summary>
+        public Combatant CurrentBoss
+        {
+            get { return _boss; }
+        }
+
+        /// <summary>BOSS 血条（可能尚未解析，返回 null）。供集成测试读取。</summary>
+        public HudBossBar BossBar
+        {
+            get { return _bossBar; }
+        }
+
+        /// <summary>
+        /// ★R-1 建场即置位。在 <see cref="Start"/> 里首波生成之后调用一次。
+        ///
+        /// 【为什么必须在建场时就置位，而不是等"快清完了"再置】
+        /// 因为不存在"快清完了"这个可靠时刻。范围技能一步能把最后 3 只全带走，
+        /// <c>AliveEnemyCount</c> 从 3 直接跳到 0，中间没有任何一帧给上层反应。
+        /// 而 <c>StepFixed</c> 的步 ⑦ 就在同一步里判定 —— 上层无论多勤快都来不及插手。
+        /// 唯一安全的做法就是"这一局从头到尾都欠着一只 BOSS"，等真身入列再销账。
+        ///
+        /// 【三个前提缺一不可】任一为假就退化成 <see cref="BossFlowState.Disabled"/>，
+        /// 全程不置位、行为与无 BOSS 关卡完全一致 —— 宁可这局没 BOSS，绝不软锁。
+        /// </summary>
+        private void ArmBossPending()
+        {
+            var enc = Encounter;
+
+            if (_zone == null || _zone.Boss == null || enc == null)
+            {
+                _bossState = BossFlowState.Disabled;
+
+                // 不是错误：安全区 / 无 BOSS 的区域走到这里是完全正常的。
+                // 但要留一行痕，免得"zone_youhuang 打完没见到 BOSS"时无从下手。
+                Debug.Log(string.Format(
+                    "[T2] BOSS 流程未启用（zone={0} bossCfg={1} encounter={2}），本局按无 BOSS 关卡进行。",
+                    _zone != null ? _zone.ZoneId : "null",
+                    _zone != null && _zone.Boss != null ? "ok" : "null",
+                    enc != null ? "ok" : "null"));
+                return;
+            }
+
+            enc.MarkBossPending();
+            _bossState = BossFlowState.Pending;
+            _bossEntryTimer = BossFlowConfig.EntryDelaySeconds;
+            _bossSpawnRetries = 0;
+            _bossDiagLogged = false;
+        }
+
+        /// <summary>
+        /// 装配 BOSS 的表现层接线（GAP-4 / GAP-5）。在 <see cref="Start"/> 里
+        /// <c>_gameOverHud</c> 建完之后、主菜单建出来之前调用。
+        /// </summary>
+        private void SetupBossFlow()
+        {
+            if (controller == null || controller.EventsUnity == null)
+            {
+                return;
+            }
+
+            // ★GAP-4：BossPhaseChanged 事件在桥接层早就实现了，只是**一个订阅者都没有** ——
+            //   BOSS 从 P1 打到 P3，内核老老实实抛了两次事件，全都掉在地上。
+            controller.EventsUnity.BossPhaseChanged += OnBossPhaseChanged;
+
+            // ★GAP-5：ShockwaveFxPrefab 同理，字段一直在，就是没人赋值，
+            //   于是 SpawnFx 每次都因为 prefab == null 静默 return，冲击波全程无特效。
+            if (ShockwaveFxTemplate != null)
+            {
+                controller.EventsUnity.ShockwaveFxPrefab = ShockwaveFxTemplate;
+            }
+            else
+            {
+                Debug.LogWarning("[T2] 冲击波特效模板未装配，BOSS P3 冲击波将无视觉表现（伤害仍正常结算）。" +
+                                 "请检查 WorldBuilder.BuildCombat 是否给 bridge.ShockwaveFxTemplate 赋了值。");
+            }
+
+            // 血条这里先试一次；取不到不算错（Hud.Start 可能还没跑），
+            // 真正需要时 ResolveBossBar() 会再找一遍。
+            ResolveBossBar();
+        }
+
+        /// <summary>惰性解析 BOSS 血条引用。</summary>
+        /// <returns>血条组件；场景里还没有则返回 null。</returns>
+        private HudBossBar ResolveBossBar()
+        {
+            if (_bossBar == null)
+            {
+#if UNITY_2023_1_OR_NEWER
+                _bossBar = Object.FindFirstObjectByType<HudBossBar>();
+#else
+                _bossBar = Object.FindObjectOfType<HudBossBar>();
+#endif
+            }
+            return _bossBar;
+        }
+
+        /// <summary>
+        /// BOSS 出场编排的每帧推进。由 <see cref="Update"/> 调用。
+        ///
+        /// 【计时基准】全部判据都是内核的 <c>BossPendingIdleSeconds</c>
+        /// （"欠债 **且** 场上零敌人"的连续滞留时长），**不是**"自置位起的总时长"。
+        /// 后者在建场即置位的语义下必然误触发：玩家正常清杂兵要几十秒到几分钟，
+        /// 照抄 PRD 的"10 秒兜底"会 100% 复现"BOSS 永远不出场"—— 那比软锁更隐蔽。
+        /// </summary>
+        private void TickBossFlow()
+        {
+            // 统一闸门。菜单打开 / 终局之后不推进 BOSS 编排 ——
+            // 与内核侧对齐：那种状态下 StepFixed 也不跑，idle 同样冻结。
+            // 注意这里读的是只读结论 IsGameplayBlocked，**不碰** Scheduler.Paused。
+            if (IsGameplayBlocked)
+            {
+                return;
+            }
+
+            if (_bossState == BossFlowState.Disabled || _bossState == BossFlowState.Done)
+            {
+                return;
+            }
+
+            var enc = Encounter;
+            if (enc == null)
+            {
+                return;
+            }
+
+            // 诊断留痕（C 类防线）：只打日志，**不改任何状态**。
+            // 用途是把"玩家挂机十分钟"这类非缺陷场景在日志里区分出来。
+            if (!_bossDiagLogged && enc.BossPendingTotalSeconds > BossFlowConfig.DiagTimeoutSeconds)
+            {
+                _bossDiagLogged = true;
+                Debug.LogWarning(string.Format(
+                    "[T2] BOSS 债已挂起 {0:F0} 秒（state={1}，场上敌人 {2}）。" +
+                    "若玩家仍在正常清怪，这是预期行为，本条仅供日志分辨。",
+                    enc.BossPendingTotalSeconds, _bossState, enc.AliveEnemyCount));
+            }
+
+            if (_bossState == BossFlowState.Pending)
+            {
+                // 还有杂兵没清完 —— 这正是 BossPending 存在的意义，安静等着就行。
+                if (enc.AliveEnemyCount > 0)
+                {
+                    return;
+                }
+
+                // 场上清空，进入入场倒计时。idle 此刻从 0 开始涨，
+                // 截止时刻直接用秒数表示，与 idle 同一标尺。
+                _bossState = BossFlowState.Entering;
+                _bossEntryTimer = BossFlowConfig.EntryDelaySeconds;
+                return;
+            }
+
+            if (_bossState == BossFlowState.Entering)
+            {
+                TickBossEntering(enc);
+                return;
+            }
+
+            // Fighting：只负责收尾。BOSS 阵亡后把血条收起来、状态推到终态。
+            // 判胜由内核照常完成（此刻已销债，PendingAwareEnemyCount == AliveEnemyCount）。
+            if (_bossState == BossFlowState.Fighting)
+            {
+                if (_boss == null || !_boss.IsAlive)
+                {
+                    _boss = null;
+                    _bossState = BossFlowState.Done;
+                    HideBossBar();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Entering 态的推进：入场倒计时 → 生成 → 失败重试 → 硬超时放行。
+        /// </summary>
+        /// <param name="enc">当前战场（调用方已判非空）。</param>
+        private void TickBossEntering(Encounter enc)
+        {
+            float idle = enc.BossPendingIdleSeconds;
+
+            // ★R-4 二级（最后防线）：认定 BOSS 系统不可用，主动放弃本局 BOSS 战。
+            //   必须放在最前面判：无论卡在倒计时还是卡在重试，12 秒一到无条件放行。
+            //   宁可这局没打到 BOSS，也绝不让玩家卡在空地图上。
+            if (idle >= BossFlowConfig.HardTimeoutSeconds)
+            {
+                Debug.LogError(string.Format(
+                    "[T2] BOSS 出场失败：已滞留 {0:F1} 秒、重试 {1} 次仍未生成，强制解除胜利抑制。" +
+                    "本局将不会有 BOSS。请检查 zones.json 的 boss 段与 CombatController.SetZoneConfig。",
+                    idle, _bossSpawnRetries));
+
+                enc.ClearBossPending();
+
+                // ★必须落到终态：否则下一帧 TickBossFlow 又会把流程重新拉起来，
+                //   形成"清位 → 置位 → 清位"的抖动，日志会被刷爆。
+                _bossState = BossFlowState.Done;
+                _boss = null;
+                HideBossBar();
+                return;
+            }
+
+            // 还没到这一次尝试的时刻。首次是 EntryDelaySeconds(1.5s)，
+            // 之后每失败一次就退到 EntryTimeoutSeconds × 重试序号（4s / 8s）。
+            if (idle < _bossEntryTimer)
+            {
+                return;
+            }
+
+            if (TrySpawnBossNow())
+            {
+                _bossState = BossFlowState.Fighting;
+                return;
+            }
+
+            // ★R-4 一级：生成失败，安排下一次重试。
+            if (_bossSpawnRetries < BossFlowConfig.MaxSpawnRetries)
+            {
+                _bossSpawnRetries++;
+                _bossEntryTimer = BossFlowConfig.EntryTimeoutSeconds * _bossSpawnRetries;
+
+                Debug.LogWarning(string.Format(
+                    "[T2] BOSS 生成失败（第 {0}/{1} 次重试），已滞留 {2:F1} 秒，将在 idle={3:F1}s 时再试。",
+                    _bossSpawnRetries, BossFlowConfig.MaxSpawnRetries, idle, _bossEntryTimer));
+            }
+            else
+            {
+                // 机会用尽，不再尝试，也不要每帧重试刷屏 —— 把闸门推到硬超时之后，
+                // 剩下的交给上面那段二级兜底收场。
+                _bossEntryTimer = BossFlowConfig.HardTimeoutSeconds;
+            }
+        }
+
+        /// <summary>
+        /// 立刻尝试生成 BOSS。**销债严格发生在实体入列之后**（不变量 I-3）。
+        /// </summary>
+        /// <returns>成功生成并完成接线返回 true；否则 false（调用方负责重试 / 兜底）。</returns>
+        private bool TrySpawnBossNow()
+        {
+            var enc = Encounter;
+            if (controller == null || enc == null)
+            {
+                Debug.LogError("[T2] TrySpawnBossNow：controller 或 Encounter 为空，无法生成 BOSS。");
+                return false;
+            }
+
+            Vector2 at = PickBossSpawnPos();
+            Combatant boss = controller.SpawnBoss(at);
+
+            if (boss == null)
+            {
+                // ★C2 防线：把 SpawnBoss 两个早退分支的判定结果直接摊出来，
+                //   一眼就能看出是"zones.json 的 boss 段没传进去"还是"战场没建起来"。
+                Debug.LogError(string.Format(
+                    "[T2] SpawnBoss 返回 null（zone={0}，zone.Boss={1}，Encounter={2}）。" +
+                    "最可能的原因是 InjectZoneConfig 又把 boss 段传成了 null（GAP-1 复发）。",
+                    _zone != null ? _zone.ZoneId : "null",
+                    _zone != null && _zone.Boss != null ? "ok" : "null",
+                    "ok"));
+                return false;
+            }
+
+            // ① 视图：模板是未激活的，不 Dress 就等于"BOSS 在打你但屏幕上什么都没有"（GAP-6）。
+            //    放在销债之前：万一 DressBoss 里出岔子，此刻债还挂着，兜底照样能兜。
+            if (_spawner != null)
+            {
+                _spawner.DressBoss(boss);
+            }
+
+            // ② ★不变量 I-3：销债必须严格在 SpawnBoss 返回非 null 之后。
+            //    SpawnBoss 内部的 Encounter.Add 是**直接** Combatants.Add（不走 _pendingAdd 队列），
+            //    所以此刻 AliveEnemyCount 已经 +1；先加后减，握手区间内
+            //    PendingAwareEnemyCount 始终 ≥ 1，中间不存在任何"债清了怪没到"的空窗。
+            //    而这两行同处一个 Update，中间也不可能插进一次 StepFixed。
+            enc.ClearBossPending();
+
+            _boss = boss;
+
+            // ③ 血条。Hud 可能比本组件晚 Start，这里再解析一次。
+            HudBossBar bar = ResolveBossBar();
+            if (bar != null)
+            {
+                bar.Show(boss);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 抽一个 BOSS 落点：以玩家为中心的圆环采样 + 地形校验。
+        ///
+        /// 【为什么只用 Encounter.Rng，不用 UnityEngine.Random】
+        /// 后者是全局静态流，既不受区域种子控制、也不参与 DeterminismDump 的记录，
+        /// 掺进来同种子重放就当场作废 —— 而"同种子同世界"是这个工程的地基之一。
+        ///
+        /// 【为什么落点要过一遍地形】圆环采样完全不知道地形，BOSS 有相当概率
+        /// 刷进水里或岩石里。校验口径与 <c>EnemySpawner.RelocateIfBlocked</c> 完全一致：
+        /// 先夹回地图内，再用**不消耗随机流**的确定性螺旋搜索挪到最近的可站立格。
+        /// 用不消耗随机流的方式修正，随机流的形状才与地形彻底解耦。
+        /// </summary>
+        /// <returns>已通过地形校验的世界坐标。</returns>
+        private Vector2 PickBossSpawnPos()
+        {
+            Vector2 center = playerTransform != null
+                ? new Vector2(playerTransform.position.x, playerTransform.position.y)
+                : WorldBuilder.PlayerSpawn;
+
+            Vector2 pos = center;
+
+            var enc = Encounter;
+            if (enc != null)
+            {
+                // 圆环口径沿用首波生成（SpawnRingMin/Max），BOSS 出场距离与杂兵一致，
+                // 玩家的空间预期不会因为"这次是 BOSS"而突然改变。
+                float ang = enc.Rng.NextRange(0.0f, 360.0f);
+                float rad = enc.Rng.NextRange(WorldBuilder.SpawnRingMin, WorldBuilder.SpawnRingMax);
+                Vec2 offset = Vec2.Right.RotatedDeg(ang) * rad;
+                pos = new Vector2(center.x + offset.X, center.y + offset.Y);
+            }
+
+            float half = WorldBuilder.TileUnit * 0.5f;
+            pos.x = Mathf.Clamp(pos.x, half, WorldBuilder.WorldWidth - half);
+            pos.y = Mathf.Clamp(pos.y, half, WorldBuilder.WorldHeight - half);
+
+            if (!WorldBuilder.IsWalkableWorld(pos))
+            {
+                Vector2Int tile = WorldBuilder.WorldToTile(pos);
+                pos = WorldBuilder.FindSpawnableNear(tile.x, tile.y);
+            }
+
+            return pos;
+        }
+
+        /// <summary>
+        /// BOSS 阶段变化回调（订阅自 <c>CombatEventsUnity.BossPhaseChanged</c>）。
+        ///
+        /// 内核的 <c>BossController.CheckPhaseTransition</c> 保证只降不升，
+        /// 且 P1 直接跌破 30% 的连跳只抛一次 P3，所以这里不需要自己去重。
+        /// </summary>
+        /// <param name="phase">新阶段。</param>
+        private void OnBossPhaseChanged(BossPhase phase)
+        {
+            HudBossBar bar = ResolveBossBar();
+            if (bar != null)
+            {
+                bar.SetPhase(phase);
+            }
+
+            Debug.Log(string.Format("[T2] BOSS 进入 {0} 阶段。", phase));
+        }
+
+        /// <summary>收起 BOSS 血条（可重复调用）。</summary>
+        private void HideBossBar()
+        {
+            if (_bossBar != null)
+            {
+                _bossBar.Hide();
+            }
+        }
+
+        /// <summary>退订 BOSS 相关事件。与 <see cref="SetupBossFlow"/> 严格对称。</summary>
+        private void TeardownBossFlow()
+        {
+            if (controller != null && controller.EventsUnity != null)
+            {
+                controller.EventsUnity.BossPhaseChanged -= OnBossPhaseChanged;
+            }
+            _bossBar = null;
+            _boss = null;
         }
 
         // ---------------------------------------------------------------------

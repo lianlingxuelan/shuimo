@@ -711,6 +711,100 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>
+        /// 造 BOSS「预制体」模板（P2-1 / GAP-2）。
+        ///
+        /// 与 <see cref="BuildEnemyTemplate"/> 同款约定：<c>SetActive(false)</c> 的场景对象当模板，
+        /// 副本同样未激活，由 <c>EnemySpawner.DressBoss</c> 上完色再放出来。
+        ///
+        /// 【为什么不直接复用 enemyTemplate】
+        /// 原来 <c>BindScene</c> 第 4 参传的是 null，<c>CombatController.SpawnBoss</c> 只好回落
+        /// 到 enemyPrefab —— BOSS 顶着杂兵的皮出场。功能上"能跑"，但玩家分不清 BOSS 和小怪，
+        /// 而这恰恰是 BOSS 战最基本的可读性要求。单独一个模板还能给它更高的 sortingOrder，
+        /// 保证 BOSS 永远压在小怪上层，不会被自己召唤出来的一堆杂兵挡住。
+        /// </summary>
+        /// <param name="parent">模板挂载父节点（与敌人模板同级）。</param>
+        /// <returns>未激活的 BOSS 视图模板。</returns>
+        private static GameObject BuildBossTemplate(Transform parent)
+        {
+            GameObject go = new GameObject("BossTemplate");
+            go.transform.SetParent(parent, false);
+
+            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+            // 这里只给一个白圆占位；真正的配色 / 描边由 DressBoss 按 kind 覆盖。
+            sr.sprite = SpriteFactory.Circle("boss", Color.white, new Color(0, 0, 0, 0), 0.0f);
+
+            // 比杂兵的 5 高一档：BOSS 被自己召唤的小怪盖住会让玩家彻底找不到打击目标。
+            sr.sortingOrder = 6;
+
+            go.AddComponent<CombatView>();
+            go.SetActive(false);
+            return go;
+        }
+
+        /// <summary>
+        /// 造 BOSS P3 冲击波特效模板（P2-1 / GAP-7）。
+        ///
+        /// 【为什么是两层结构，而不是一个 SpriteRenderer 完事】
+        /// <c>CombatEventsUnity.SpawnFx</c> 是**覆盖式**写根节点缩放：
+        /// <c>fx.transform.localScale = Vector3.one * radius</c>（radius = 200）。
+        /// 任何写在根节点上的预缩放都会被这一行整个抹掉。
+        /// 而 <c>SpriteFactory.Circle</c> 产出的是 64×64 像素、PPU = 1.0 的贴图，
+        /// 也就是**世界尺寸 64 单位、半径 32 单位**的圆。根节点被写成 200 之后，
+        /// 有效半径 = 32 × 200 = 6400 单位 —— 整张地图宽度才 WorldWidth，
+        /// 玩家会看到一整屏纯色，以为游戏崩了。
+        ///
+        /// 正确做法：把 1/32 的补偿放在**子节点**上。根节点留给 SpawnFx 随便写，
+        /// 子节点的 1/32 与之相乘，最终有效半径 = 32 × 200 × (1/32) = 200 单位 ✓。
+        ///
+        /// 补偿系数写成 <c>1f / (SpriteFactory.ShapePixels * 0.5f)</c> 而不是硬编码 0.03125f：
+        /// 哪天有人把 ShapePixels 从 64 调成 128，这里自动跟着变；写死的话就会静默偏差一倍。
+        ///
+        /// 【★C4 激活约定 —— 这条不写注释下一个加特效的人 100% 踩】
+        /// <c>SpawnFx</c> 只 <c>Instantiate</c>，**不调 SetActive**，副本的 activeSelf 完全继承模板。
+        /// 所以模板根**必须** activeSelf = true，否则特效一个都不出，而且完全静默（和 GAP-6 同款陷阱）。
+        /// 模板自身之所以不显示，靠的是父容器 <c>FxTemplates</c> 被 SetActive(false)
+        /// —— 此时模板 activeInHierarchy == false（看不见），但 activeSelf == true，
+        /// Instantiate 到活跃的 FxRoot 之后副本立刻是活的。
+        /// </summary>
+        /// <param name="parent">FX 模板容器的父节点。</param>
+        /// <returns>activeSelf == true、但挂在未激活容器下的冲击波模板根。</returns>
+        private static GameObject BuildShockwaveFxTemplate(Transform parent)
+        {
+            // ① 未激活的容器：模板靠它隐藏，而不是靠自己 SetActive(false)。
+            GameObject holder = new GameObject(BossFlowConfig.FxTemplateRootName);
+            holder.transform.SetParent(parent, false);
+            holder.SetActive(false);
+
+            // ② 模板根：SpawnFx 会覆盖式改写它的 localScale，这里不做任何预缩放。
+            GameObject root = new GameObject("ShockwaveFx");
+            root.transform.SetParent(holder.transform, false);
+            root.AddComponent<FxAutoDespawn>();
+
+            // ③ 补偿子节点：把"贴图自带的 32 单位半径"归一化成 1 单位半径。
+            //    有了它，根节点上的 localScale 才等价于"世界半径"。
+            GameObject visual = new GameObject("Visual");
+            visual.transform.SetParent(root.transform, false);
+
+            float compensation = 1.0f / (SpriteFactory.ShapePixels * 0.5f);
+            visual.transform.localScale = Vector3.one * compensation;
+
+            SpriteRenderer sr = visual.AddComponent<SpriteRenderer>();
+            sr.sprite = SpriteFactory.Circle(
+                "fx_shockwave",
+                new Color(BossFlowConfig.FxColorR, BossFlowConfig.FxColorG,
+                          BossFlowConfig.FxColorB, BossFlowConfig.FxColorA),
+                new Color(BossFlowConfig.FxColorR, BossFlowConfig.FxColorG,
+                          BossFlowConfig.FxColorB, 1.0f),
+                BossFlowConfig.FxOutlinePx);
+
+            // 压在地面之上、角色之下：波是"地面涟漪"，盖住玩家会挡住走位判断。
+            sr.sortingOrder = 3;
+
+            // ★不要给 root 加 SetActive(false)。见方法注释 C4。
+            return root;
+        }
+
+        /// <summary>
         /// 装配战斗节点。这里**不传随机流**：CombatController.BuildEncounter 会用
         /// 同样的 (zoneId, isSafe, visits) 自行 CreateRng，得到一条与地形独立但同源的流。
         /// </summary>
@@ -719,6 +813,11 @@ namespace Xianxia.Unity.T2
             GameObject enemyRoot = new GameObject("Enemies");
             enemyRoot.transform.SetParent(parent, false);
 
+            // P2-1：BOSS 视图模板与冲击波特效模板。两者都挂在 enemyRoot 下，
+            // 与敌人模板同一套生命周期（场景重载一起销毁，无跨场景残留）。
+            GameObject bossTemplate = BuildBossTemplate(enemyRoot.transform);
+            GameObject shockwaveTemplate = BuildShockwaveFxTemplate(enemyRoot.transform);
+
             // 先建成未激活对象再 Bind* 再激活：CombatController 在 Awake 里就会
             // BuildEncounter，必须让它带着正确配置跑第一次（见 CombatController.BindScene 注释）。
             GameObject combatGo = new GameObject("Combat");
@@ -726,12 +825,20 @@ namespace Xianxia.Unity.T2
             combatGo.SetActive(false);
 
             CombatController ctrl = combatGo.AddComponent<CombatController>();
-            ctrl.BindScene(player, enemyRoot.transform, enemyTemplate, null);
+
+            // ★P2-1 GAP-2：第 4 参过去一直是 null，导致 BOSS 顶着杂兵的皮出场。
+            ctrl.BindScene(player, enemyRoot.transform, enemyTemplate, bossTemplate);
             ctrl.BindZone(Bootstrap.ZoneId, Bootstrap.ZoneVisits, Bootstrap.IsSafeZone);
             ctrl.BindPlayerStats(CombatBridge.PlayerHpMax, CombatBridge.PlayerDef, false);
 
             CombatBridge bridge = combatGo.AddComponent<CombatBridge>();
             bridge.Configure(ctrl, player, Zone);
+
+            // ★P2-1 GAP-5：把冲击波模板交给编排层。
+            //   不能在这里直接写 ctrl.EventsUnity.ShockwaveFxPrefab —— combatGo 此刻还是
+            //   未激活状态，Awake 没跑，EventsUnity 尚不存在（BuildEncounter 在 Awake 里）。
+            //   所以先寄存到 Bridge 的字段上，由它在 Start 的 SetupBossFlow 里装配。
+            bridge.ShockwaveFxTemplate = shockwaveTemplate;
 
             combatGo.AddComponent<EnemySpawner>();
             combatGo.AddComponent<DeterminismDump>();

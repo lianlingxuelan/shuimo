@@ -160,6 +160,127 @@ namespace Xianxia.Combat
         }
 
         // ---------------------------------------------------------------------
+        // ★P2-1 BOSS 出场债（BossPending）
+        // ---------------------------------------------------------------------
+        //
+        // 【解决什么问题】BOSS 是"杂兵清完之后才生成"的。清完最后一只杂兵的那一步，
+        // 步 ⑥ 收尸把 AliveEnemyCount 打到 0，步 ⑦ 裁判当场判 Won —— 而 BOSS 还没
+        // 出生。幂等闸门是单向的，一旦落定 Won 就永不回退，这一局的 BOSS 战直接蒸发。
+        //
+        // 【方案】给裁判一个"虚拟的一只敌人"。上层在建场时就宣告"本局欠玩家一只 BOSS"
+        // （MarkBossPending），裁判从此按 PendingAwareEnemyCount = Alive + 1 计数，
+        // 于是在 BOSS 真身入列之前永远判不出 Won。BOSS 一旦 Encounter.Add 成功，
+        // 上层立刻 ClearBossPending() 把债销掉，判定口径无缝回到原语义。
+        //
+        // 【为什么住在内核而不是 Unity 侧】
+        //   1) 它必须与 AliveEnemyCount 同层同源——判定口径只能有一个真源，
+        //      分家就一定会出现"两边不同步"的疑难杂症；
+        //   2) 两个计时器要用 StepFixed 的 dt 累加，这样玩家开暂停菜单
+        //      （Scheduler.Paused → StepFixed 不被调）时计时**自动冻结**，
+        //      上层的软锁兜底窗口才敢取 4 秒这么短的值；
+        //   3) 纯 bool / float / 纯方法，零 UnityEngine 依赖，不破坏 asmdef 铁律。
+        //
+        // 【不变量】（RunPhaseTests RP15–RP19 逐条覆盖）
+        //   I-1  PendingAwareEnemyCount >= AliveEnemyCount 恒成立；
+        //   I-2  BossPending == true ⟹ 不可能落定 Won（Lost 不受影响，失败分支只看玩家死活）；
+        //   I-3  ClearBossPending() 必须发生在 Encounter.Add(boss) **之后**，
+        //        否则中间会出现"债清了怪没到"的空窗，照样早判；
+        //   I-4  Clear() ⟹ 三个字段全部归零。
+        // ---------------------------------------------------------------------
+
+        // 是否欠着一只尚未入列的 BOSS。字段默认值 false —— new Encounter() 天生干净。
+        private bool _bossPending;
+
+        // 自置位起的累计时长（秒）。**仅用于诊断留痕**，不作为任何兜底判据：
+        // 建场即置位的语义下，玩家正常清杂兵就要花几十秒到几分钟，拿它做超时必然误杀。
+        private float _bossPendingTotal;
+
+        // "欠着债 且 场上一只敌人都没有"的**连续**滞留时长（秒）。这才是真正的软锁判据：
+        // 正常路径下这个状态只应存在 EntryDelaySeconds(1.5s)。场上一旦有敌人立刻归零。
+        private float _bossPendingIdle;
+
+        /// <summary>
+        /// 是否欠着一只尚未入列的 BOSS。为 true 时 <see cref="PendingAwareEnemyCount"/>
+        /// 恒比 <see cref="AliveEnemyCount"/> 多 1，裁判因此判不出 Won。
+        /// </summary>
+        public bool BossPending
+        {
+            get { return _bossPending; }
+        }
+
+        /// <summary>
+        /// 自 <see cref="MarkBossPending"/> 起累计的逻辑时长（秒）。**仅供诊断**，
+        /// 不要拿它做兜底超时判据——理由见本区块注释。
+        /// </summary>
+        public float BossPendingTotalSeconds
+        {
+            get { return _bossPendingTotal; }
+        }
+
+        /// <summary>
+        /// "欠着 BOSS 债 且 场上零敌人"的连续滞留时长（秒）。
+        /// 上层的软锁兜底（4s 重试 / 12s 强制清位）只认这个数。
+        /// 场上出现任何存活敌人时立刻归零。
+        /// </summary>
+        public float BossPendingIdleSeconds
+        {
+            get { return _bossPendingIdle; }
+        }
+
+        /// <summary>
+        /// **给裁判看的敌人数** = <see cref="AliveEnemyCount"/> + (欠着 BOSS ? 1 : 0)。
+        ///
+        /// 全仓判定口径只有这一个。看到有人写 <c>Evaluate(..., enc.AliveEnemyCount)</c>
+        /// 就是 Bug —— 那条路径会绕过 BOSS 债直接早判。
+        /// </summary>
+        public int PendingAwareEnemyCount
+        {
+            get { return AliveEnemyCount + (_bossPending ? 1 : 0); }
+        }
+
+        /// <summary>
+        /// 置位 BOSS 债。**幂等**：已置位时直接返回，不重置任何计时
+        /// （否则上层每帧误调一次就会把 IdleSeconds 一直摁在 0，兜底永不触发）。
+        ///
+        /// 唯一调用者：<c>CombatBridge.ArmBossPending()</c>（Start 内建场即置位）。
+        /// </summary>
+        public void MarkBossPending()
+        {
+            if (_bossPending)
+            {
+                return;
+            }
+            _bossPending = true;
+            _bossPendingTotal = 0.0f;
+            _bossPendingIdle = 0.0f;
+        }
+
+        /// <summary>
+        /// 清掉 BOSS 债，判定口径恢复原语义。计时器一并归零。
+        ///
+        /// 合法调用者共三个，且只有这三个：
+        /// ① <c>CombatBridge.TrySpawnBossNow()</c> 在 <c>Encounter.Add(boss)</c> 成功**之后**（正常路径）；
+        /// ② <c>CombatBridge.TickBossFlow()</c> 的硬超时兜底（R-4，宁可这局没 BOSS 也绝不软锁）；
+        /// ③ <see cref="Clear"/> 内（R-3，复用同一 Encounter 打第二局时的复位）。
+        /// </summary>
+        /// <returns>本次调用是否真的清掉了一笔债（false = 本来就没欠）。</returns>
+        public bool ClearBossPending()
+        {
+            if (!_bossPending)
+            {
+                // 计时器在未置位态本来就该是 0，这里顺手夯一遍，让"没欠债"这个
+                // 状态无论怎么走到都长得一模一样，省得调试时对着脏数据猜。
+                _bossPendingTotal = 0.0f;
+                _bossPendingIdle = 0.0f;
+                return false;
+            }
+            _bossPending = false;
+            _bossPendingTotal = 0.0f;
+            _bossPendingIdle = 0.0f;
+            return true;
+        }
+
+        // ---------------------------------------------------------------------
         // T3 装配位（全部可空 / 有安全默认值 —— 不装配时 StepFixed 走 T2 原路径）
         // ---------------------------------------------------------------------
 
@@ -360,6 +481,16 @@ namespace Xianxia.Combat
             Combo = 0;
             _comboIdleFrames = 0;
 
+            // ★P2-1 R-3：BOSS 债与 RunState 是同一类状态——对局级、跨局必须清零。
+            // 必须放在 RunState.Reset() **之前**：先把债销干净，再让裁判归位，
+            // 这样 Clear() 返回后 PendingAwareEnemyCount 与 Phase 是自洽的一对。
+            //
+            // 当前重开路径（ReloadScene → 整场景重载 → new Encounter()）下这行不会被触发，
+            // 但 Clear() 是公开 API，契约就是"清空整场战斗 = 重开一局"；而 RP13
+            // 已经在用"复用同一个 Encounter 打第二局"的写法。不写这行，
+            // 第二局起手就带着上一局欠下的 BOSS 债 —— 表现为"第二局永远赢不了"。
+            ClearBossPending();
+
             // ★P0-3：清场 = 重开一局，裁判必须回到"比赛进行中"并撤销布防。
             // 不重置的话，上一局判过负之后，这个 Encounter 被复用来打第二局时
             // 幂等闸门会一直卡在 Lost —— 第二局无论怎么打都不会再有任何胜负回调。
@@ -504,11 +635,55 @@ namespace Xianxia.Combat
             FlushPendingAdds();
             RemoveDead();
 
+            // ⑥-A ★P2-1 BOSS 债计时。**必须夹在 ⑥ 与 ⑦ 之间**：
+            //      放 ⑥ 之前读到的是本步收尸前的陈旧敌人数，最后一只杂兵刚死的那一步
+            //      会被误判成"场上还有敌人"，IdleSeconds 白白晚一步起跳；
+            //      放 ⑦ 之后则本步判定用的是上一步的计时值，兜底判据整体滞后一帧。
+            //      夹在中间，⑥-A 与 ⑦ 看到的是同一份"本步最终敌人集合"。
+            TickBossPending(dt);
+
             // ⑦ ★P0-3 胜负判定。**只读观察**：读 Player.IsAlive 与 AliveEnemyCount，
             //    写一个枚举字段，必要时抛一次事件。不碰任何战斗数值，也不提前 return，
             //    因此对 U1 平衡口径（HP 260 / d_eff 4.0 / raw 12 / CD 0.4s）零影响。
             //    放在 ⑥ 之后：收尸跑完，存活敌人数才是本步的最终答案。
             RunState.Evaluate(this);
+        }
+
+        // ---------------------------------------------------------------------
+        // ⑥-A ★P2-1 BOSS 债计时
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// 推进 BOSS 债的两个计时器。由 <see cref="StepFixed"/> 在收尸之后、判定之前调用。
+        ///
+        /// 用固定步的 <paramref name="dt"/> 累加而不是墙钟时间，换来两条性质：
+        /// ① 暂停即冻结（<c>Scheduler.Paused</c> 时 StepFixed 根本不被调）——
+        ///    上层 4 秒的兜底窗口计的是"游戏世界里真实流逝的 4 秒"，玩家开菜单泡茶不会误触发；
+        /// ② 同种子重放逐字节一致，不引入任何非确定性。
+        /// </summary>
+        /// <param name="dt">本固定步时长（秒），恒为 1/60。</param>
+        private void TickBossPending(float dt)
+        {
+            if (!_bossPending)
+            {
+                return;
+            }
+
+            // Total：无条件累加，纯诊断留痕。
+            _bossPendingTotal += dt;
+
+            // Idle：只在"场上零敌人"时累加，一旦有敌人立刻归零。
+            // 归零而不是暂停累加 —— 软锁判据要的是**连续**滞留时长，
+            // 中间只要有一只怪冒出来（比如 BOSS 召唤物先于 BOSS 入列这种怪事），
+            // 就说明战斗仍在推进，之前攒的滞留时间不该继续算数。
+            if (AliveEnemyCount <= 0)
+            {
+                _bossPendingIdle += dt;
+            }
+            else
+            {
+                _bossPendingIdle = 0.0f;
+            }
         }
 
         // ---------------------------------------------------------------------

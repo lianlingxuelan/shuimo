@@ -246,7 +246,18 @@ namespace Xianxia.Combat
             Combatant p = enc.Player;
             bool present = p != null;
             bool alive = present && p.IsAlive;
-            return Evaluate(present, alive, enc.AliveEnemyCount);
+
+            // ★P2-1：这里读的是 PendingAwareEnemyCount，不是 AliveEnemyCount。
+            //
+            // 两者的差别只有一处：当本局"欠着一只尚未入列的 BOSS"时前者多 1。
+            // BOSS 是清完杂兵之后才生成的，若按 AliveEnemyCount 判，清掉最后一只
+            // 杂兵的那一步就会当场判 Won —— 而幂等闸门单向不可逆，这一局的 BOSS 战
+            // 直接蒸发。多出来的那个 1 就是"欠玩家一只敌人"，债没销完不许鸣金。
+            //
+            // 债由上层 MarkBossPending / ClearBossPending 管理，本类只读不写，
+            // 继续守着文件头「只观察，不干预」。纯查询重载 Evaluate(bool,bool,int)
+            // 语义完全没变，RP01–RP14 十四条护栏一条都不受影响。
+            return Evaluate(present, alive, enc.PendingAwareEnemyCount);
         }
 
         /// <summary>

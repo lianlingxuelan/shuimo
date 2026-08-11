@@ -1,0 +1,182 @@
+%% ===========================================================================
+%% P2-1「BOSS 战接线」调用时序图
+%% ---------------------------------------------------------------------------
+%% 配套文档：docs/unity-p2-1-boss-architecture.md
+%% 架构：高见远（Gao）
+%%
+%% 【本图要证明的一件事】
+%%   从「建场」到「判胜」的整条链路上，RunPhaseTracker 不会早判 Won。
+%%   关键在阶段三：即使范围技一步把最后 3 只杂兵全带走（aliveEnemyCount
+%%   一步 3→0，中间不存在 1 和 2），步⑦ 读到的仍是 0 + 1 = 1，
+%%   幂等闸门不被触发；Won 留到 BOSS 真死之后才落定。
+%%
+%% 【八个阶段】
+%%   一 建场（Awake）           五 三阶段战斗
+%%   二 建场即置位（Start）     六 击杀与判胜
+%%   三 清杂兵（每固定步）      七 软锁兜底 R-4（异常路径）
+%%   四 BOSS 出场（Update 帧）  八 重开（Q-5）
+%% ===========================================================================
+
+sequenceDiagram
+    autonumber
+
+    participant WB as WorldBuilder<br/>(T2)
+    participant CB as CombatBridge<br/>(T2 编排)
+    participant SPW as EnemySpawner<br/>(T2)
+    participant BAR as HudBossBar<br/>(T2 新增)
+    participant CC as CombatController<br/>(桥接)
+    participant EVU as CombatEventsUnity<br/>(桥接)
+    participant ENC as Encounter<br/>(纯C#内核)
+    participant RP as RunPhaseTracker<br/>(纯C#内核)
+    participant BOSS as BossController<br/>(纯C#内核)
+
+    %% ===================================================================
+    rect rgb(238, 244, 252)
+    Note over WB,ENC: 阶段一 · 建场（Awake 期）—— 修 GAP-2 / GAP-7
+    WB->>WB: BuildEnemyTemplate() @699<br/>go.SetActive(false)（有意为之）
+    WB->>WB: BuildBossTemplate() 【新增·GAP-2】<br/>同款未激活模板
+    WB->>WB: BuildShockwaveFxTemplate() 【新增·GAP-7】<br/>根 activeSelf=true 挂在 SetActive(false) 容器下<br/>子节点 localScale = 1/(ShapePixels*0.5) = 1/32
+    WB->>CC: BindScene(player, enemyRoot, enemyTemplate, bossTemplate) @729<br/>【原本第四参硬传 null】
+    CC->>ENC: BuildEncounter() @112 → new Encounter() @118
+    ENC-->>ENC: _bossPending = false（C# 字段默认值）
+    CC->>EVU: EventsUnity.FxRoot = enemyRoot @116
+    end
+
+    %% ===================================================================
+    rect rgb(240, 248, 240)
+    Note over CB,ENC: 阶段二 · 建场即置位（Start 期，早于第一次 FixedUpdate）—— R-1 / GAP-1 / GAP-4 / GAP-5
+    CB->>CB: ApplyPlayerDamageModel() @338
+    CB->>CC: InjectZoneConfig @902 →<br/>SetZoneConfig(_zone.Enemies, _zone.Boss, _zone.BaseLevel) @912<br/>【修 GAP-1：原本 boss 硬传 null】
+    Note right of CC: zone_youhuang.boss = witch<br/>level_offset=2 / hp_mult=10 / atk_mult=1.6
+    CB->>SPW: SpawnFirstWave() @340
+    SPW->>ENC: 6 只杂兵入列 + RelocateIfBlocked + Dress（激活视图）
+    CB->>ENC: ArmBossPending() → MarkBossPending() ★R-1
+    Note right of ENC: 守卫三连全真才置位：<br/>_zone != null && _zone.Boss != null && Encounter != null<br/>任一为假 → _bossState = Disabled，全程 BossPending=false<br/>（退化为 P1 行为，零风险）<br/><br/>此刻起：PendingAwareEnemyCount = AliveEnemyCount + 1
+    CB->>EVU: SetupBossFlow：BossPhaseChanged += OnBossPhaseChanged<br/>【修 GAP-4：原本零订阅者】
+    CB->>EVU: EventsUnity.ShockwaveFxPrefab = 冲击波模板<br/>【修 GAP-5：原本零装配】
+    CB->>BAR: Build(hudCanvas) → 末尾 _root.SetActive(false)
+    CB->>CB: MainMenuHud.Show() + SetMenuPaused(true)<br/>→ ApplyPauseState @1571（唯一暂停写入点）
+    Note over ENC: Scheduler.Paused 期间 StepFixed 不被调，<br/>BossPendingIdleSeconds 自动冻结 —— 兜底超时不会误触发
+    end
+
+    %% ===================================================================
+    rect rgb(252, 246, 236)
+    Note over CB,RP: 阶段三 · 清杂兵（每固定步）★★ 证明「不会早判」★★
+    loop 每个 StepFixed(dt)
+        ENC->>ENC: ①~⑤ 玩家帧 / AI / 技能 / 伤害结算
+        ENC->>ENC: ⑤-A FlushDotTicks() @501
+        ENC->>ENC: ⑥ FlushPendingAdds + RemoveDead @503-505
+        ENC->>ENC: TickBossPending(dt) 【新增，插在 ⑥ 之后 ⑦ 之前】<br/>_bossPendingTotal += dt<br/>AliveEnemyCount<=0 ? _bossPendingIdle += dt : _bossPendingIdle = 0
+        ENC->>RP: ⑦ RunState.Evaluate(this) @511【本行零改动】
+        RP->>ENC: 读 enc.PendingAwareEnemyCount @249【全切片唯一改动行】
+        ENC-->>RP: AliveEnemyCount + 1
+        RP-->>RP: @220 if (_armed && aliveEnemyCount <= 0)<br/>→ 1 > 0 不成立 → 保持 Playing
+    end
+    Note over ENC,RP: ★ 零跨越竞态兜底 ★<br/>血莲 / 范围技可能让 aliveEnemyCount 一步从 3 跳到 0，<br/>中间不存在 1 和 2 —— 任何「等它变 0 再置位」的方案都慢一步。<br/>而 RunPhaseTracker 是单向幂等闸门：Won 一旦落定永不回退，<br/>慢一步 = 永久错过。<br/><br/>有了 BossPending，这一步读到的是 0 + 1 = 1 → 不判 Won。<br/>闸门未被触发，Won 仍可在 BOSS 真死后正确落定。
+    Note over ENC,RP: ★ 判负不受影响 ★<br/>RunPhase 失败分支只看 playerAlive，与敌人数无关。<br/>BOSS 没出场时玩家被杂兵打死，照常判 Lost、照常弹结算面板。<br/>「欠玩家一只怪」不该变成「玩家死不了」。
+    end
+
+    %% ===================================================================
+    rect rgb(252, 238, 238)
+    Note over CB,BOSS: 阶段四 · BOSS 出场（Update 帧，非固定步）—— 修 GAP-3 / GAP-6
+    CB->>CB: Update() → TickBossFlow()<br/>首行 if (IsGameplayBlocked) return; @174 统一闸门
+    CB->>ENC: 读 AliveEnemyCount == 0 && BossPending == true
+    CB->>CB: _bossState: Pending → Entering<br/>_bossEntryTimer = BossFlowConfig.EntryDelaySeconds (1.5s)
+    loop 入场倒计时（玩家可自由走位，不冻结玩法）
+        CB->>CB: _bossEntryTimer -= Time.deltaTime
+    end
+    CB->>CB: PickBossSpawnPos()：以玩家为心、SpawnRingMax 圆环采样<br/>★ 必须用 Encounter.Rng（不是 UnityEngine.Random）<br/>★ 必须过 IsWalkableWorld + FindSpawnableNear
+    CB->>CC: TrySpawnBossNow() → SpawnBoss(at) @423【修 GAP-3：原本零调用者】
+    CC->>ENC: Encounter.Bridge.BuildBoss(_zoneBoss, _zoneEnemies, ZoneBaseLevel, Rng) @430
+    ENC-->>CC: Combatant boss（IsBoss=true，Lv5，HP = 同级 normal × 10）
+    CC->>BOSS: boss.AI as BossController @434<br/>ctrl.Events = EventsUnity @437<br/>ctrl.Spawn = 召唤委托 @441-449
+    CC->>ENC: Encounter.Add(boss) @452
+    Note right of ENC: ★ 已核验 Add @307 是直接 Combatants.Add，<br/>   不走 _pendingAdd 队列 →<br/>   AliveEnemyCount 同步 +1，无延迟。
+    CC->>CC: AttachView(boss, bossPrefab) @453<br/>（副本继承模板的未激活状态）
+    CC-->>CB: return boss【签名改造 void → Combatant】
+    CB->>SPW: DressBoss(boss)【修 GAP-6】<br/>ColorOf(kind) 上色 + 深红描边 + Scale 1.9 + SetActive(true)
+    CB->>ENC: ClearBossPending() ★不变量 I-3：严格在 Add 之后
+    Note right of ENC: 握手区间（Add → Clear）在同一个 Update 内，<br/>中间不可能插入 StepFixed。<br/>PendingAwareEnemyCount 全程 >= 1，从不归零。
+    CB->>BAR: Show(boss) → _root.SetActive(true)
+    CB->>CB: _bossState: Entering → Fighting
+    end
+
+    %% ===================================================================
+    rect rgb(246, 240, 252)
+    Note over BOSS,BAR: 阶段五 · 三阶段战斗
+    loop BOSS 存活期间每固定步
+        BOSS->>BOSS: CheckPhaseTransition @142（只降不升）
+        alt ratio 跌破 0.65 → P2
+            BOSS->>EVU: Events.OnBossPhase(P2) @173
+            EVU->>CB: BossPhaseChanged(P2) @69
+            CB->>BAR: SetPhase(P2) → 血条染色 + 阶段提示
+            BOSS->>BOSS: RunP2Abilities @208：每 8.0s 召 2 只<br/>进位式冷却复位 @221（防节拍漂移）
+            BOSS->>ENC: PendingSpawns（AI 不直接改 Combatants）
+            ENC->>ENC: CollectSummons @1045 → _pendingAdd<br/>受 MaxEnemies=32 限额 @1052
+            Note right of ENC: 召唤物天然计入 AliveEnemyCount，<br/>「BOSS 死了但小怪还活着」不会判胜 —— 这是对的。
+        else ratio 跌破 0.30 → P3
+            BOSS->>EVU: Events.OnBossPhase(P3)
+            EVU->>CB: BossPhaseChanged(P3)
+            CB->>BAR: SetPhase(P3)
+            BOSS->>BOSS: RunP3Abilities @263：每 6.0s 冲击波 r=200 @272
+            BOSS->>ENC: ShockwavePending = true
+            ENC->>ENC: ResolveBossShockwave @1071 → ConsumeShockwave<br/>→ DamageResolver.ResolveShockwave @1083
+            ENC->>EVU: Events.OnShockwave(200, center) @186
+            EVU->>EVU: SpawnFx(ShockwaveFxPrefab, at, 200) @192<br/>@239 根 localScale = one * 200（覆盖式）<br/>子节点 1/32 补偿 → 有效半径 32 × (1/32) × 200 = 200 ✓
+            Note right of EVU: 若把补偿写在根节点会被 @239 抹掉；<br/>若不补偿 → 32 × 200 = 6400 单位，比整张地图还大 3 倍。
+        end
+        Note over BOSS: P1 一步直落 P3 时只抛一次 P3（@136-140），<br/>血条不会收到两次 SetPhase。
+        BAR->>ENC: Refresh() 读 boss.Hp / boss.HpMax
+    end
+    end
+
+    %% ===================================================================
+    rect rgb(236, 250, 244)
+    Note over ENC,CB: 阶段六 · 击杀与判胜
+    ENC->>ENC: ⑥ RemoveDead 移除 BOSS @505
+    ENC->>ENC: TickBossPending：_bossPending 已为 false，无操作
+    ENC->>RP: ⑦ RunState.Evaluate(this) @511
+    RP->>ENC: 读 PendingAwareEnemyCount
+    ENC-->>RP: 0 + 0 = 0
+    RP->>RP: @220 _armed && 0 <= 0 → 落定 Won<br/>（幂等闸门首次也是唯一一次触发）
+    RP->>CB: PhaseChanged(Won) → OnRunPhaseChanged @383 订阅
+    CB->>BAR: Hide()
+    CB->>CB: _gameOverHud.Show(Won) @1477
+    CB->>CB: ApplyPauseState() @1571【唯一暂停写入点】<br/>Scheduler.Paused = IsRunOver || _menuPaused
+    CB->>CB: _bossState → Done
+    Note over ENC: RP14 红线：判胜后内核照常空转，<br/>阶段 ⑥ 收尸继续执行，不提前 return。<br/>TickBossPending 是纯赋值，不加任何 return，不破此红线。
+    end
+
+    %% ===================================================================
+    rect rgb(255, 244, 232)
+    Note over CB,ENC: 阶段七 · 软锁兜底 R-4（异常路径）★ Q-1 答案 ★
+    loop TickBossFlow 每帧（IsGameplayBlocked 时整体跳过）
+        CB->>ENC: 读 BossPendingIdleSeconds
+        Note right of ENC: 判据是「BossPending 且场上无敌」的持续时长，<br/>不是「自置位起的总时长」。<br/>后者在建场即置位语义下，会在玩家清杂兵的<br/>第 10 秒误触发，制造「打不到 BOSS」的新 Bug。<br/><br/>计时用内核 StepFixed 的 dt：暂停时自动冻结，<br/>玩家开菜单看 30 秒不会误判。
+        alt Idle > 4.0s 且 重试次数 < 2
+            CB->>CB: Debug.LogWarning + _bossSpawnRetries++
+            CB->>CC: 重试 TrySpawnBossNow()
+            Note right of CB: 4.0s 依据：1.5s 延迟 × 2 + 1.0s 余量。<br/>覆盖 GC 尖峰(200~500ms)、SpriteFactory 首次生成、<br/>FindSpawnableNear 最坏螺旋搜索。<br/>且落在人类「等待异常」感知阈值 3~5s 内。
+        else Idle > 12.0s（首次 + 两次重试全失败）
+            CB->>ENC: ClearBossPending() 强制清位
+            CB->>CB: Debug.LogError("BOSS 出场失败，已解除胜利抑制")
+            CB->>CB: _bossState → Done（防止清位后又被重新置位）
+            Note right of ENC: 下一固定步 ⑦ 读到 0 → 正常判 Won。<br/>★ 宁可「这局没打到 BOSS」，绝不软锁。
+        end
+        alt Total > 600s 且 未记录过
+            CB->>CB: Debug.LogWarning 一次（仅诊断留痕，不改任何状态）
+        end
+    end
+    end
+
+    %% ===================================================================
+    rect rgb(242, 242, 242)
+    Note over CB,ENC: 阶段八 · 重开（Q-5 答案）
+    CB->>CB: PauseMenuHud「重新开始」@413 或 GameOverHud「重开」<br/>→ ReloadScene() @1618
+    CB->>CB: OnDestroy @1488：BossPhaseChanged -= OnBossPhaseChanged<br/>（漏退订 = 重载后野委托指向已销毁对象）
+    CB->>CB: SceneManager.LoadScene(GetActiveScene().buildIndex)
+    Note over WB,ENC: 整场景销毁重建：<br/>  ① CombatBridge / CombatController 随「Combat」对象销毁<br/>  ② 全 Assets 树 DontDestroyOnLoad 命中 0 次，无跨场景残留<br/>  ③ 静态残留仅 MainMenuHud.SkipOnNextLoad 与 Bootstrap 的<br/>     zoneId/zoneVisits/isSafeZone，与 BossPending 无关<br/>  ④ Awake → BuildEncounter() @112 → new Encounter() @118<br/>     → _bossPending = false（字段默认值）<br/><br/>★ 结论：Encounter 必然重建，BossPending 自动正确复位。
+    WB->>CC: 新一轮 BindScene / BuildEncounter
+    CB->>ENC: 新 Encounter 上重新 ArmBossPending()
+    Note over ENC: R-3（Encounter.Clear() 内 ClearBossPending()）<br/>在当前代码路径下不会被触发，但必须实现 ——<br/>Clear() 是公开 API，且 RP13_Encounter_ClearAllowsSecondRun<br/>（RunPhaseTests.cs:356）已在用「复用同一 Encounter 打第二局」。<br/>不复位 = 第二局起手就带着上一局欠下的 BOSS 债 = 永远赢不了。
+    end

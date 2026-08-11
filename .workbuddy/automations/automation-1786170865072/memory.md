@@ -149,3 +149,44 @@
 - **回退保障**：不顺眼即 `git checkout main`，本分支零影响主线。
 - **护栏**：本轮零内核改动（仅新增骨架文件，未动 `Assets/Scripts/`）；t1/t3 未跑但内核零改动，倍率 2.5294x 不受影响。
 - **遗留给用户**：① 本地 Unity 切到 `feature/2.5d` 分支验相机/场景；② 2D 主线（main）的**复活黑屏 Bug 仍在**，待用户本地反馈走 BugFix（主线优先级未降）。
+
+### 2026-08-10 22:4x · 第 10 轮（自动化触发，用户不在场）
+
+- **触发**：自动化第 10 轮。开局先 `git log --all` + `grep` 核实，发现**重大分支分叉**（前 9 轮 memory 只按线性历史记，漏看了 `main` 上的两次提交）：
+  - `main` 已含 `98ee5ed`（P1-3 音效，归位 main）+ `b7c3ad7`（黑屏**基础**修复：OnSceneLoaded 无条件 BuildAll）。`feature/2.5d` 分支点早于这两次提交，故本分支工作树看不到。
+  - 因此第 8 轮「P1-3 已交付」是**真**的（在 main），只是 feature/2.5d 工作树 grep 不到 → 不是 agent 撒谎，是分支分叉。前几轮"缺阶段23"恐慌解除。
+- **本轮回应的两件事（均在 feature/2.5d 工作树，未提交）**：
+  - **(A) 黑屏完整修复**：`Bootstrap.cs` 在 main 基础修复之上补 `ResetStatics()`@SubsystemRegistration（复位 `_firstSceneLoaded`/`_registered`）+ 幂等 `sceneLoaded -=/+` + 只读访问器 + `P0_4_BootstrapResetTests.cs`（562行 BR01–BR09）+ `.meta`（GUID cb7993bf… 唯一）。**main 的 b7c3ad7 缺这两项 → 关 Domain Reload 第 2 次 PlayMode 仍黑屏**，本版才是完整根治。
+  - **(B) P2-1 BOSS 接线（A′方案）**：内核 `Encounter.cs`+175（BossPending）/`RunPhase.cs`+13（读 PendingAwareEnemyCount，纯查询重载零改）/`RunPhaseTests.cs`+219（RP15–RP19）；Unity `CombatController`+30/`CombatBridge`+509（ArmBossPending→MarkBossPending@1591、TickBossFlow→ClearBossPending@1819）/`EnemySpawner`+62/`Hud`+38/`WorldBuilder`+109；新增 `BossFlowConfig`(203)/`FxAutoDespawn`(62)/`HudBossBar`(341) + 3 文档。
+- **并发冲突核实（工程师预警）**：并发 agent 改 `WorldBuilder.cs`（Bootstrap.IsWorldLive 依赖 HasGeneratedWorld/Grid）→ grep 实证两者仍在（@217/@90），误报无冲突。
+- **护栏（主理人亲自复跑）**：`t1` **64/64 @ 2.5294x**（未漂）、`t3` **9/9**（89 .cs 全可解析）。内核零数值改动。
+- **★ 本轮新踩坑（分支分叉）**：memory 不能只按线性历史记。每轮除 `git status`/`ls`/`grep` 外，必须 `git log --all` + `git branch -a` 确认是否有别的分支/提交抢先落地了同主题改动（本次 main 的 P1-3 与黑屏修复就是例子）。否则会误判"agent 没落盘"或"阶段号缺失"。
+- **★ 本轮文档决策**：feature/2.5d 的 changelog 止于阶段 22，main 已用阶段 23（P1-3）。本回合记为**阶段 24**（skip 23，避免合并冲突），并在阶段 24 内写明 Bootstrap.cs 合并回 main 应以 feature/2.5d 版为准（含 ResetStatics+幂等订阅+测试访问器，main 版缺这些）。
+- **护栏方法论印证**：无 Unity/dotnet 环境下，t1（倍率 2.5294x）+ t3（类型宇宙全解析）双绿 = 跨文件引用与数值口径未漂的实证，是"敢信并发 agent 落盘"的唯一硬凭据。
+- **未提交 / 未合并**：全部改动停在 feature/2.5d 工作树，自动化不代用户提交或合并。
+
+### 2026-08-11 08:0x · 第 11 轮（自动化触发，用户不在场）
+
+- **选题**：TaskList 仍空。遵守上轮"库存积压警告"——**刻意不新增待验证的 Unity 表现层模块**，改为收束两个能在无 Unity 环境下自证的风险：① 分支分叉扩大 ② 内核新状态机 BossPending 无任何护栏在看。
+- **工作流**：📋 部分工作流（架构评审 + QA 护栏），高见远 / 严过关**双线并行**派工，主理人亲自复核。C# 生产代码**零改动**。
+- **交付**：`docs/branch-merge-plan.md`(783) + `bosspending_selfcheck.py`(1022, 53/53) + `bosspending_guard_mutation_test.py`(565, 26/26 捕获 18/18) + `docs/p2-1-bosspending-qa-report.md`(349) + changelog 阶段 26。详见 changelog 阶段 26。
+- **★ 关键发现 1（合并策略的决定性事实）**：`git merge-tree --write-tree main feature/2.5d` **退出码 0** —— 已提交部分零冲突，**全部冲突 100% 来自未提交工作树**（约 5416 行无 git 备份）。故合并第一步必须是落盘 commit，这是全场唯一单点风险。
+- **★ 关键发现 2（CRLF 预演陷阱）**：`core.autocrlf=true`，blob 纯 LF / 工作树纯 CRLF。拿 `git show` 导出的文件直接与工作树文件三方合并 → **整文件冲突假象**（架构师首次预演即踩）。手工比对前必须归一化；真实 `git merge` 不受影响。
+- **★ 关键发现 3（变异测试再次证明自己）**：M-B3（失败优先→胜利优先）首轮**未被捕获**。根因：原用例自带 BOSS 债，`PendingAware = 0+1 = 1` 令判胜分支 `count <= 0` 本就不成立，**债自己把判胜分支挡死**，对调 ④⑤ 照样 Lost。→ **判别性用例必须无债**，已拆 BP-B2a/B2b。这是测试缺陷非生产缺陷，QA 自修未碰 C#。
+- **★ 关键发现 4（.py 护栏不入库）**：`.gitignore:44` 排除 `Assets/Scripts/**/Tests/*.py`，`git ls-files "*.py"` 返回**空** → t1/t3/bosspending 四个脚本 **clone 即丢**。护栏是无 Unity 环境下唯一硬凭据，丢了就无法复现任何"双绿"结论。口径还不统一（main 的 `Assets/_Project/audio_syntax_check.py` 反而入库）。**未擅自改，待用户拍板白名单**。
+- **changelog 阶段号雷（第10轮埋、本轮排除）**：第10轮只看到 main 占了阶段 23，**漏看 feature 自己也有一个阶段 23**（P2-1 接线 08-09 夜）→ 合并后两个「阶段 23」且 git 报 `rc=0`，是**唯一"工具报绿、结果是错的"**处。裁定：阶段号按**落盘时序**递增，终态 22→23(P2-1)→24(P1-3，合并时 main 侧 23→24)→25(第10轮)→26(本轮)。feature 侧已改完，第10轮误导提示已划删除线。
+- **主理人裁定 3 条**：D-1 R-4 超时判胜**接受现状**（软锁远比误判胜利严重），登记待办要诊断痕迹；D-2 **不**让内核护栏引用 `_Project/`（2.5D 重写表现层时会让三套护栏集体变红，失去信号价值），I-3 归 `P2_1_BossWiringTests`；D-3 不变量统一按 **4 条**（简报漏了 I-4，`Encounter.cs:188`），D9 已由钉 3 条收紧为 4 条。
+- **简报错误自查**：我给 QA 的简报把不变量写成 3 条（实为 4 条）、`Clear()` 行号写成约 L486-495（实为 ClearBossPending@492 / RunState.Reset@497）、⑥ 写成只有 `RemoveDead()`（实为 `FlushPendingAdds()`+`RemoveDead()`）。**"简报字符串必先 grep"这条铁律我自己又踩了一次**——下轮给下游的不变量/行号也要逐条 grep，不能只 grep 字符串常量。
+- **护栏（主理人亲自复跑）**：`t1` **64/64 @ 2.5294x 未漂**、`t3` **9/9**（90 .cs / 类型 155）、`bosspending` **53/53**、变异 **26/26**；`Encounter.cs`/`RunPhase.cs` SHA-256 跑前跑后逐字节一致。
+- **未提交 / 未合并**：全部停在 feature/2.5d 工作树，自动化不代用户提交或合并。
+
+## 下一轮候选（按优先级）
+
+1. **合并落地（已从"建议"升级为"最高优先"）**：`docs/branch-merge-plan.md` 已把路铺平（§8 逐条可复制命令 + 每步回退）。**第一步落盘 commit 必须尽快做**——5416 行无 git 备份是全场唯一单点风险，一次误操作即全灭。若下轮用户仍不在场，可考虑仅执行"落盘 commit"这一步（纯保护性动作、不合并不推送、`git reset --soft HEAD~1` 即可撤销），但需在汇报中显著告知。
+2. **用户本地验证反馈** → BugFix（已连续 4 轮为首选项，用户始终未回）。
+3. 用户拍板 `.py` 护栏 gitignore 白名单（影响护栏可持续性）。
+4. 待办 D-1：R-4 超时判胜的诊断痕迹（需 Unity 侧改动，等验证通道打通再做）。
+5. 敌人/NPC 精灵批量（需 ImageGen 积分，等用户在场）。
+6. 2.5D 轮次B：竹林 3D 场景 + 砍竹子特效（Unity 表现层，**在验证通道打通前不建议做**）。
+
+**⚠️ 库存积压警告（第 3 轮延续，但本轮已开始正确应对）**：P0 全交付 + P1 交付 4/7 + P2-1 已接线，全部"待用户本地验证"且从未被验证过。第 11 轮已改为只做自证型工作（护栏/文档/裁定），这个方向应**继续保持**，直到用户给出第一份本地验证反馈。判断标准很简单：**如果一项工作的产出无法在本环境被证明是对的，就不要在这一轮做它。**

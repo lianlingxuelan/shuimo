@@ -26,6 +26,8 @@
 - ✅ **美术阶段 E**：女主 39 帧水墨精灵已接进 Unity
 - ✅ **竹林 2.5D 技术验证已启动**（2026-08-10）：`feature/2.5d` 分支（main 保留 2D 可玩版不动），计划见 `docs/2.5d-tech-verify-plan.md`；等距相机骨架 `IsometricCameraRig.cs` 已落盘
 - 📋 **2.5D 可行性评估**：`docs/unity-2.5d-feasibility.md` 已出
+- ⚠️ **分支已真分叉**（第10轮发现，第11轮量化）：`main` 有 P1-3 音效（+10449 行）与黑屏基础修复；`feature/2.5d` 有 2.5D 骨架 + 第10轮约 5416 行**未提交**产出（Bootstrap 完整修复 + P2-1 BOSS 接线）。**已提交部分零冲突**（`git merge-tree` 退出码 0），**全部冲突来自未提交工作树** → 合并第一步必须落盘 commit。方案见 `docs/branch-merge-plan.md`
+- ✅ **P2-1 BossPending 内核护栏**（第11轮）：`bosspending_selfcheck.py` 53/53 + 变异测试 26/26（捕获率 18/18）。补上了 t1（只验倍率）/t3（只验类型）看不到的**状态机语义盲区**
 - ⚠️ **唯一瓶颈**：本环境无 Unity/dotnet，所有 Unity 侧行为**待用户本地验证**
 
 ## 四、硬约束（每轮适用，别踩）
@@ -37,7 +39,10 @@
 - **派工铁律**：绝不轻信 agent 的 completed，必须自己 grep/ls 上盘核实
 - **回执 ≠ 落盘**：agent 报 `499 canceled` / 撞轮次上限时，**先 `ls` 核实文件再决定是否重派**。网络错误只杀回执，不杀已落盘的改动
 - **简报字符串必先 grep**：给下游 agent 的简报里任何常量字符串（技能 id、事件 key、路径）都必须先 grep 核对，凭记忆写会传导成静默 bug
-- **护栏必做变异测试**：静态护栏落地后要注入已知错误验证它真会报，否则分不清「没问题」和「没测到」。音频侧见 `Assets/_Project/audio_guard_mutation_test.py`
+- **护栏必做变异测试**：静态护栏落地后要注入已知错误验证它真会报，否则分不清「没问题」和「没测到」。音频侧见 `Assets/_Project/audio_guard_mutation_test.py`，内核 BossPending 侧见 `Assets/Scripts/Systems/Combat/Tests/bosspending_guard_mutation_test.py`
+- **分支必查**：每轮除 `git status`/`ls`/`grep` 外，必须 `git log --all` + `git branch -a`，确认没有别的分支抢先落地同主题改动（第10轮因此误判过）
+- **CRLF 预演陷阱**：仓库 `core.autocrlf=true`（blob 纯 LF / 工作树纯 CRLF）。拿 `git show` 导出的文件直接与工作树文件做三方合并 → **整文件冲突假象**。手工比对前先归一化行尾；真实 `git merge` 不受影响
+- **`.py` 护栏不入库**：`.gitignore:44` 排除 `Assets/Scripts/**/Tests/*.py`，`git ls-files "*.py"` 为空 → t1/t3/bosspending 四个脚本 clone 即丢。口径不统一（main 的 `Assets/_Project/audio_syntax_check.py` 反而入库）。待用户拍板白名单
 
 ## 五、用户关键决策与偏好
 - **2.5D 方向已拍板走技术验证**（2026-08-10）：用户选「竹林2.5D技术验证」路径，在 `feature/2.5d` 分支探路，不切换主线；验证通过再正式切

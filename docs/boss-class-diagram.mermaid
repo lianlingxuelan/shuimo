@@ -1,0 +1,354 @@
+%% ===========================================================================
+%% P2-1「BOSS 战接线」类图
+%% ---------------------------------------------------------------------------
+%% 配套文档：docs/unity-p2-1-boss-architecture.md
+%% 架构：高见远（Gao）
+%%
+%% 【看图要点】
+%%   1. BossPending 挂在 Encounter（纯 C# 内核）上，不是挂在 Unity 层。
+%%      理由：与 AliveEnemyCount 同层同源；Clear() 一并复位；
+%%            计时用 StepFixed 的 dt，Scheduler.Paused 时自动冻结。
+%%   2. RunPhaseTracker 的【纯查询重载 Evaluate(bool,bool,int) 一个字符不动】。
+%%      全部改动只有便捷重载 Evaluate(Encounter) 内部读的属性名（RunPhase.cs:249）。
+%%   3. 置位者只有一个（CombatBridge.ArmBossPending），
+%%      清位者只有三个（TrySpawnBossNow 成功后 / TickBossFlow 硬超时 / Encounter.Clear）。
+%%   4. 虚线 ..> 表示"调用/依赖"，实线菱形 *-- 表示"组合持有"。
+%%   5. 标注【零改动】的类是既有资产，本切片一个字符都不许碰。
+%% ===========================================================================
+
+classDiagram
+    direction LR
+
+    %% =======================================================================
+    %% 纯 C# 内核层 · Assets/Scripts/Systems/Combat/
+    %% asmdef: Xianxia.Combat  (noEngineReferences = true —— 零 UnityEngine 铁律)
+    %% =======================================================================
+
+    class Encounter {
+        <<纯C#内核 Xianxia.Combat>>
+        +List~Combatant~ Combatants
+        +Combatant Player
+        +readonly RunPhaseTracker RunState @148
+        +int MaxEnemies = 32 @125
+        +float ElapsedTime
+        +int StepCount
+        +int AliveEnemyCount @370
+        -bool _bossPending 新增
+        -float _bossPendingTotal 新增
+        -float _bossPendingIdle 新增
+        +bool BossPending 新增
+        +float BossPendingTotalSeconds 新增
+        +float BossPendingIdleSeconds 新增
+        +int PendingAwareEnemyCount 新增
+        +void MarkBossPending() 新增
+        +bool ClearBossPending() 新增
+        +void Add(Combatant c) @307 同步入列
+        +void Clear() @339 加复位
+        +void StepFixed(float dt) @511 判定行零改动
+        -void TickBossPending(float dt) 新增
+        -void CollectSummons(Combatant, BossController) @1045
+        -void ResolveBossShockwave(Combatant, BossController) @1071
+        -void FlushPendingAdds() @1087
+        -void RemoveDead()
+    }
+    note for Encounter "★ BossPending 的家。<br/>PendingAwareEnemyCount = AliveEnemyCount + (BossPending ? 1 : 0)<br/>语义：BOSS 是「这局还欠玩家的一只敌人」，债没还清就不算赢。<br/><br/>TickBossPending 插在步⑥收尸之后、步⑦判定之前：<br/>  _bossPendingTotal += dt          （无条件，仅诊断）<br/>  _bossPendingIdle  += dt          （仅当 AliveEnemyCount<=0）<br/>  _bossPendingIdle   = 0           （当 AliveEnemyCount>0）<br/>Idle 才是软锁判据（见 Q-1）。"
+
+    class RunPhaseTracker {
+        <<纯C#内核 RunPhase.cs>>
+        -RunPhase _phase
+        -bool _armed
+        +RunPhase Phase
+        +bool IsSettled
+        +event Action~RunPhase~ PhaseChanged
+        +void Reset() @164 零改动
+        +void Evaluate(bool, bool, int) @187 零改动
+        +void Evaluate(Encounter enc) @239 仅改 @249
+    }
+    note for RunPhaseTracker "单向幂等闸门：只从 Playing 落定 Won/Lost，永不回退。<br/>@190 守卫 · @220 胜利分支 if (_armed && aliveEnemyCount <= 0)<br/><br/>★ 纯查询重载 @187-236 一个字符不动（硬约束）。<br/>★ 便捷重载 @249 唯一改动：<br/>   enc.AliveEnemyCount → enc.PendingAwareEnemyCount<br/>   目的：让全仓判定口径唯一，物理上无法误用旧口径。<br/><br/>失败分支只看 playerAlive，与敌人数无关<br/>→ BossPending 不影响判负（玩家该死还是会死）。"
+
+    class RunPhase {
+        <<enum>>
+        Playing
+        Won
+        Lost
+    }
+
+    class BossController {
+        <<纯C#内核 : EnemyAI 全文零改动>>
+        +BossPhase Phase = P1 @61
+        +float SummonCd
+        +float ShockCd
+        +float AtkMult
+        +float SpeedMult
+        +ICombatEvents Events
+        +Func~SpawnRequest,Combatant~ Spawn
+        +readonly List~Combatant~ PendingSpawns @89
+        +bool ShockwavePending
+        +Vec2 ShockwaveCenter
+        +float ShockwaveRadius
+        +void Step(...)
+        -void CheckPhaseTransition(...) @142
+        -void RunP2Abilities(...) @208
+        -void RunP3Abilities(...) @263
+        +bool ConsumeShockwave(out Vec2, out float)
+        +void Reset() @303
+    }
+    note for BossController "阶段阈值（HudBossBar 的刻度线必须与此同源）：<br/>  P1  ratio > 0.65<br/>  P2  0.30 < ratio <= 0.65   提速 + 每 8.0s 召 2 只<br/>  P3  ratio <= 0.30          再提速 + 每 6.0s 冲击波 r=200<br/>只降不升；一步从 P1 直落 P3 时只抛一次 P3（@136-140）。<br/>进位式冷却复位，防节拍漂移（@221 / @272）。<br/>【本切片零改动，已被 t1 的 64 条镜像对拍锁死】"
+
+    class BossPhase {
+        <<enum>>
+        P1 = 0
+        P2 = 1
+        P3 = 2
+    }
+
+    class Combatant {
+        <<纯C#内核>>
+        +int Id
+        +string Kind
+        +string DisplayName
+        +bool IsEnemy
+        +bool IsElite
+        +bool IsBoss @91
+        +bool IsAlive
+        +float Hp
+        +float HpMax
+        +Vec2 Position
+        +EnemyAI AI
+    }
+
+    class DifficultyBridge {
+        <<纯C#内核 数值冻结>>
+        +Combatant BuildBoss(ZoneBoss, ZoneEnemies, int, PCG32) @389
+    }
+    note for DifficultyBridge "@389-420 数值冻结，一个字符不许改：<br/>  lv      = base_level + level_offset  （zone_youhuang: 3+2=5）<br/>  hpMax   = 同级 normal × bossHpMult(10)<br/>  contact = × bossAtkMult(1.6)<br/>  Poise   = × BOSS_POISE_MULT(3.0)<br/>  Exp     = × BOSS_EXP_MULT(3.0)<br/>  @420 c.IsBoss = true"
+
+    class SpawnRequest {
+        <<struct 纯C#内核>>
+        +Combatant Summoner
+        +int Index
+        +int Count
+        +int Level
+        +Vec2 Position
+    }
+
+    %% =======================================================================
+    %% 桥接层 · Assets/Scripts/Systems/Combat/Unity/
+    %% asmdef: Xianxia.Combat.Unity   namespace: Xianxia.Combat.UnityBridge
+    %% =======================================================================
+
+    class CombatController {
+        <<桥接 Xianxia.Combat.UnityBridge>>
+        +Encounter Encounter
+        +CombatEventsUnity EventsUnity
+        +FixedScheduler Scheduler
+        -ZoneEnemies _zoneEnemies
+        -ZoneBoss _zoneBoss
+        -GameObject enemyPrefab
+        -GameObject bossPrefab
+        -Transform enemyRoot
+        +void BindScene(Transform, Transform, GameObject, GameObject bossTemplate) @167
+        +void SetZoneConfig(ZoneEnemies, ZoneBoss, int) @213
+        +void BuildEncounter() @112 new Encounter @118
+        +Combatant SpawnBoss(Vector2 at) @423 签名改造
+        +void SpawnWave(...)
+        -void AttachView(Combatant, GameObject) @457
+        +CombatView FindView(int id)
+    }
+    note for CombatController "★ 改动一：@423 签名 void → Combatant。<br/>  原因：GAP-6 的 BOSS 视图激活必须由 T2 层做（上色要用<br/>  SpriteFactory / EnemySpawner.ColorOf，两者在 Xianxia.Unity.T2）。<br/>  依赖方向是 T2 → Combat.Unity，反向引用即循环依赖。<br/>  所以只能把 boss 实体 return 出去，让 T2 侧接手 Dress。<br/>  该方法零调用者（GAP-3），签名扩展零破坏。<br/><br/>★ 改动二：@453 bossPrefab 为空回落 enemyPrefab 时打 LogWarning。<br/>★ @112-118 BuildEncounter 零改动 —— 它是 Q-5 的答案所在。"
+
+    class CombatEventsUnity {
+        <<桥接 : ICombatEvents 零改动>>
+        +GameObject HitFxPrefab @34
+        +GameObject KnockbackFxPrefab @37
+        +GameObject ShockwaveFxPrefab @40
+        +Transform FxRoot @43
+        +event Action~BossPhase~ BossPhaseChanged @69
+        +Action~string~ PlaySfx
+        +void OnBossPhase(BossPhase) @156
+        +void OnSummon(...) @173
+        +void OnShockwave(float radius, Vec2 center) @186
+        +void OnEnemyDied(...) @143
+        -void SpawnFx(GameObject, Vector2, float scale) @229
+    }
+    note for CombatEventsUnity "★ GAP-7 根因在 @237-240：<br/>   go.transform.localScale = Vector3.one * scale;   ← 覆盖式赋值<br/>   scale = radius = 200，而 SpriteFactory.Circle 是<br/>   64px / PPU=1 → 半径 32 世界单位。<br/>   直接用 → 32 × 200 = 6400 单位，比整张地图还大 3 倍。<br/>   解法：补偿放【子节点】localScale = 1/(ShapePixels*0.5) = 1/32。<br/>   根节点的任何预缩放都会被 SpawnFx 抹掉。<br/><br/>★ SpawnFx 只 Instantiate 不 Destroy → 需 FxAutoDespawn 兜底。<br/>★ SpawnFx 不会 SetActive → FX 模板根必须 activeSelf=true。"
+
+    class CombatView {
+        <<桥接 MonoBehaviour>>
+        +void Bind(Combatant model)
+    }
+
+    %% =======================================================================
+    %% Unity 编排 / 表现层 · Assets/_Project/Scripts/Runtime/
+    %% asmdef: Xianxia.Unity.T2
+    %% =======================================================================
+
+    class CombatBridge {
+        <<T2编排 唯一编排者>>
+        +bool IsGameplayBlocked @174
+        -Zone _zone
+        -EnemySpawner _spawner
+        -GameOverHud _gameOverHud
+        -BossFlowState _bossState 新增
+        -float _bossEntryTimer 新增
+        -int _bossSpawnRetries 新增
+        -bool _bossDiagLogged 新增
+        -Combatant _boss 新增
+        -HudBossBar _bossBar 新增
+        +void Start() @322
+        +void Update()
+        -void InjectZoneConfig() @902 修 GAP-1
+        -void SetupBossFlow() 新增 修 GAP-4/5
+        -void ArmBossPending() 新增 R-1
+        -void TickBossFlow() 新增 R-2/R-4
+        -bool TrySpawnBossNow() 新增 GAP-3
+        -Vector2 PickBossSpawnPos() 新增
+        -void OnBossPhaseChanged(BossPhase) 新增
+        -void OnRunPhaseChanged(RunPhase) @1477
+        -void ApplyPauseState() @1571
+        +void SetMenuPaused(bool) @1583
+        +void ReloadScene() @1618
+        -void OnDestroy() @1488
+    }
+    note for CombatBridge "★ 唯一置位者：ArmBossPending()，在 Start() @340 SpawnFirstWave 之后。<br/>  建场即置位（不能等清完杂兵）—— 因为 aliveEnemyCount 可以<br/>  一步从 3 跳到 0，步⑦ 当场判 Won，幂等闸门永久锁死。<br/><br/>★ 唯一清位者（正常路径）：TrySpawnBossNow() 内，<br/>  严格在 CombatController.SpawnBoss 返回非 null 之后（不变量 I-3）。<br/>  已核验 Encounter.Add @307 是同步入列（不走 _pendingAdd），<br/>  所以握手区间内 PendingAwareEnemyCount 始终 >= 1。<br/><br/>★ ApplyPauseState @1571 是全仓唯一写 Scheduler.Paused 的地方。<br/>  BOSS 流程一律经 SetMenuPaused / IsGameplayBlocked，绝不直写。<br/>★ ReloadScene @1618 走整场景重载 → Encounter 必然重建（Q-5）。"
+
+    class BossFlowState {
+        <<enum 新增>>
+        Disabled
+        Pending
+        Entering
+        Fighting
+        Done
+    }
+    note for BossFlowState "R-2：只进不退的单向状态机。<br/>杜绝「兜底清位后又被重新置位」的抖动。<br/>_zone.Boss == null → 全程 Disabled，退化为 P1 行为。"
+
+    class BossFlowConfig {
+        <<T2新增 static 魔数唯一出处>>
+        +const float EntryDelaySeconds = 1.5f
+        +const float EntryTimeoutSeconds = 4.0f
+        +const float HardTimeoutSeconds = 12.0f
+        +const float DiagTimeoutSeconds = 600.0f
+        +const int MaxSpawnRetries = 2
+        +const float BossViewScale = 1.9f
+        +const float BarWidth = 720.0f
+        +const float BarHeight = 28.0f
+        +const float BarTopMargin = 72.0f
+        +const float BarBlockHeight = 64.0f
+        +const float FxLifeSeconds
+        +static Color BossOutline
+    }
+    note for BossFlowConfig "★ Q-1 答案落地处。<br/>  EntryTimeoutSeconds 4.0s  → LogWarning + 重试（上限 2 次）<br/>  HardTimeoutSeconds  12.0s → ClearBossPending + LogError<br/>  两者判据都是 Encounter.BossPendingIdleSeconds<br/>  （= BossPending 且场上无敌 的持续时长），<br/>  不是 PRD 原文的「自置位起的总时长」—— 后者在建场即置位<br/>  语义下会在玩家清杂兵的第 10 秒误触发，制造「打不到 BOSS」。<br/><br/>★ BarTopMargin = 72 而非 40：<br/>  40 会与 HudStatusIcons 目标状态行 [28,62] 重叠 22px（GAP-8）。"
+
+    class WorldBuilder {
+        <<T2 全代码搭场景>>
+        +const int TileUnit = 32 @65
+        +static float WorldWidth @108
+        +static float WorldHeight @114
+        +static bool IsWalkableWorld(Vector2)
+        +static Vector2 FindSpawnableNear(int, int)
+        -static GameObject BuildEnemyTemplate(Transform) @699
+        -static GameObject BuildBossTemplate(Transform) 新增 GAP-2
+        -static GameObject BuildShockwaveFxTemplate(Transform) 新增 GAP-7
+        -static void BuildCombat(Transform, Transform, GameObject) @717
+    }
+    note for WorldBuilder "@729 修 GAP-2：<br/>  ctrl.BindScene(player, enemyRoot, enemyTemplate, bossTemplate)<br/>  （原本第四参硬传 null）<br/><br/>@699-711 BuildEnemyTemplate 造的是 SetActive(false) 模板 ——<br/>这是 GAP-6 的根因：Instantiate 出的副本同样未激活，<br/>而 SpawnBoss 路径上没有任何代码会激活它。<br/><br/>BuildShockwaveFxTemplate 两层结构：<br/>  FxTemplates (SetActive false 容器)<br/>    └ ShockwaveFxTemplate (activeSelf = true ← 关键)<br/>        └ Ring (localScale = 1/(ShapePixels*0.5f) = 1/32)"
+
+    class EnemySpawner {
+        <<T2>>
+        +List~Combatant~ LastWave
+        +void SpawnInitialWave(Vector2) @62
+        -void RelocateIfBlocked(Combatant) @109
+        -void Dress(Combatant) @140
+        +void DressBoss(Combatant) 新增 GAP-6
+        +static Color ColorOf(string kind) @175
+    }
+    note for EnemySpawner "@168-171 Dress 末尾 SetActive(true) —— 但 Dress 只在<br/>SpawnInitialWave/SpawnWave 路径被调，BOSS 走不到。<br/>DressBoss 补上这一环：<br/>  本体色 = ColorOf(boss.Kind)（zone_youhuang → witch 巫蛊紫）<br/>  描边   = BossFlowConfig.BossOutline 深红（区别于精英金色）<br/>  缩放   = BossViewScale 1.9（精英是 EliteScale）<br/>  末尾   = SetActive(true)<br/><br/>@109-137 RelocateIfBlocked 是 BOSS 落点校验的范本，照抄。"
+
+    class Hud {
+        <<T2>>
+        +static Vector2 ReferenceResolution 1920x1080
+        +static void Anchor(RectTransform, Vector2, Vector2, Vector2) @817
+        +static Text NewText(...)
+        +static RectTransform NewRect(...)
+        -void Build() @132
+        -void BuildHpBar(Transform) @203
+        -void BuildTopRight(Transform) @354
+        -void BuildCombo(Transform) @191
+        -void BuildT3Widgets(Transform) @171
+        -void BuildBossBar(Transform) 新增
+    }
+
+    class HudStatusIcons {
+        <<T2 布局零改动>>
+        +const float IconSize = 34
+        +void Build(Transform canvasRoot) @95
+    }
+    note for HudStatusIcons "★ GAP-8 冲突源：@105-106 目标状态行<br/>   anchor(0.5, 1) · offset(0, -28) · size 294x34<br/>   → 占据顶部中央 距顶 28~62、x ∈ [-147, +147]<br/><br/>原方案「血条距顶 40」会与之纵向重叠 22px、横向完全覆盖，<br/>导致打 BOSS 时看不到目标 DEBUFF —— 而那恰是最需要看的时候。<br/>决策：让新组件（血条）下移到 72，既有布局零改动。"
+
+    class HudBossBar {
+        <<T2新增 MonoBehaviour>>
+        -RectTransform _root
+        -Text _nameText
+        -RectTransform _barBg
+        -RectTransform _fill
+        -Combatant _boss
+        -bool _built
+        -bool _shown
+        +bool IsBuilt
+        +bool IsShown
+        +void Build(Transform canvasRoot)
+        +void Show(Combatant boss)
+        +void SetPhase(BossPhase p)
+        +void Hide()
+        -void Update()
+        -void Refresh()
+    }
+    note for HudBossBar "布局定稿（1920x1080 参考分辨率）：<br/>  BossBar 根  anchor(0.5,1) pivot(0.5,1) pos(0,-72) size 720x64<br/>  BossName    720x24  UpperCenter<br/>  BarBg/Fill  720x28  pos(0,-28)<br/>  ★ BarFill 的 pivot.x 必须为 0，否则会从中心两头缩<br/>  TickP2 / TickP3  x = 720*0.65 / 720*0.30（与 BossPhase 阈值同源）<br/><br/>Build() 三件套：幂等守卫 → 建控件 → _root.SetActive(false)。<br/>⚠️ 测试取组件必须 GetComponentInChildren<HudBossBar>(true)，<br/>   与 P0_5_MenuHudTests.cs:20 记录的同款陷阱一致。"
+
+    class FxAutoDespawn {
+        <<T2新增 MonoBehaviour>>
+        +float LifeSeconds
+        -float _t
+        -void OnEnable()
+        -void Update()
+    }
+    note for FxAutoDespawn "补 CombatEventsUnity.SpawnFx 只生不灭的漏洞。<br/>P3 每 6s 一发冲击波，不回收则一局泄漏几十个空对象到 FxRoot。"
+
+    %% =======================================================================
+    %% 关系
+    %% =======================================================================
+
+    Encounter "1" *-- "1" RunPhaseTracker : readonly 持有 @148
+    Encounter "1" o-- "0..*" Combatant : Combatants
+    Encounter ..> BossController : CollectSummons @1045<br/>ResolveBossShockwave @1071
+    RunPhaseTracker ..> Encounter : 便捷重载 @249<br/>读 PendingAwareEnemyCount
+    RunPhaseTracker ..> RunPhase : 落定
+    Combatant "1" o-- "0..1" BossController : AI
+    BossController ..> BossPhase : Phase
+    BossController ..> SpawnRequest : Spawn 委托入参
+    DifficultyBridge ..> Combatant : BuildBoss @389<br/>造出 IsBoss=true
+
+    CombatController "1" *-- "1" Encounter : BuildEncounter @118 new
+    CombatController "1" *-- "1" CombatEventsUnity
+    CombatController ..> DifficultyBridge : SpawnBoss @430
+    CombatController ..> CombatView : AttachView @457
+    CombatEventsUnity ..> BossPhase : BossPhaseChanged @69
+
+    CombatBridge --> CombatController : 唯一编排者
+    CombatBridge --> Encounter : MarkBossPending<br/>ClearBossPending
+    CombatBridge ..> CombatEventsUnity : 订阅 BossPhaseChanged<br/>装配 ShockwaveFxPrefab
+    CombatBridge --> HudBossBar : Show / SetPhase / Hide
+    CombatBridge --> EnemySpawner : DressBoss
+    CombatBridge ..> BossFlowConfig
+    CombatBridge ..> BossFlowState
+
+    WorldBuilder ..> CombatController : BindScene @729<br/>传 bossTemplate
+    WorldBuilder ..> EnemySpawner
+    WorldBuilder ..> FxAutoDespawn : 挂在冲击波模板上
+    CombatEventsUnity ..> FxAutoDespawn : Instantiate 的副本自带
+
+    Hud "1" *-- "1" HudBossBar : 同 GameObject 兄弟组件<br/>Build() @156 之后装配
+    Hud "1" *-- "1" HudStatusIcons : 既有兄弟组件
+    HudBossBar ..> BossFlowConfig : 尺寸与边距
+    HudBossBar ..> BossPhase : SetPhase
+    HudBossBar ..> Combatant : 读 Hp / HpMax / DisplayName
