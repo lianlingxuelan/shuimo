@@ -244,6 +244,55 @@ namespace Xianxia.Unity.T2
             get { return _bamboos.Count; }
         }
 
+        /// <summary>
+        /// 深度轴（指向相机，默认 (0,0,-1)）。供 EnemyNpcSpawner 复用同一套深度排序，
+        /// 保证遮挡验收一致（红线 R3）。从现有 <see cref="_depthAxis"/> 取值。
+        /// </summary>
+        public Vector3 DepthAxis
+        {
+            get { return _depthAxis; }
+        }
+
+        /// <summary>注册一个待深度排序的物体（EnemyNpcSpawner 调用）。</summary>
+        /// <param name="t">物体根 Transform。</param>
+        public void RegisterSortable(Transform t)
+        {
+            if (t != null && !_registeredSortables.Contains(t))
+            {
+                _registeredSortables.Add(t);
+            }
+        }
+
+        /// <summary>注销一个待深度排序的物体。</summary>
+        /// <param name="t">物体根 Transform。</param>
+        public void UnregisterSortable(Transform t)
+        {
+            if (t != null)
+            {
+                _registeredSortables.Remove(t);
+            }
+        }
+
+        /// <summary>注册一个可被扇形 harvest 命中的目标（EnemyNpcSpawner 调用）。</summary>
+        /// <param name="t">目标根 Transform（其上的 CharacterView 受击时播 Hit）。</param>
+        public void RegisterHarvestTarget(Transform t)
+        {
+            if (t != null && !_harvestTargets.Contains(t))
+            {
+                _harvestTargets.Add(t);
+            }
+        }
+
+        /// <summary>注销一个 harvest 目标。</summary>
+        /// <param name="t">目标根 Transform。</param>
+        public void UnregisterHarvestTarget(Transform t)
+        {
+            if (t != null)
+            {
+                _harvestTargets.Remove(t);
+            }
+        }
+
         private readonly List<BambooVfx> _bamboos = new List<BambooVfx>();
         private readonly List<Vector2> _bambooPlan = new List<Vector2>();
         private readonly List<Material> _ownedMaterials = new List<Material>();
@@ -254,8 +303,13 @@ namespace Xianxia.Unity.T2
         private Transform _player;
         private PlayerController _playerController;
         private AttackController _attack;
+        private CharacterView _playerView;
         private int _lastSwingCount;
         private int _totalHarvestHits;
+
+        // 轮次 C：EnemyNpcSpawner 注册进来的「待深度排序物体」与「可被扇形 harvest 命中的目标」。
+        private readonly List<Transform> _registeredSortables = new List<Transform>();
+        private readonly List<Transform> _harvestTargets = new List<Transform>();
 
         private CombatBridge _bridge;
         private float _bridgeRetry;
@@ -357,6 +411,8 @@ namespace Xianxia.Unity.T2
         {
             _bamboos.Clear();
             _bambooPlan.Clear();
+            _registeredSortables.Clear();
+            _harvestTargets.Clear();
 
             if (_groveRoot != null)
             {
@@ -393,6 +449,8 @@ namespace Xianxia.Unity.T2
             {
                 _playerController = player.GetComponent<PlayerController>();
                 _attack = player.GetComponent<AttackController>();
+                // 轮次 C：识别并解析角色视图（统一挂载约定：每个角色根节点有且只有一个 CharacterView）。
+                _playerView = CharacterView.ResolveOn(player);
                 // 绑定瞬间同步一次挥砍计数，避免把绑定前累积的挥砍当成新边沿一次性补刀。
                 _lastSwingCount = _attack != null ? _attack.SwingCount : 0;
             }
@@ -400,6 +458,7 @@ namespace Xianxia.Unity.T2
             {
                 _playerController = null;
                 _attack = null;
+                _playerView = null;
                 _lastSwingCount = 0;
             }
 
@@ -441,11 +500,23 @@ namespace Xianxia.Unity.T2
                 {
                     Vector2 facing = _playerController != null ? _playerController.LastFacing : Vector2.right;
                     DetectHarvest(facing);
+                    // 轮次 C：挥砍边沿驱动玩家视图攻击状态。
+                    if (_playerView != null)
+                    {
+                        _playerView.PlayState(CharacterAnimState.Attack);
+                    }
                 }
             }
 
             if (!blocked)
             {
+                // 轮次 C：每帧维护玩家朝向 + 推进动画（CharacterView.Tick 内部只读 FeedbackClock.Delta，
+                // 顿帧同步冻结；不写 FeedbackClock.Frozen、不碰 Time.timeScale）。
+                if (_playerView != null && _playerController != null)
+                {
+                    _playerView.SetFacing(_playerController.LastFacing);
+                    _playerView.Tick();
+                }
                 ApplyDepthSort();
             }
         }
@@ -503,6 +574,40 @@ namespace Xianxia.Unity.T2
                 vfx.OnHit(damage, hitPoint, dir);
                 _totalHarvestHits++;
             }
+
+            // 轮次 C：把 EnemyNpcSpawner 暴露的 harvestable 集并入同一扇形判定（零内核改动，
+            // 仅扩展 2.5D 内命中集）。命中即对目标上的 CharacterView 播 Hit 受击表现。
+            for (int i = 0; i < _harvestTargets.Count; i++)
+            {
+                Transform ht = _harvestTargets[i];
+                if (ht == null)
+                {
+                    continue;
+                }
+
+                CharacterView cv = ht.GetComponent<CharacterView>();
+                if (cv == null)
+                {
+                    continue;
+                }
+
+                Vector3 wp2 = ht.position;
+                Vector2 delta2 = new Vector2(wp2.x - origin.x, wp2.y - origin.y);
+                float distSqr2 = delta2.sqrMagnitude;
+                if (distSqr2 > reachSqr)
+                {
+                    continue;
+                }
+
+                Vector2 dir2 = distSqr2 > 1e-6f ? delta2 / Mathf.Sqrt(distSqr2) : facing;
+                if (distSqr2 > 1e-6f && Vector2.Dot(dir2, facing) < halfArcCos)
+                {
+                    continue;
+                }
+
+                cv.PlayState(CharacterAnimState.Hit);
+                _totalHarvestHits++;
+            }
         }
 
         /// <summary>
@@ -534,6 +639,7 @@ namespace Xianxia.Unity.T2
             float playerY = _player.position.y;
             float playerZ = _player.position.z;
 
+            // 竹子：逻辑等价原实现，统一改调 DepthSortUtility.Apply（轮次 C 抽出共享）。
             for (int i = 0; i < _bamboos.Count; i++)
             {
                 BambooVfx vfx = _bamboos[i];
@@ -542,12 +648,13 @@ namespace Xianxia.Unity.T2
                     continue;
                 }
 
-                Transform t = vfx.transform;
-                Vector3 p = t.position;
-                // nearness > 0 表示竹子在玩家「前方」（Y 更小 → 屏幕上更靠下 → 应更近相机）
-                float nearness = (playerY - p.y) * ySortToDepth;
-                p.z = playerZ + _depthAxis.z * nearness;
-                t.position = p;
+                DepthSortUtility.Apply(vfx.transform, playerY, playerZ, _depthAxis, ySortToDepth);
+            }
+
+            // 轮次 C：对 EnemyNpcSpawner 注册进来的角色（敌人 / NPC）做同一套深度排序。
+            for (int i = 0; i < _registeredSortables.Count; i++)
+            {
+                DepthSortUtility.Apply(_registeredSortables[i], playerY, playerZ, _depthAxis, ySortToDepth);
             }
         }
 

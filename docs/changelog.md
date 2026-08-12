@@ -921,6 +921,25 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 30 · 竹林 2.5D 轮次 C（Spine 角色视图 + 敌人/NPC 撒点 + Route A 自测工具化，feature/2.5d，2026-08-12 第15轮 主理人 sole owner）
+
+- **分支策略更正（用户拍板）**：用户明确 `main`=2D 长期主线、`feature/2.5d`=2.5D 长期并行支线，**两轨不合并、独立推进**。据此取消上一轮遗留的「合并债」待办（`branch-merge-plan.md` 已加更正横幅，§0–§8 降为"将来若需合并的参考"）。本轮全部代码只落 `feature/2.5d` 隔离目录。
+- **触发 / 选题**：用户授权"A B C D 全交给你"，主理人按标准 SOP 走 架构师→工程师→QA，并独立 `ls`/`grep` 双复核 + 落档。A=竹林 Spine 角色、B=敌人/NPC 美术撒点、C=Route A 自测工具化。
+- **交付（4 新增 + 1 修改，零内核改动）**：
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/CharacterView.cs`（~19.8KB）：`CharacterAnimState` 枚举 + `CharacterView` 抽象（`Tick()` 只读 `FeedbackClock.Frozen` 闸门 → 只读 `FeedbackClock.Delta`）+ `SpriteCharacterView`（默认，SpriteRenderer，受击/攻击/死亡变换级表现）+ `#if HAS_SPINE_PACKAGE` 守卫 `SpineCharacterView`（引用 `Spine.Unity.SkeletonAnimation`，运行时组件探测软切换）；`ResolveOn` 工厂统一解析玩家/敌人视图。
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/EnemyNpcSpawner.cs`（~24.5KB）：`EnemyNpcSpawner` + `EnemyNpcSpawnConfig`(ScriptableObject) + `EnemyArchetypeEntry` + `EnemyKind` + `InteractableMarker`；确定性撒点复用 `ZoneSeed.CreateRng→PCG32`（泊松拒绝采样 + attempts 上限防死循环）；Ink 材质 `Shader.Find("Xianxia/Ink/...")` 回退；harvestable 小怪登记进 `BSC.DetectHarvest` 命中集，NPC 不进。
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/DepthSortUtility.cs`（~3KB）：从 `BSC.ApplyDepthSort` 抽出的共享深度排序静态工具（按与玩家 Y 差推到深度轴），BSC 与 Spawner 共用同一套。
+  - 新增 `Assets/_Project/Scripts/Editor/RouteASelfTest.cs`（~15.7KB，`Shuimo.EditorTools`）：菜单 `Shuimo/2.5D/运行 Route A 自测` —— 5 项校验（AlwaysIncludedShaders / BambooHitFx prefab / 注释感知红线 grep / bamboo_ink.fbx globalScale / 报告输出），一键替代原人工自测清单。
+  - 修改 `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`（50258→54759B）：`BindPlayer` 解析 `CharacterView.ResolveOn(player)` 并驱动 Attack 边沿 + 每帧 `SetFacing`；`ApplyDepthSort` 重构为调 `DepthSortUtility.Apply`；暴露 `DepthAxis` 只读属性 + `RegisterSortable/RegisterHarvestTarget` 入口；`DetectHarvest` 并入 harvestable 集；`Unload` 清理两集合。
+- **★ 主理人独立复核（不轻信 IS_PASS，ls/grep 双证）全过**：① 5 文件落盘（mtime 08-12，字节数与工程师报吻合）；② 内核文件 mtime 全为 08-08~08-10（AttackController/CombatBridge/PlayerController/FeedbackClock/WorldBuilder 等），**零改动**；③ 红线 grep：2.5D 目录 `Time.timeScale`/`CombatScheduler`/`RunPhase`/`DamageResolver`/`RequestHitstop`/`KickHitstop`/`Frozen=` 命中全在 `//`/`///` 注释，唯一代码引用是 `CharacterView.cs:92 if(FeedbackClock.Frozen)`（只读），**代码违规 0 命中**；④ `SpineCharacterView` 整类 + `using Spine.Unity` 被 `#if HAS_SPINE_PACKAGE`(L36-38 / L356-492) 包裹，未定义符号零 Spine 引用。
+- **QA 严过关静态走查 = 9/9 PASS，IS_PASS: YES，路由 NoOne（无源码 Bug）**：含 Spine 守卫编译推理、DepthSortUtility 行为等价、BindPlayer 接入、DetectHarvest 扩集、API 签名一致性（FeedbackClock/PlayerController/AttackController/ZoneSeed/PCG32）全核查通过。
+- **两条非阻塞备注（QA 提，不影响红线与功能）**：① RouteASelfTest Check2 第二候选路径写成 `Assets/Resources/2.5D/BambooHitFx.prefab`，与设计 §4.2 文案 `Assets/_Project/Resources/...` 微差——两者均 WARN（缺失时），功能等价，建议后续核对烘焙 prefab 真实落点；② 红线 grep 对 `Time.timeScale` 仅匹配赋值形态，裸使用不抓——当前代码 0 引用故无漏报。
+- **诚实边界**：本环境无 Unity/dotnet，未编译未跑。所有"通过"指源码层符合红线与逻辑契约，最终放行以用户本地 Unity 真机验收为准。
+- **★ git 交付限制（重要）**：本沙箱 git 把嵌套 Unity 子仓库 `shuimofeng/shuimofeng` 误认到父仓库 `ancientGame`（branch master），`GIT_DIR` 强制指向嵌套 `.git` 亦报 "not a git repository" → **无法在此创建提交/推送**（曾推 Round B 是因对象已在库）。5 文件已物理备份至 `/f/AI-project/_backup_shuimofeng_roundC/`。**交还用户本地 commit/push**（见下方命令），用户本地 git 能正确识别 `shuimo` 仓库。
+- **遗留给用户（2.5D 轮次 C，本地验证清单）**：① Unity 2022.3 编译 0 error（重点确认未定义 `HAS_SPINE_PACKAGE` 时零 Spine 依赖零报错）；② 导入 Spine Unity Runtime 后 `Player Settings → Scripting Define Symbols` 追加 `HAS_SPINE_PACKAGE` + 提供 `.skel/.json` 骨骼数据，验证 SpineCharacterView 编译 + 运行时软切换；③ Editor 菜单 `Shuimo/2.5D/运行 Route A 自测` 跑一遍看 PASS/WARN/FAIL；④ PlayMode：竹林生成 + 敌人/NPC 确定性撒点 + 扇形 harvest 命中小怪播 Hit + 玩家挥砍 Attack 脉冲 + 深度遮挡一致 + 顿帧期间动画/粒子与全场同步冻结。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -944,4 +963,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-11，阶段 29）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-12，阶段 30）*
