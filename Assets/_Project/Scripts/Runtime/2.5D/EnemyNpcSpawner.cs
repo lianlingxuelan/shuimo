@@ -277,7 +277,7 @@ namespace Xianxia.Unity.T2
                 }
                 else
                 {
-                    SpawnNpc(parent, worldXY, npcIdx);
+                    SpawnNpc(parent, worldXY, npcIdx, ctx);
                     npcIdx++;
                 }
             }
@@ -343,7 +343,7 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>生成一个 NPC 标记：Idle 占位 + InteractableMarker，不进 harvest 集。</summary>
-        private void SpawnNpc(Transform parent, Vector3 worldXY, int index)
+        private void SpawnNpc(Transform parent, Vector3 worldXY, int index, BambooSceneContext ctx)
         {
             GameObject root = new GameObject(string.Format("Npc_{0}", index));
             root.transform.SetParent(parent, false);
