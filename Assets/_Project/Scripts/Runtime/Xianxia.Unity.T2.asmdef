@@ -5,7 +5,8 @@
         "Xianxia.Core",
         "Xianxia.Combat",
         "Xianxia.Combat.Unity",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.2D.Animation.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
