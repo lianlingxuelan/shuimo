@@ -123,8 +123,7 @@ namespace Shuimo.EditorTools
             for (int i = 0; i < ordered.Count; i++)
             {
                 var d = ordered[i];
-                var dir = (d.End - d.Start);
-                dir.z = 0f;
+                var dir = new Vector3(d.End.x - d.Start.x, d.End.y - d.Start.y, 0f);
                 absRotations[i] = Quaternion.FromToRotation(Vector3.right, dir.normalized);
             }
 
