@@ -142,6 +142,12 @@ hip → thigh_R → shin_R → foot_R
 
 ## 9. 运行验证
 
+> **一键自检（推荐先做）**：菜单 `Shuimo/2.5D/运行 骨骼绑定自检`（由 `BoneSetupSelfTest.cs` 提供）。
+> 它会自动检查 6 项：编译符号、Sprite 导入、预制体存在、SpriteSkin 骨骼、Animator 5 状态、clip 字段填写，
+> 并输出 PASS/WARN/FAIL 报告到 `docs/bone-setup-selftest-report.md`。**全 PASS 才说明绑骨无误**，再往下 PlayMode。
+
+手动核对（自检 PASS 后可跳过）：
+
 1. 点 **Play**。
 2. 角色应播放 idle。
 3. 用现有 `PlayerController` 移动，应切换 walk。

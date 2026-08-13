@@ -957,6 +957,17 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 32 · 竹林 2.5D 骨骼绑定自检器 + Safe Mode 修复推送闭环（feature/2.5d，2026-08-13）
+
+- **触发 / 选题**：用户确认 Safe Mode 报错已消失，要求直接推送；并问"验证"是否指检查骨骼绑定（用户语音"谷歌绑定"=骨骼绑定之误）。主理人：① 推送阶段 31 修复（本次 SSH push 成功，`5b5e490..2d571f6` 已上远端 `feature/2.5d`）；② 新增**骨骼绑定自检器**，把"验证"从人工猜测变成一键 PASS/WARN/FAIL。
+- **交付（1 新增）**：`Assets/_Project/Scripts/Editor/BoneSetupSelfTest.cs`（~13KB，`Shuimo.EditorTools`）：菜单 `Shuimo/2.5D/运行 骨骼绑定自检` —— 6 项校验：① `HAS_2D_BONE_PACKAGE` 符号已定义；② `heroine_base_open.png` 导入为 Sprite；③ `HeroineBone` 预制体存在；④ 预制体含 `SpriteSkin`（骨骼已绑）；⑤ `AnimatorController` 含 `idle/walk/attack/hit/death` 5 状态；⑥ `UnityBoneCharacterView` 组件存在且 5 个 clip 字段已填。通过反射读取运行时类型（`UnityBoneCharacterView` / `SpriteSkin`），避免对编译符号的硬依赖——符号未开时自检器仍能报告"缺符号"而非编译失败。
+- **使用方式**：用户本地按 `docs/2d-bone-setup-guide.md` 第 0–8 步做完后，菜单跑一次自检；全 PASS 即骨骼绑定就绪可 PlayMode 验收；有 FAIL 按报告逐条消除。
+- **给用户的关键澄清**：Safe Mode 修复（阶段 31）与骨骼绑定是**两件事**——前者是编译报错让 Unity 进保护模式（已修+已推），后者是本地把女主图绑成骨骼角色（按 guide 本地做）。自检器专管后者。
+- **诚实边界**：本环境无 Unity/dotnet，自检器未编译未跑；逻辑基于反射与 `AssetDatabase`/`PlayerSettings` API，最终放行以用户本地运行结果为据。
+- **遗留给用户**：① 按 setup guide 第 0–8 步完成绑骨；② 跑 `Shuimo/2.5D/运行 骨骼绑定自检` 看 PASS；③ PlayMode 验证 idle/walk/attack/hit/death 切换 + 顿帧同步；④ 形态切换（入仙/入魔）留二期。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
