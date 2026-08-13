@@ -983,6 +983,30 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 34 · Unity 2D Animation 手动推进兼容 Unity 2022.3（feature/2.5d，2026-08-13 第18轮）
+
+- **触发 / 选题**：用户按 guide 操作后 Unity 退出 Safe Mode，但 Console 报新的编译错误：`Assets/_Project/Scripts/Runtime/2.5D/CharacterView.cs(473,47): error CS0117: 'AnimatorUpdateMode' does not contain a definition for 'Manual'`。用户截图询问。
+- **根因**：`UnityBoneCharacterView.Bind` 中想把 Animator 设成手动推进以实现顿帧冻结，使用了 `AnimatorUpdateMode.Manual`。该枚举值在 Unity 2022.3 LTS 中**不存在**（只有 `Normal` / `AnimatePhysics` / `UnscaledTime`），导致编译失败。
+- **修复（1 个文件，2 处改动）**：`Assets/_Project/Scripts/Runtime/2.5D/CharacterView.cs`
+  - 文件顶部新增 `using UnityEngine.Playables;`
+  - `Bind` 中 `_animator.updateMode = AnimatorUpdateMode.Manual;` 替换为：
+    ```csharp
+    if (_animator != null && _animator.playableGraph.IsValid())
+    {
+        _animator.playableGraph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+    }
+    ```
+  - 语义保持不变：Animator 不再按 `Time.deltaTime` 自动推进，改由 `OnTick` 用 `FeedbackClock.Delta` 手动 `_animator.Update(dt)` 驱动；顿帧期间 `OnTick` 不被调用 → 动画同步冻结，与 Spine 分支一致。
+- **远程状态**：手动修正 `.git/packed-refs` 后 `git push origin feature/2.5d` 成功，`feature/2.5d` 已更新至 `afa9103`。
+- **诚实边界**：本环境无 Unity/dotnet，未实际编译；修复基于 Unity 2022.3 API 文档与编译错误文本静态推导，最终放行以用户本地 Console 0 error 为准。
+- **给用户的关键澄清（同时回答本轮提问）**：
+  1. **没有"自动绑骨脚本"**——我写的 `BoneSetupSelfTest.cs` 是**自检器**（菜单 `Shuimo/2.5D/运行 骨骼绑定自检`），只能检查你有没有绑好骨、动画状态齐不齐，**不能替你画骨骼**。Unity 2D Animation 的骨骼必须手动在 Skinning Editor 里点出来，这是 Editor 交互操作，代码替代不了。
+  2. **绑骨图片用哪张**：用 `Assets/_Project/Art/Characters/Heroine2D/heroine_base_open.png`——就是你发的"四肢张开"那张，我已经帮你把黑底去掉、转成透明底 PNG 放进工程。
+  3. **其他图也有用**：同目录下的 `heroine_base_front.png` / `heroine_base_side.png` 可作正侧参考；`heroine_xian.png` / `heroine_mo.png` 是入仙/入魔形态，二期做形态切换时再接入；`heroine_tri_*.png` 是三视图，绑骨时当比例参考。
+- **遗留给用户**：① 确认 Console 里 `CS0117` 已消失；② 继续按 `docs/2d-bone-setup-guide.md` 用 `heroine_base_open.png` 绑骨；③ 跑 `Shuimo/2.5D/运行 骨骼绑定自检` 看 PASS；④ PlayMode 验收。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1006,4 +1030,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-13，阶段 33）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-13，阶段 34）*
