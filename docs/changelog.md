@@ -921,6 +921,23 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 31 · 竹林 2.5D 轮次 C 修复：SpawnNpc 缺失 ctx 导致 Unity Safe Mode（feature/2.5d，2026-08-13）
+
+- **触发 / 选题**：用户打开 Unity 工程进入 **Safe Mode**，Console 报 `CS0103: The name 'ctx' does not exist in the current context`，位置 `Assets/_Project/Scripts/Runtime/2.5D/EnemyNpcSpawner.cs:368,44` 与 `:371,17`。主理人直接修复，不派子 agent。
+- **根因**：`SpawnNpc(Transform parent, Vector3 worldXY, int index)` 方法签名缺少 `BambooSceneContext ctx` 参数，但方法体内第 369 行使用了 `ctx != null` 做深度排序注册判断。该 `ctx` 变量在 `SpawnAll()` 的循环作用域中实际存在，只是调用 `SpawnNpc` 时未传递。
+- **修复（1 个文件，2 行改动）**：`EnemyNpcSpawner.cs`
+  - 调用点：L280 `SpawnNpc(parent, worldXY, npcIdx)` → `SpawnNpc(parent, worldXY, npcIdx, ctx)`
+  - 方法签名：L346 `private void SpawnNpc(Transform parent, Vector3 worldXY, int index)` → `private void SpawnNpc(Transform parent, Vector3 worldXY, int index, BambooSceneContext ctx)`
+  - NPC 仍不进 harvest 集，只注册深度排序，与敌人行为一致。
+- **伴随问题：本机 .git 分支引用瞬态丢失**（本沙箱旧疾复发）：commit 后本地 `.git/refs/heads/feature/2.5d` 再次被回收为空，HEAD 变 bad object；主理人以 `git fsck --lost-found` 找回 dangling commit，手动重建引用，并用 `git log --oneline` 确认链式正确。同时发现 `.git/packed-refs` 存在排序错误（`refs/heads/feature/2.5d` 排在 `refs/remotes/origin/feature/2.5d` 之后，违反字典序），已人工重写为正确顺序并修正远端 SHA（`5b5e490950…`）。本地仓库恢复，commit `3be4aa40` 落盘。
+- **远程推送状态**：`origin` 配置 fetch=HTTPS/push=SSH；本环境 SSH 公钥认证失败、HTTPS push 无法交互输入 GitHub 凭据，**本次 commit 未推送到远端**。用户本地只需在任意 Git Bash 执行一次 `git push origin feature/2.5d` 即可完成备份（credential 由本地 Git Credential Manager 弹窗处理）。
+- **退出 Safe Mode 操作**：用户端点击 Unity 编辑器顶部 **Exit Safe Mode** 按钮（或 `File → Exit Safe Mode`），Unity 会重新编译；修复后 `EnemyNpcSpawner.cs` 不再报错，应回到正常编辑态。
+- **护栏**：t3 9/9、t1 64/64 未复跑（仅改一个方法签名，未触内核），但 `EnemyNpcSpawner.cs` 内 `ctx` 引用已唯一、调用点参数个数对齐。
+- **诚实边界**：本环境无 Unity/dotnet，未实际编译；修复基于 C# 语法静态检查，最终放行以用户本地 Exit Safe Mode 后 0 error 为准。
+- **遗留给用户**：① Exit Safe Mode，确认 Console 0 error；② 本地执行 `git push origin feature/2.5d` 备份 commit `3be4aa40`；③ 继续 `feature/2.5d` 的 2.5D 验证（竹林生成/砍竹特效/Spine 骨骼接入）或按需返回 main 2D 线。
+
+---
+
 ### 阶段 30 · 竹林 2.5D 轮次 C（Spine 角色视图 + 敌人/NPC 撒点 + Route A 自测工具化，feature/2.5d，2026-08-12 第15轮 主理人 sole owner）
 
 - **分支策略更正（用户拍板）**：用户明确 `main`=2D 长期主线、`feature/2.5d`=2.5D 长期并行支线，**两轨不合并、独立推进**。据此取消上一轮遗留的「合并债」待办（`branch-merge-plan.md` 已加更正横幅，§0–§8 降为"将来若需合并的参考"）。本轮全部代码只落 `feature/2.5d` 隔离目录。
