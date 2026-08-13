@@ -1030,6 +1030,19 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 36 · 修复一键生成骨骼脚本 CS1061（feature/2.5d，2026-08-13 第20轮）
+
+- **触发 / 选题**：用户打开 Unity 后顶部菜单没有 `Shuimo`，截图 Console 显示 `HeroineBoneWizardEditor.cs(127,21): error CS1061: 'Vector2' does not contain a definition for 'z'`。说明阶段 35 的脚本存在静态类型错误，Unity 拒绝加载编辑器程序集，导致菜单消失。
+- **根因**：代码中 `var dir = (d.End - d.Start); dir.z = 0f;` 把 `Vector2` 差值赋给隐式 `Vector2` 变量后再访问 `.z`；`Vector2` 无 `z` 成员。
+- **修复（1 文件，1 处改动）**：`Assets/_Project/Scripts/Editor/2.5D/HeroineBoneWizardEditor.cs`
+  - 将上述两行改为：`var dir = new Vector3(d.End.x - d.Start.x, d.End.y - d.Start.y, 0f);`
+  - 保持后续 `Quaternion.FromToRotation(Vector3.right, dir.normalized)` 所需的 `Vector3` 类型一致。
+- **远程状态**：提交 `1c383c1` 已推送至 `feature/2.5d`。推送过程再次遇到本地 `packed-refs` 未随 commit 自动更新的旧疾，主理人已手动修正 `refs/heads/feature/2.5d` 为正确完整 SHA 后成功 push。
+- **诚实边界**：本环境无 Unity/dotnet，修复基于 Console 报错文本静态完成；最终放行以用户本地 Console 0 error、且顶部出现 `Shuimo` 菜单为准。
+- **遗留给用户**：① 等 Unity 重编完成后看 Console 是否还有红字；② 若出现 `Shuimo → 2.5D → 生成女主默认骨骼`，选中 `heroine_base_open.png` 后点它；③ 生成后切 Skinning Editor 看骨骼线并调位置；④ 点 `Auto Weights → Generate` 生成权重。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
