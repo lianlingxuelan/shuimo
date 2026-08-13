@@ -968,6 +968,21 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 33 · 测试程序集引用修复：CS0246 'UnityTest' not found（feature/2.5d，2026-08-13 第17轮）
+
+- **触发 / 选题**：用户按 guide 在 `Player Settings → Scripting Define Symbols` 追加 `HAS_2D_BONE_PACKAGE` 后 Unity 重新全量编译，底部 Console 报 `CS0246: The type or namespace name 'UnityTest' could not be found`，位置 `Assets/_Project/Scripts/Runtime/Tests/PlayMode/P0_2_P0_4_PlayModeTests.cs(475,10)`。用户截图询问。
+- **根因**：`Xianxia.Unity.T2.PlayModeTests.asmdef` 与 `Xianxia.Unity.T2.Tests.asmdef` 引用的是包名 `com.unity.test-framework`，而 Unity 测试程序集需要显式引用运行时/编辑器测试 assembly：`UnityEngine.TestRunner`（PlayMode）+ `UnityEditor.TestRunner`（EditMode），并设置 `overrideReferences: true` + `precompiledReferences: ["nunit.framework.dll"]`。引用名不正确导致 `using UnityEngine.TestTools;` 和 `[UnityTest]` 在编译期不可见。
+- **修复（2 个 asmdef）**：
+  - `Assets/_Project/Scripts/Runtime/Tests/PlayMode/Xianxia.Unity.T2.PlayModeTests.asmdef`：引用改为 `UnityEngine.TestRunner` + `UnityEditor.TestRunner`；`overrideReferences: true`；增加 `nunit.framework.dll`；保留 `UNITY_INCLUDE_TESTS` 约束与空 `includePlatforms`（PlayMode 可跑所有平台）。
+  - `Assets/_Project/Scripts/Runtime/Tests/Xianxia.Unity.T2.Tests.asmdef`：同上进行 EditMode 引用修正。
+- **伴随提交**：补交 Unity 自动生成的 `.meta` 文件——`BoneSetupSelfTest.cs.meta` + `Heroine2D/*.png.meta`（含 TextureImporter 设置），避免 GUID 与导入设置在不同机器间丢失。
+- **git 旧疾处理**：commit `b11438b` 生成后本地 `.git/packed-refs` 中的 `refs/heads/feature/2.5d` 未自动更新，导致 `git push` 报 "Everything up-to-date"；主理人手动修正 `.git/packed-refs` 字典序与 SHA 后 push 成功（`a2926c4..b11438b`）。
+- **远程状态**：`feature/2.5d` 已更新至 `b11438b`。
+- **诚实边界**：本环境无 Unity/dotnet，未实际编译；修复基于 Unity 测试程序集标准配置与错误文本静态推导，最终放行以用户本地 Console 0 error 为准。
+- **遗留给用户**：Unity 里等待编译完成，确认 `CS0246` 消失；然后继续按 setup guide 绑骨 + 跑自检器。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
