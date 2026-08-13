@@ -27,6 +27,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Playables;
 using Xianxia.Combat.UnityBridge; // FeedbackClock
 
 namespace Xianxia.Unity.T2
@@ -572,9 +573,12 @@ namespace Xianxia.Unity.T2
                 _skin.enabled = true;
                 // 手动推进：避免 Animator 用 deltaTime 自动播放，改由 FeedbackClock.Delta 驱动，
                 // 实现与 Spine 分支一致的顿帧同步（Frozen 时 OnTick 不调用 → Animator 不动）。
-                if (_animator != null)
+                if (_animator != null && _animator.playableGraph.IsValid())
                 {
-                    _animator.updateMode = AnimatorUpdateMode.Manual;
+                    // Unity 2022.3 的 AnimatorUpdateMode 没有 Manual 枚举值，
+                    // 改为把 Animator 的 PlayableGraph 设成 Manual 时间更新模式，
+                    // 再由 OnTick 用 FeedbackClock.Delta 手动推进，顿帧期间自然冻结。
+                    _animator.playableGraph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
                 }
                 // 记录根骨骼用于朝向翻转与受击抖动。
                 _rootBone = _skin.rootBone;
