@@ -5,7 +5,9 @@
         "Xianxia.Unity.T2",
         "Xianxia.Core",
         "Xianxia.Combat",
-        "Xianxia.Combat.Unity"
+        "Xianxia.Combat.Unity",
+        "Unity.2D.Sprite.Editor",
+        "Unity.2D.Animation.Editor"
     ],
     "includePlatforms": [
         "Editor"

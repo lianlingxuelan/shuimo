@@ -42,6 +42,8 @@
 > **没反应先看这里**：`Create Bone` 只是激活工具，**不会自动在画面中央生出一根骨头**。你必须在角色身上点一下作为起点，移动鼠标，再点一下作为终点；连续点可以继续接成一条骨链。结束这条链时按 **右键** 或 **Esc**。
 >
 > 如果点了 `Create Bone` 后怎么点画面都没反应，先点左侧 **Geometry → Auto Geometry → Generate**，等网格生成出来，再回来点 `Create Bone`。
+>
+> **不想手动画？** 现在工程里加了菜单 `Shuimo/2.5D/生成女主默认骨骼`，点一下会自动按下图层级在 `heroine_base_open.png` 里生成默认骨架。生成后再进 Skinning Editor 微调位置、点 `Auto Weights` 即可。
 
 左侧工具栏点 **Create Bone**。
 

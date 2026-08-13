@@ -1007,6 +1007,29 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 35 · 女主 2D Animation 骨骼一键生成器（feature/2.5d，2026-08-13 第19轮）
+
+- **触发 / 选题**：用户按 guide 手动画骨骼时受挫：点了 `Create Bone` 后骨链停不下来、不会结束当前链、觉得“线不断”，爆了粗口并要求“给我一个点好的”。主理人直接响应：① 先把操作要点讲清；② 写一个**一键生成默认骨架**的编辑器脚本，让用户点菜单就能拿到初始骨骼，再微调。
+- **关键操作澄清（已写入 `docs/2d-bone-setup-guide.md`）**：
+  - `Create Bone` 只是切工具，不会自动出骨头；要**在角色身上点一下起点，再点一下终点**。
+  - 连续点会接成一条骨链；想**结束当前链**按 **右键** 或 **Esc**。
+  - 想从某根骨头末端长出新分支，先点一下那根骨头的末端（或尖端）再继续点。
+  - 如果点了完全没反应，先点左侧 **Geometry → Auto Geometry → Generate** 生成网格。
+- **交付（2 新增/修改，Editor-only，零内核改动）**：
+  - 新增 `Assets/_Project/Scripts/Editor/2.5D/HeroineBoneWizardEditor.cs`（~18KB，`Shuimo.EditorTools`）：菜单 `Shuimo/2.5D/生成女主默认骨骼`——用 Unity `SpriteDataProvider` API 给 `Assets/_Project/Art/Characters/Heroine2D/heroine_base_open.png` 写入一套默认 `SpriteBone` 数据（躯干/头/双臂/双腿/头发/裙摆，约 21 根），带 `parentId` 层级与局部空间变换；运行后自动 `SaveAndReimport`。
+  - 修改 `Assets/_Project/Scripts/Editor/Xianxia.Unity.T2.Editor.asmdef`：增加 `Unity.2D.Sprite.Editor` + `Unity.2D.Animation.Editor` 引用，使编辑器脚本能访问 `ISpriteBoneDataProvider` 等 API。
+  - 更新 `docs/2d-bone-setup-guide.md`：第 3 节加入「没反应先看这里」提示、右键/Esc 结束链说明，以及「不想手动画就点菜单一键生成」的入口说明。
+- **使用方式**：
+  1. 选中 `heroine_base_open.png`，确认 Texture Type=Sprite、Sprite Mode=Single、PPU=100，点 Apply。
+  2. 菜单 `Shuimo/2.5D/生成女主默认骨骼`，确认覆盖。
+  3. 打开 Sprite Editor → Skinning Editor，会看到已生成的骨骼线；按 `Auto Weights → Generate` 生成权重。
+  4. 若某些骨头位置偏了，用 `Edit Bone` 拖动微调。
+  5. 按 guide 后续步骤建 AnimatorController（idle/walk/attack/hit/death），挂 `UnityBoneCharacterView`，跑自检器。
+- **诚实边界**：本环境无 Unity/dotnet，未编译未跑；脚本基于 Unity 2022.3 `SpriteDataProvider` API 文档静态推导，坐标按 585×1024 精灵中心 pivot 估算。最终骨架是否贴合角色以用户本地 Skinning Editor 目测为准，大概率需微调手脚/发梢位置，但不需从零画骨。
+- **遗留给用户**：① Unity 编译 0 error 后跑菜单生成骨骼；② Skinning Editor 里看骨架是否覆盖身体，微调后点 Auto Weights；③ 继续按 guide 做 Animator/UnityBoneCharacterView/自检器/PlayMode。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1030,4 +1053,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-13，阶段 34）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-13，阶段 35）*
