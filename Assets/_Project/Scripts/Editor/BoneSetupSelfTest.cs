@@ -135,7 +135,7 @@ namespace Shuimo.EditorTools
         /// <summary>检查 4：预制体含 SpriteSkin 组件。</summary>
         private static CheckResult CheckSpriteSkin(GameObject prefab)
         {
-            System.Type skinType = FindType("SpriteSkin");
+            System.Type skinType = FindType("UnityEngine.U2D.Animation.SpriteSkin");
             if (skinType == null)
             {
                 return CheckResult.Warn(
@@ -206,7 +206,7 @@ namespace Shuimo.EditorTools
         /// <summary>检查 6：UnityBoneCharacterView 组件存在且 clip 字段已填。</summary>
         private static CheckResult CheckBoneViewClips(GameObject prefab)
         {
-            System.Type viewType = FindType("UnityBoneCharacterView");
+            System.Type viewType = FindType("Xianxia.Unity.T2.UnityBoneCharacterView");
             if (viewType == null)
             {
                 return CheckResult.Fail(
