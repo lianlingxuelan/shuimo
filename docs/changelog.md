@@ -1043,6 +1043,34 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 37 · 地图升级选项A：多区域 + 敌人巡逻 + 竹剑切割特效（feature/2.5d，2026-08-14）
+
+- **触发 / 选题**：用户决定把「绑骨」步骤**暂时跳过**（不熟悉操作 + 图易变形），先做选项 A 地图升级。
+  架构上 `CharacterView.ResolveOn` 在「无 `HAS_2D_BONE_PACKAGE` 或角色无 `SpriteSkin`」时自动回落 `SpriteCharacterView`，
+  跳过绑骨不影响工程编译/运行。选项 A = 多区域 / 竹林分层 / 敌人 AI 巡逻 / 竹剑切割特效。
+  本轮补齐后三块（多区域用「空间分区」而非重引入 Unity Tilemap，成本更低、与现有程序化 primitive 一致）。
+- **交付（3 文件改动 + 1 文档，纯运行时逻辑，零美术依赖，不依赖绑骨）**：
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/EnemyPatrol.cs`：圆形区域内随机游走巡逻 AI，驱动 `CharacterView` 的
+    Walk/Idle 与朝向翻转，xorshift32 确定性轨迹，由 Spawner 用 `FeedbackClock.Delta` 驱动（顿帧同步冻结）。
+  - 改造 `Assets/_Project/Scripts/Runtime/2.5D/EnemyNpcSpawner.cs`：
+    - `EnemyNpcSpawnConfig` 新增 `SpawnRegion` 类 + `regions` 列表（center/radius/enemyCount/npcCount）。
+    - `SpawnAll` 双路径：regions 非空 → 按区域独立种子圆内撒点 + 每敌人挂 `EnemyPatrol`（巡逻圈 = 区域）；
+      为空 → 退回原整体方形域（向后兼容）。
+    - NPC 也挂极慢巡逻（moveSpeed=28），不进 harvest 集。
+  - 改造 `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`：砍竹挥砍边沿（`attackEdge && !blocked`）
+    新增 `VfxSlash.Play(player.position, facing, harvestRadius, harvestArcDeg)`，月牙剑气 + 竹屑叠加呈现切割感。
+  - 新增 `docs/map-upgrade-roundA-design.md`：方案 / 红线 / 本地验收清单 / 后续。
+- **红线**：同轮次 B/C——不写 `Time.timeScale`/`FeedbackClock.Frozen`、不进战斗内核、巡逻不读 `Time.deltaTime`
+  （时钟来自调用方传入的 `FeedbackClock.Delta`）。
+- **诚实边界**：本环境无 Unity/dotnet，三文件**未经编译**；逻辑基于既有 API（`CharacterView.PlayState/SetFacing`、
+  `VfxSlash.Play`、`FeedbackClock.Delta`、`ZoneSeed.CreateRng`）静态推导。放行以用户本地 Console 0 error + PlayMode 验收为准。
+- **遗留给用户**：① 编译 0 error；② PlayMode 看敌人/NPC 在区域内巡逻；③ 填 `regions` 看多区域 clustered 分布；
+  ④ 挥砍看月牙剑气 + 竹断；⑤ 深度遮挡正确。
+- **后续未做**：真 Tilemap 引入、区域过渡加载、NPC 交互、敌人战斗 AI（仇恨/追击）、绑骨回归
+  （本增量兼容，挂 `SpriteSkin` + 符号即可切骨骼视图）。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1066,4 +1094,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-13，阶段 35）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 37）*

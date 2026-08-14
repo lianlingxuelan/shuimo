@@ -496,16 +496,18 @@ namespace Xianxia.Unity.T2
                 // 无论是否冻结都同步计数：否则解冻瞬间会把暂停期间累积的挥砍一次性补砍出来。
                 _lastSwingCount = swings;
 
-                if (attackEdge && !blocked)
+            if (attackEdge && !blocked)
+            {
+                Vector2 facing = _playerController != null ? _playerController.LastFacing : Vector2.right;
+                // 选项A·竹剑切割特效：挥砍边沿播放月牙剑气（吃 FeedbackClock.Delta，顿帧同步冻结）。
+                VfxSlash.Play(_player.position, facing, harvestRadius, harvestArcDeg);
+                DetectHarvest(facing);
+                // 轮次 C：挥砍边沿驱动玩家视图攻击状态。
+                if (_playerView != null)
                 {
-                    Vector2 facing = _playerController != null ? _playerController.LastFacing : Vector2.right;
-                    DetectHarvest(facing);
-                    // 轮次 C：挥砍边沿驱动玩家视图攻击状态。
-                    if (_playerView != null)
-                    {
-                        _playerView.PlayState(CharacterAnimState.Attack);
-                    }
+                    _playerView.PlayState(CharacterAnimState.Attack);
                 }
+            }
             }
 
             if (!blocked)

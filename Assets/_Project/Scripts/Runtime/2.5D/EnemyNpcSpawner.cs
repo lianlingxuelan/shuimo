@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// 2.5D/EnemyNpcSpawner.cs —— 敌人 / NPC 确定性撒点（feature/2.5d，轮次 C）
+// 2.5D/EnemyNpcSpawner.cs —— 敌人 / NPC 确定性撒点 + 多区域 + 巡逻（feature/2.5d，轮次 C + 地图升级选项A）
 //
 // ⚠️【本文件未在当前环境验证】
 // 交付环境没有 dotnet / Unity Editor，本文件**未经编译**。请在本地 Unity 2022.3
@@ -7,7 +7,10 @@
 //
 // 【职责】在竹林场景内确定性撒点：
 //   - 竹林小怪：复用 boss/witch/elder/musician 缩放思路，默认 18 只；
-//   - NPC 标记点：可对话/可交互，先占位（InteractableMarker），不战斗、不 harvest。
+//   - NPC 标记点：可对话/可交互，先占位（InteractableMarker），不战斗、不 harvest；
+//   - 多区域（选项A）：config.regions 非空时按区域分别撒点，每个区域独立种子、独立巡逻圈；
+//     不配 regions 时退回「整体方形域」原行为（向后兼容）。
+//   - 每个敌人在其所属区域圆心+半径内做巡逻（EnemyPatrol），驱动 Walk/Idle + 朝向。
 // 复用 ZoneSeed.CreateRng → PCG32（与竹林撒点同源种子纪律，可复现）。
 // 外观套 Ink 材质（Shader.Find 回退），深度排序复用 DepthSortUtility，
 // 小怪 harvestable 集暴露给 BambooSceneContext.DetectHarvest 复用同一扇形（零内核改动）。
@@ -18,11 +21,14 @@
 //   2. 不改动任何内核类型；只读取 PlayerController / AttackController / CombatBridge /
 //      BambooSceneContext 等既有引用。
 //   3. 动画推进一律走 CharacterView（其内部只读 FeedbackClock.Delta）。
+//   4. 巡逻推进由本组件在 !IsGameplayBlocked 帧、用 FeedbackClock.Delta 驱动；
+//      本类与 EnemyPatrol 都不自行读 Time.deltaTime。
 // -----------------------------------------------------------------------------
 
 using System.Collections.Generic;
 using UnityEngine;
 using Xianxia.Core; // ZoneSeed, PCG32
+using Xianxia.Combat.UnityBridge; // FeedbackClock
 
 namespace Xianxia.Unity.T2
 {
@@ -71,6 +77,31 @@ namespace Xianxia.Unity.T2
         public Material inkMaterialOverride;
     }
 
+    /// <summary>撒点区域（选项A「多区域」的空间分区单元）。</summary>
+    [System.Serializable]
+    public sealed class SpawnRegion
+    {
+        /// <summary>区域 id（用于确定性种子派生）。</summary>
+        [Tooltip("区域 id（用于确定性种子派生）")]
+        public string id = "region";
+
+        /// <summary>区域圆心（世界 XY）。</summary>
+        [Tooltip("区域圆心（世界 XY）")]
+        public Vector2 center;
+
+        /// <summary>区域半径（世界单位，巡逻圈同此值）。</summary>
+        [Tooltip("区域半径（世界单位，巡逻圈同此值）")]
+        public float radius = 400.0f;
+
+        /// <summary>该区域敌人数（原型类别复用 config.archetypes）。</summary>
+        [Tooltip("该区域敌人数（原型类别复用 config.archetypes）")]
+        public int enemyCount = 6;
+
+        /// <summary>该区域 NPC 数。</summary>
+        [Tooltip("该区域 NPC 数")]
+        public int npcCount = 1;
+    }
+
     /// <summary>敌人撒点配置载体（ScriptableObject，集中承载全部可配字段）。</summary>
     /// <remarks>
     /// 本运行时脚本归属于 Xianxia.Unity.T2（非 Editor 程序集），不能携带
@@ -83,7 +114,7 @@ namespace Xianxia.Unity.T2
         [Tooltip("确定性种子（走 ZoneSeed.CreateRng，与竹林同源纪律）")]
         public string zoneSeedId = "zone_bamboo_enemies_2_5d";
 
-        [Tooltip("撒点区半边长（XY 正方形，与 BambooSceneContext.groveHalfExtent 同尺度）")]
+        [Tooltip("整体方形撒点区半边长（XY 正方形，与 BambooSceneContext.groveHalfExtent 同尺度）。仅在 regions 为空时生效。")]
         public float spawnAreaHalfExtent = 1400.0f;
 
         [Tooltip("同类/同物体最小间距（泊松拒绝采样）")]
@@ -100,8 +131,12 @@ namespace Xianxia.Unity.T2
         };
 
         [Header("NPC 标记")]
-        [Tooltip("纯标记 NPC 数量（不战斗、不 harvest）")]
+        [Tooltip("无 regions 时的整体 NPC 数量（不战斗、不 harvest）")]
         public int npcMarkerCount = 4;
+
+        [Header("多区域（选项A）")]
+        [Tooltip("空间分区：非空时按区域分别撒点（各自独立种子+巡逻圈）。空则退回整体方形域。")]
+        public List<SpawnRegion> regions = new List<SpawnRegion>();
 
         [Header("外观 / 排序 / 交互")]
         [Tooltip("整体缩放基准")]
@@ -135,8 +170,9 @@ namespace Xianxia.Unity.T2
     }
 
     /// <summary>
-    /// 敌人 / NPC 确定性撒点器（轮次 C）。挂在竹林场景内的独立对象上（或 BambooSceneContext 子树）。
-    /// 生成 + 挂 CharacterView（Idle 占位）+ 注册深度排序集 + 暴露 harvestable 集给 BSC。
+    /// 敌人 / NPC 确定性撒点器 + 多区域 + 巡逻（地图升级 选项A）。
+    /// 生成 + 挂 CharacterView（Idle 占位）+ 注册深度排序集 + 暴露 harvestable 集给 BSC；
+    /// 每个敌人挂 EnemyPatrol（区域圆心/半径/种子），由本组件每帧在 !blocked 时驱动 Tick。
     /// NPC 仅生成 + Idle + InteractableMarker，不进 harvest 集。
     /// </summary>
     [DisallowMultipleComponent]
@@ -154,6 +190,7 @@ namespace Xianxia.Unity.T2
 
         private readonly List<Transform> _spawnedRoots = new List<Transform>();
         private readonly List<CharacterView> _views = new List<CharacterView>();
+        private readonly List<EnemyPatrol> _patrols = new List<EnemyPatrol>();
         private readonly List<Material> _ownedMaterials = new List<Material>();
 
         private CombatBridge _bridge;
@@ -203,27 +240,38 @@ namespace Xianxia.Unity.T2
                 _spawned = true;
             }
 
-            // 每帧推进敌人视图动画（与 BSC 同闸门：暂停语义只读 IsGameplayBlocked）。
-            // CharacterView.Tick 内部只读 FeedbackClock.Delta，顿帧同步冻结。
+            // 每帧推进敌人视图动画 + 巡逻（与 BSC 同闸门：暂停语义只读 IsGameplayBlocked）。
+            // 两者时钟均为 FeedbackClock.Delta，顿帧同步冻结。
             CombatBridge bridge = ResolveBridge();
             bool blocked = bridge != null && bridge.IsGameplayBlocked;
             if (!blocked)
             {
-                for (int i = 0; i < _views.Count; i++)
+                float dt = FeedbackClock.Delta;
+                if (dt > 0.0f)
                 {
-                    if (_views[i] != null)
+                    for (int i = 0; i < _patrols.Count; i++)
                     {
-                        _views[i].Tick();
+                        if (_patrols[i] != null)
+                        {
+                            _patrols[i].Tick(dt);
+                        }
+                    }
+                    for (int i = 0; i < _views.Count; i++)
+                    {
+                        if (_views[i] != null)
+                        {
+                            _views[i].Tick();
+                        }
                     }
                 }
             }
         }
 
         // =====================================================================
-        // 撒点
+        // 撒点（多区域 / 整体方形 两条路径）
         // =====================================================================
 
-        /// <summary>确定性撒点：生成小怪 + NPC 标记，挂视图并注册排序/harvest 集。</summary>
+        /// <summary>确定性撒点：多区域或整体方形，生成小怪 + NPC 标记，挂视图/巡逻并注册排序/harvest。</summary>
         public void SpawnAll()
         {
             ClearSpawned();
@@ -235,9 +283,68 @@ namespace Xianxia.Unity.T2
             }
 
             Transform parent = spawnParent != null ? spawnParent : transform;
-            PCG32 rng = ZoneSeed.CreateRng(config.zoneSeedId, false, 0);
 
-            // 目标数量：所有原型 count 之和 + NPC 标记数。
+            if (config.regions != null && config.regions.Count > 0)
+            {
+                SpawnByRegions(parent, ctx);
+            }
+            else
+            {
+                SpawnSquare(parent, ctx);
+            }
+        }
+
+        /// <summary>选项A 多区域路径：每个 region 独立种子、独立圆内撒点、独立巡逻圈。</summary>
+        private void SpawnByRegions(Transform parent, BambooSceneContext ctx)
+        {
+            int enemyIdx = 0;
+            int npcIdx = 0;
+
+            for (int r = 0; r < config.regions.Count; r++)
+            {
+                SpawnRegion reg = config.regions[r];
+                PCG32 rng = ZoneSeed.CreateRng(config.zoneSeedId + "_r" + r, false, 0);
+
+                // 该区域敌人原型袋（确定性顺序展开，按敌人序号循环取用）。
+                List<EnemyArchetypeEntry> bag = new List<EnemyArchetypeEntry>();
+                for (int i = 0; i < config.archetypes.Count; i++)
+                {
+                    EnemyArchetypeEntry a = config.archetypes[i];
+                    int c = Mathf.Max(0, a.count);
+                    for (int k = 0; k < c; k++)
+                    {
+                        bag.Add(a);
+                    }
+                }
+
+                int regEnemy = Mathf.Max(0, reg.enemyCount);
+                List<Vector2> ePts = ScatterCircle(rng, reg.center, reg.radius, regEnemy);
+                for (int i = 0; i < ePts.Count; i++)
+                {
+                    EnemyArchetypeEntry entry = bag.Count > 0 ? bag[enemyIdx % bag.Count] : null;
+                    uint pseed = HashSeed(config.zoneSeedId + "_" + reg.id + "_e" + i);
+                    SpawnEnemy(parent, ePts[i], entry, ctx, reg.center, reg.radius, pseed);
+                    enemyIdx++;
+                }
+
+                int regNpc = Mathf.Max(0, reg.npcCount);
+                List<Vector2> nPts = ScatterCircle(rng, reg.center, reg.radius, regNpc);
+                for (int i = 0; i < nPts.Count; i++)
+                {
+                    uint pseed = HashSeed(config.zoneSeedId + "_" + reg.id + "_n" + i);
+                    SpawnNpc(parent, nPts[i], npcIdx, ctx, reg.center, reg.radius, pseed);
+                    npcIdx++;
+                }
+            }
+
+            Debug.Log(string.Format(
+                "[2.5D][EnemyNpcSpawner] 多区域撒点完成：区域 {0}，小怪 {1} / NPC {2}，深度轴 = {3}。",
+                config.regions.Count, enemyIdx, npcIdx, _depthAxis));
+        }
+
+        /// <summary>向后兼容路径：整体方形域内撒点（regions 为空时）。</summary>
+        private void SpawnSquare(Transform parent, BambooSceneContext ctx)
+        {
             int enemyTarget = 0;
             for (int i = 0; i < config.archetypes.Count; i++)
             {
@@ -245,6 +352,7 @@ namespace Xianxia.Unity.T2
             }
             int totalTarget = enemyTarget + Mathf.Max(0, config.npcMarkerCount);
 
+            PCG32 rng = ZoneSeed.CreateRng(config.zoneSeedId, false, 0);
             List<Vector2> pts = ScatterPositions(rng, totalTarget);
             if (pts.Count == 0)
             {
@@ -252,7 +360,6 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
-            // 展开原型袋（确定性顺序），按点分配。
             List<EnemyArchetypeEntry> bag = new List<EnemyArchetypeEntry>();
             for (int i = 0; i < config.archetypes.Count; i++)
             {
@@ -264,42 +371,47 @@ namespace Xianxia.Unity.T2
                 }
             }
 
+            // 整体域的巡逻圈：以原点为圆心、半径取方形半边长（含默认全局缩放前的世界尺度）。
+            Vector2 patrolCenter = Vector2.zero;
+            float patrolRadius = config.spawnAreaHalfExtent;
+
             int enemyIdx = 0;
             int npcIdx = 0;
             for (int i = 0; i < pts.Count; i++)
             {
-                Vector3 worldXY = new Vector3(pts[i].x, pts[i].y, 0.0f);
-
                 if (enemyIdx < bag.Count)
                 {
-                    SpawnEnemy(parent, worldXY, bag[enemyIdx], ctx);
+                    uint pseed = HashSeed(config.zoneSeedId + "_e" + enemyIdx);
+                    SpawnEnemy(parent, pts[i], bag[enemyIdx], ctx, patrolCenter, patrolRadius, pseed);
                     enemyIdx++;
                 }
                 else
                 {
-                    SpawnNpc(parent, worldXY, npcIdx, ctx);
+                    uint pseed = HashSeed(config.zoneSeedId + "_n" + npcIdx);
+                    SpawnNpc(parent, pts[i], npcIdx, ctx, patrolCenter, patrolRadius, pseed);
                     npcIdx++;
                 }
             }
 
             Debug.Log(string.Format(
-                "[2.5D][EnemyNpcSpawner] 已撒点：小怪 {0} / NPC {1}（目标 {2}），深度轴 = {3}。",
+                "[2.5D][EnemyNpcSpawner] 整体方形撒点完成：小怪 {0} / NPC {1}（目标 {2}），深度轴 = {3}。",
                 enemyIdx, npcIdx, totalTarget, _depthAxis));
         }
 
-        /// <summary>生成一只小怪：prefab 或 primitives + Ink 材质；挂 CharacterView；注册排序/harvest。</summary>
-        private void SpawnEnemy(Transform parent, Vector3 worldXY, EnemyArchetypeEntry entry, BambooSceneContext ctx)
+        /// <summary>生成一只小怪：prefab 或 primitives + Ink 材质；挂 CharacterView + 巡逻；注册排序/harvest。</summary>
+        private void SpawnEnemy(Transform parent, Vector2 worldXY, EnemyArchetypeEntry entry, BambooSceneContext ctx,
+            Vector2 patrolCenter, float patrolRadius, uint patrolSeed)
         {
-            GameObject root = new GameObject(string.Format("Enemy_{0}_{1}", entry.kind, _spawnedRoots.Count));
+            GameObject root = new GameObject(string.Format("Enemy_{0}_{1}", entry != null ? entry.kind.ToString() : "X", _spawnedRoots.Count));
             root.transform.SetParent(parent, false);
-            root.transform.localPosition = worldXY;
+            root.transform.localPosition = new Vector3(worldXY.x, worldXY.y, 0.0f);
             root.transform.localRotation = Quaternion.identity;
 
-            float scale = (entry.scale > 0.0f ? entry.scale : DefaultScale(entry.kind)) * config.globalScaleRef;
+            float scale = (entry != null && entry.scale > 0.0f ? entry.scale : DefaultScale(entry != null ? entry.kind : EnemyKind.Musician)) * config.globalScaleRef;
             root.transform.localScale = new Vector3(scale, scale, scale);
 
             // 外观：prefab 或 primitives + Ink 材质。
-            if (entry.prefab != null)
+            if (entry != null && entry.prefab != null)
             {
                 GameObject inst = Instantiate(entry.prefab);
                 inst.name = "Visual";
@@ -307,7 +419,6 @@ namespace Xianxia.Unity.T2
                 inst.transform.localPosition = Vector3.zero;
                 inst.transform.localRotation = Quaternion.identity;
                 inst.transform.localScale = Vector3.one;
-                // 套 Ink 材质（仅当 prefab 缺材质时回退，避免覆盖美术资产）。
                 ApplyInkIfMissing(inst, entry, config);
             }
             else
@@ -323,17 +434,19 @@ namespace Xianxia.Unity.T2
                 _views.Add(cv);
             }
 
+            // 挂巡逻（选项A）：在所属区域内随机游走。
+            EnemyPatrol patrol = root.AddComponent<EnemyPatrol>();
+            patrol.Configure(patrolCenter, patrolRadius, patrolSeed);
+            _patrols.Add(patrol);
+
             // 深度排序：注册进 BSC（由 BSC.ApplyDepthSort 统一排序）；无 BSC 时自管列表。
-            if (config.depthSortEnabled)
+            if (config.depthSortEnabled && ctx != null)
             {
-                if (ctx != null)
-                {
-                    ctx.RegisterSortable(root.transform);
-                }
+                ctx.RegisterSortable(root.transform);
             }
 
             // harvest：默认开 + 原型可 harvest 才进命中集。
-            bool harvestable = config.harvestableByDefault && entry.harvestable;
+            bool harvestable = config.harvestableByDefault && (entry == null || entry.harvestable);
             if (harvestable && ctx != null)
             {
                 ctx.RegisterHarvestTarget(root.transform);
@@ -342,16 +455,16 @@ namespace Xianxia.Unity.T2
             _spawnedRoots.Add(root.transform);
         }
 
-        /// <summary>生成一个 NPC 标记：Idle 占位 + InteractableMarker，不进 harvest 集。</summary>
-        private void SpawnNpc(Transform parent, Vector3 worldXY, int index, BambooSceneContext ctx)
+        /// <summary>生成一个 NPC 标记：Idle 占位 + InteractableMarker，不进 harvest 集，但参与巡逻（轻量游走）。</summary>
+        private void SpawnNpc(Transform parent, Vector2 worldXY, int index, BambooSceneContext ctx,
+            Vector2 patrolCenter, float patrolRadius, uint patrolSeed)
         {
             GameObject root = new GameObject(string.Format("Npc_{0}", index));
             root.transform.SetParent(parent, false);
-            root.transform.localPosition = worldXY;
+            root.transform.localPosition = new Vector3(worldXY.x, worldXY.y, 0.0f);
             root.transform.localRotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
 
-            // 可选外观：小 primitives 占位（纯标记，不入 harvest 也不战斗）。
             BuildInkPrimitive(root.transform, null, config);
 
             CharacterView cv = CharacterView.ResolveOn(root.transform);
@@ -361,11 +474,16 @@ namespace Xianxia.Unity.T2
                 _views.Add(cv);
             }
 
+            // NPC 也做极慢巡逻，让场景更有生气（不战斗、不 harvest）。
+            EnemyPatrol patrol = root.AddComponent<EnemyPatrol>();
+            patrol.moveSpeed = 28.0f; // NPC 比敌人慢
+            patrol.Configure(patrolCenter, patrolRadius, patrolSeed);
+            _patrols.Add(patrol);
+
             InteractableMarker marker = root.AddComponent<InteractableMarker>();
             marker.markerId = string.Format("npc_{0}", index);
             marker.displayName = string.Format("NPC {0}", index);
 
-            // NPC 仅标记、不 harvest，但仍参与深度排序以保证遮挡一致。
             if (config.depthSortEnabled && ctx != null)
             {
                 ctx.RegisterSortable(root.transform);
@@ -473,7 +591,7 @@ namespace Xianxia.Unity.T2
         // 撒点算法（确定性泊松式拒绝采样，与 BambooSceneContext.ScatterPositions 同源纪律）
         // =====================================================================
 
-        /// <summary>在方形域内带最小间距拒绝采样；attempts 上限防死循环。</summary>
+        /// <summary>方形域内带最小间距拒绝采样；attempts 上限防死循环。</summary>
         private List<Vector2> ScatterPositions(PCG32 rng, int targetCount)
         {
             List<Vector2> result = new List<Vector2>();
@@ -517,6 +635,62 @@ namespace Xianxia.Unity.T2
             return result;
         }
 
+        /// <summary>圆形域内带最小间距拒绝采样（选项A 多区域用）。</summary>
+        private List<Vector2> ScatterCircle(PCG32 rng, Vector2 center, float radius, int targetCount)
+        {
+            List<Vector2> result = new List<Vector2>();
+            if (targetCount <= 0)
+            {
+                return result;
+            }
+
+            float r = Mathf.Max(1.0f, radius);
+            float minDistSqr = config.minDist * config.minDist;
+            int maxAttempts = targetCount * 60;
+
+            for (int attempt = 0; attempt < maxAttempts && result.Count < targetCount; attempt++)
+            {
+                float ang = rng.NextRange(0.0f, Mathf.PI * 2.0f);
+                float rad = Mathf.Sqrt(rng.NextRange(0.0f, 1.0f)) * r; // 圆内均匀
+                Vector2 candidate = center + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * rad;
+
+                bool ok = true;
+                for (int i = 0; i < result.Count; i++)
+                {
+                    if ((result[i] - candidate).sqrMagnitude < minDistSqr)
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                if (ok)
+                {
+                    result.Add(candidate);
+                }
+            }
+
+            if (result.Count < targetCount)
+            {
+                Debug.LogWarning(string.Format(
+                    "[2.5D][EnemyNpcSpawner] 区域 {0} 圆内撒点只放下 {1}/{2}（minDist={3}, r={4} 过密）。",
+                    center, result.Count, targetCount, config.minDist, r));
+            }
+            return result;
+        }
+
+        /// <summary>把字符串派生为稳定的 32 位种子（FNV-1a 变体）。</summary>
+        private static uint HashSeed(string s)
+        {
+            uint h = 0x811C9DC5u;
+            for (int i = 0; i < s.Length; i++)
+            {
+                h ^= (byte)s[i];
+                h *= 0x01000193u;
+            }
+            return h;
+        }
+
         // =====================================================================
         // 清理 / 惰性解析
         // =====================================================================
@@ -545,6 +719,7 @@ namespace Xianxia.Unity.T2
             }
             _spawnedRoots.Clear();
             _views.Clear();
+            _patrols.Clear();
 
             for (int i = 0; i < _ownedMaterials.Count; i++)
             {
@@ -581,7 +756,7 @@ namespace Xianxia.Unity.T2
                 return context;
             }
 #if UNITY_2023_1_OR_NEWER
-            context = Object.FindFirstObjectByType<BambooSceneContext>();
+            context = Object.FindFirstObjectOfType<BambooSceneContext>();
 #else
             context = Object.FindObjectOfType<BambooSceneContext>();
 #endif
@@ -596,7 +771,7 @@ namespace Xianxia.Unity.T2
                 return _bridge;
             }
 #if UNITY_2023_1_OR_NEWER
-            _bridge = Object.FindFirstObjectByType<CombatBridge>();
+            _bridge = Object.FindFirstObjectOfType<CombatBridge>();
 #else
             _bridge = Object.FindObjectOfType<CombatBridge>();
 #endif
