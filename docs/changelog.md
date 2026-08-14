@@ -1107,6 +1107,27 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 40 · HeroineBoneAssembler 编译错误三连修（feature/2.5d，2026-08-14）
+
+- **触发**：用户回 Unity 后顶部仍未出现 `Shuimo` 菜单，Console 报 3 个编译错误：
+  - `HeroineBoneAssembler.cs(128,32)`: CS1061 `'Sprite' does not contain a definition for 'GetBones'`
+  - `HeroineBoneAssembler.cs(170,37)`: CS0266 无法隐式转换 `RuntimeAnimatorController` → `AnimatorController`
+  - `HeroineBoneAssembler.cs(343,30)`: CS1061 `'AnimationClipSettings' does not contain a definition for 'loopPose'`
+- **根因**：
+  - `Sprite.GetBones()` 是 2D Animation 包内部 API，对 Editor 程序集不可见。
+  - `EnsureAnimatorController` 返回 `RuntimeAnimatorController`，但调用处按 `AnimatorController` 接收。
+  - Unity 2022.3 的 `AnimationClipSettings` 只有 `loopTime`，没有 `loopPose`。
+- **修复（1 文件，3 处改动）**：`Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs`
+  - 移除 `Sprite.GetBones()` 调用及提前返回；改由 `CreateBoneHierarchy` 执行后检查 `skin.boneTransforms` 是否非空，推断 Sprite 是否含骨骼数据。
+  - `EnsureAnimatorController` 返回类型改为 `AnimatorController`。
+  - 删除 `clipSettings.loopPose = true;`，仅保留 `loopTime = true`。
+  - 顺带补交 `HeroineBoneAssembler.cs.meta` 与 `EnemyPatrol.cs.meta`。
+- **推送**：commit `d32482d` 已推送至 `feature/2.5d`；本地 `packed-refs` 本地分支/远程跟踪引用已同步到新 SHA。
+- **诚实边界**：本环境无 Unity，无法实机编译；放行以用户本地 Console 0 error 且顶部重新出现 `Shuimo → 2.5D` 菜单为准。
+- **遗留给用户**：切回 Unity 等自动重编完成 → 确认 Console 无红字 → 确认菜单 `Shuimo → 2.5D` 出现。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1130,4 +1151,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 39）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 40）*
