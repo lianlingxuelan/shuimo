@@ -1071,17 +1071,39 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-### 阶段 38 · 纳入用户本地绑骨成果 + 进度盘点（feature/2.5d，2026-08-14）
+### 阶段 38 · 纳入本地未验证绑骨资产 + 进度盘点（feature/2.5d，2026-08-14）
 
-- **背景**：用户问「现在进度如何」。主理人核对 git 与本地 working tree，发现用户当天自行推进了绑骨（非主理人经手）：
-  - 新写 `Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs`：一键/自动（`InitializeOnLoadMethod`）把已绑骨的 `heroine_base_open` 组装为 `HeroineBone.prefab`（读 SpriteBone → 反射调原生 `SpriteSkinUtility.CreateBoneHierarchy` 建骨 → 挂 SpriteRenderer/SpriteSkin/Animator → 生成 5 状态 AnimatorController + 默认 idle 呼吸动画 → 挂 UnityBoneCharacterView → 存 Prefab）。`#if HAS_2D_BONE_PACKAGE` 守卫、幂等、不覆盖手录动画。主理人已 review，质量达标。
-  - `heroine_base_open.png.meta` 改 968 行 = 用户已在 Skinning Editor 完成画骨 + Auto Weights（骨骼/权重数据落盘）。
-  - `ProjectSettings.asset` 含 `HAS_2D_BONE_PACKAGE` 符号（自检报告 PASS 印证）。
+- **背景**：用户问「现在进度如何」。主理人核对 git 与本地 working tree，发现 working tree 中存在一批未提交的绑骨相关改动：
+  - `Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs`：一键/自动（`InitializeOnLoadMethod`）把已绑骨的 `heroine_base_open` 组装为 `HeroineBone.prefab`（读 SpriteBone → 反射调原生 `SpriteSkinUtility.CreateBoneHierarchy` 建骨 → 挂 SpriteRenderer/SpriteSkin/Animator → 生成 5 状态 AnimatorController + 默认 idle 呼吸动画 → 挂 UnityBoneCharacterView → 存 Prefab）。`#if HAS_2D_BONE_PACKAGE` 守卫、幂等、不覆盖手录动画。
+  - `heroine_base_open.png.meta` 改 968 行：含 `bones:` / `edges:` / `weights:` 段，骨骼与权重数据已落盘。
+  - `ProjectSettings.asset` 含 `HAS_2D_BONE_PACKAGE` 符号。
   - `SampleScene.unity` 挂了 enemyPrefab/bossPrefab 等布置；`bamboo_ink.fbx.meta` 调 useFileScale。
   - 两份自检报告：`docs/bone-setup-selftest-report.md`（2PASS/1FAIL，缺 HeroineBone Prefab）、`docs/routeA-selftest-report.md`。
+- **关键更正**：本轮后续（阶段 38 写入后）用户澄清，上述改动**并非用户手动完成，而是前一晚 Claude 自动生成的，用户尚未在 Unity 里验证**。主理人在阶段 38 中误判为「用户当天自行推进」，特此在阶段 38 末尾修正：这些资产是 **AI 生成、未经验证** 状态。
+- **静态核验**：主理人随后用本地包缓存逐处核验：
+  - `com.unity.2d.animation@9.2.0/Runtime/SpriteSkinUtility.cs:77` 确认 `CreateBoneHierarchy` 签名与反射调用一致；
+  - 同包 `SpriteSkin.cs:720` 确认 `sprite.GetBones()` API 存在；
+  - meta 中根骨名为 `hip`，与 Assembler 默认 idle 曲线绑定路径一致。
+  结论：代码结构合理，未跑 Unity，不能 100% 保证，但风险点均对得上。
 - **提交**：用户拍板「主理人 review 后提交、绑骨归用户自己搞」。主理人纳入脚本+报告+骨骼 meta+场景/导入设置+指引更新（排除 Unity 自动重生成的 `*.csproj`），commit `5ff7df7` 已推送（远端同步，packed-refs 旧疾照例手动修正本地分支与远程跟踪引用，消除此前 `ahead 13` 假象）。
 - **当前双线状态**：① 选项 A 地图升级（多区域/巡逻/剑气）已完成待用户本地验收；② 绑骨由用户自持，Assembler 待用户点菜单/重开工程自动建 Prefab 后跑自检应全 PASS。
-- **红线**：本次仅纳入用户既有成果 + 档案，未新增运行时改动。
+- **红线**：本次仅纳入既有资产 + 档案，未新增运行时改动。
+
+---
+
+### 阶段 39 · 修复 `Shuimo` 菜单消失：Editor asmdef 补引 2D Animation Runtime（feature/2.5d，2026-08-14）
+
+- **触发 / 选题**：用户打开 Unity 后发现顶部菜单没有 `Shuimo`，截图确认菜单消失。
+- **根因**：`Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs` 在 `#if HAS_2D_BONE_PACKAGE` 块中直接使用了
+  `UnityEngine.U2D.Animation` 命名空间下的 `SpriteSkin` / `SpriteSkinUtility`，这些类型属于 `Unity.2D.Animation.Runtime`
+  运行时程序集；而 `Xianxia.Unity.T2.Editor.asmdef` 只引用了 `Unity.2D.Animation.Editor`，**未引用 `Unity.2D.Animation.Runtime`**。
+  asmdef 引用不传递，导致 Editor 程序集编译失败，编辑器脚本（含所有 `[MenuItem("Shuimo/...")]`）无法加载，菜单消失。
+- **修复（1 文件，2 处改动）**：`Assets/_Project/Scripts/Editor/Xianxia.Unity.T2.Editor.asmdef`
+  - `references` 列表末尾追加 `"Unity.2D.Animation.Runtime"`。
+  - 同时保留已有的 `Unity.2D.Animation.Editor` 引用（Wizard 与编辑器工具所需）。
+- **远程状态**：提交 `caa96ac` 已推送至 `feature/2.5d`；照例修正 `packed-refs` 本地分支与远程跟踪引用以消除旧疾。
+- **诚实边界**：本环境无 Unity/dotnet，修复基于程序集依赖关系静态推导；最终放行以用户本地 Console 0 error、且顶部重新出现 `Shuimo` 菜单为准。
+- **遗留给用户**：① `git pull origin feature/2.5d` 拉取修复；② 切回 Unity 等重编完成；③ 看 Console 是否还有红字；④ 确认顶部菜单出现 `Shuimo → 2.5D`。
 
 ---
 
@@ -1108,4 +1130,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 37）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 39）*
