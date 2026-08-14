@@ -30,15 +30,15 @@ using UnityEditor.Animations;
 using UnityEngine;
 using Xianxia.Unity.T2;
 
+#if HAS_2D_BONE_PACKAGE
+using UnityEngine.U2D.Animation;
+#endif
+
 namespace Shuimo.EditorTools
 {
     // SpriteSkin 类型在 UnityEngine.U2D.Animation 命名空间下（2D Animation 包运行时），
     // 与 CharacterView.cs 同口径：整体包在 #if HAS_2D_BONE_PACKAGE 内，符号未定义时不编译，
     // 避免对包的硬依赖报错。
-#if HAS_2D_BONE_PACKAGE
-    using UnityEngine.U2D.Animation;
-#endif
-
     public static class HeroineBoneAssembler
     {
         private const string HeroineSpritePath =
@@ -122,17 +122,6 @@ namespace Shuimo.EditorTools
             if (sprite == null)
             {
                 Report("找不到：" + HeroineSpritePath, true);
-                return false;
-            }
-
-            var bones = sprite.GetBones();
-            if (bones == null || bones.Length == 0)
-            {
-                Report(
-                    "Sprite 里没有骨骼数据。\n\n" +
-                    "请先跑菜单 `Shuimo/2.5D/生成女主默认骨骼`，\n" +
-                    "或打开 Sprite Editor → Skinning Editor 画骨 + Auto Weights。",
-                    true);
                 return false;
             }
 
@@ -245,7 +234,7 @@ namespace Shuimo.EditorTools
         // Animator Controller
         // =====================================================================
 
-        private static RuntimeAnimatorController EnsureAnimatorController()
+        private static AnimatorController EnsureAnimatorController()
         {
             AnimatorController ac = AssetDatabase.LoadAssetAtPath<AnimatorController>(AnimatorPath);
             if (ac == null)
@@ -340,7 +329,6 @@ namespace Shuimo.EditorTools
                 AssetDatabase.CreateAsset(clip, clipPath);
                 AnimationClipSettings clipSettings = AnimationUtility.GetAnimationClipSettings(clip);
                 clipSettings.loopTime = true;
-                clipSettings.loopPose = true;
                 AnimationUtility.SetAnimationClipSettings(clip, clipSettings);
                 AssetDatabase.SaveAssets();
             }
