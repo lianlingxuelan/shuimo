@@ -1128,6 +1128,27 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 41 · 骨骼绑定自检器误报修复（feature/2.5d，2026-08-14）
+
+- **触发**：用户按阶段 40 修复后，`Shuimo → 2.5D → 运行 骨骼绑定自检` 能正常执行，但报告为
+  `PASS 4 / WARN 1 / FAIL 1`：
+  - #4 WARN：预制体含 SpriteSkin，但"运行时未识别 SpriteSkin 类型"。
+  - #6 FAIL：UnityBoneCharacterView clip 字段已填，但"运行时未识别 UnityBoneCharacterView 类型"。
+- **根因**：`BoneSetupSelfTest.cs` 的 `FindType(string typeName)` 只向各程序集传入**短名**查询；
+  `Assembly.GetType(name)` 默认不会跨命名空间匹配，导致：
+  - `SpriteSkin` 真实全名 `UnityEngine.U2D.Animation.SpriteSkin` 查不到；
+  - `UnityBoneCharacterView` 真实全名 `Xianxia.Unity.T2.UnityBoneCharacterView` 查不到。
+  因此自检器把真实存在但跨命名空间的类型误报为"未识别"。
+- **修复（1 文件，2 处改动）**：`Assets/_Project/Scripts/Editor/BoneSetupSelfTest.cs`
+  - `CheckSpriteSkin`：`FindType("UnityEngine.U2D.Animation.SpriteSkin")`。
+  - `CheckBoneViewClips`：`FindType("Xianxia.Unity.T2.UnityBoneCharacterView")`。
+- **本地验证**：修复前 `PASS 4 / WARN 1 / FAIL 1`；修复后预期 `PASS 6 / WARN 0 / FAIL 0`。
+- **推送**：commit `e49f2fd` 已推送至 `feature/2.5d`；照例同步 `packed-refs` 本地分支/远程跟踪引用。
+- **诚实边界**：本环境无 Unity，无法实机跑自检；放行以用户本地重跑自检后"全部 PASS"为准。
+- **遗留给用户**：Unity 自动重编完成后，点 `Shuimo/2.5D/运行 骨骼绑定自检`，确认报告为 `PASS 6 / WARN 0 / FAIL 0`。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1151,4 +1172,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 40）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 41）*
