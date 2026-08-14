@@ -1188,6 +1188,21 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **诚实边界**：本环境无 Unity，Prefab GUID 修复基于静态核对。最终放行以用户本地重跑自检后 `PASS 6 / WARN 0 / FAIL 0` 为准。
 - **遗留给用户**：Unity 自动重编完成后，点 `Shuimo/2.5D/运行 骨骼绑定自检`，确认报告为 `PASS 6 / WARN 0 / FAIL 0`。
 
+### 阶段 44 · 彻底修复一键生成时 UnityBoneCharacterView 脚本引用丢失（feature/2.5d，2026-08-14）
+
+- **触发**：用户点 `Shuimo/2.5D/一键生成女主绑骨Prefab` 后立即跑 `运行 骨骼绑定自检`，#6 仍为 `FAIL`（`UnityBoneCharacterView clip 字段已填 — 预制体缺少 UnityBoneCharacterView 组件`，自检器检测到 `m_Script` 为空的损坏 MonoBehaviour）。
+- **根因**：`HeroineBoneAssembler` 在场景对象上 `AddComponent<UnityBoneCharacterView>()` 后，虽然立即调用 `EnsureMonoScriptReference` / `RepairMissingScript`，但这两处辅助方法依赖 `MonoScript.FromMonoBehaviour` 获取 MonoScript；当组件已处于 Missing Script 状态时，`FromMonoBehaviour` 返回 null，无法修复。结果 `PrefabUtility.SaveAsPrefabAsset` 落盘的 Prefab 仍保留 `m_Script: {fileID: 0}`。
+- **修复**：
+  1. `Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs`
+     - `EnsureMonoScriptReference<T>` 与 `RepairMissingScript<T>` 改为直接通过 `AssetDatabase.LoadAssetAtPath<MonoScript>(CharacterViewScriptPath)` 加载 `CharacterView.cs` 对应的 MonoScript 资产，不再依赖 `MonoScript.FromMonoBehaviour`。
+     - 保存 Prefab 后新增最终兜底 `RepairMissingScriptInPrefabYaml`：直接读取 Prefab YAML，定位 `hitShakeDuration/hitShakeAmplitude/clipIdle` 特征字段所在的 MonoBehaviour 块，若其 `m_Script` 仍为 `{fileID: 0}`，则强行写为 `CharacterView.cs.meta` 的已知 GUID（`9b0455cff8d8c3d40bb7a6d18522e172`），再 `AssetDatabase.Refresh()`。
+  2. `Assets/_Project/Prefabs/HeroineBone.prefab`
+     - 同步把当前本地 Prefab 中损坏的 `m_Script: {fileID: 0}` 改为正确 GUID，使用户本次无需再点菜单即可直接跑通自检。
+- **本地验证**：修复前 `PASS 5 / WARN 0 / FAIL 1`（#6 FAIL）；修复后预期 `PASS 6 / WARN 0 / FAIL 0`。
+- **推送**：commit `28abe71` 已推送至 `feature/2.5d`；照例同步 `.git/packed-refs` 本地分支/远程跟踪引用。
+- **诚实边界**：本环境无 Unity，代码修复基于静态检查；Prefab YAML GUID 已与 `CharacterView.cs.meta` 核对一致。最终放行以用户本地重跑自检后 `PASS 6 / WARN 0 / FAIL 0` 为准。
+- **遗留给用户**：Unity 自动重编完成后，点 `Shuimo/2.5D/运行 骨骼绑定自检`，确认报告为 `PASS 6 / WARN 0 / FAIL 0`。
+
 ---
 
 ## 附录 A · 关键指标速查（全阶段核实）
@@ -1213,4 +1228,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 43）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 44）*
