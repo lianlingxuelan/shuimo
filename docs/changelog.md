@@ -1149,6 +1149,28 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 42 · 骨骼 Prefab 脚本引用修复（feature/2.5d，2026-08-14）
+
+- **触发**：用户按阶段 41 修复后重跑自检，#6 仍为 `FAIL`：
+  - `UnityBoneCharacterView clip 字段已填 — 预制体缺少 UnityBoneCharacterView 组件`。
+- **根因**：直接查看 `Assets/_Project/Prefabs/HeroineBone.prefab` YAML 发现，根节点上存在一个 MonoBehaviour 条目，其字段（`hitShakeDuration/clipIdle/clipWalk/...`）与 `UnityBoneCharacterView` 完全吻合，但 `m_Script: {fileID: 0}`，即**脚本引用丢失（Missing Script）**。自检器用 `prefab.GetComponent(viewType)` 查找时，损坏组件无法匹配类型，因此被判定为缺失。
+- **修复（2 文件 + 1 本地 Prefab 补丁）**：
+  1. `Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs`
+     - `AddComponent<UnityBoneCharacterView>()` 后立即调用 `EnsureMonoScriptReference(bv)`，确保 MonoScript 引用在场景对象上就位。
+     - 保存 Prefab 前若旧资产已存在，先 `AssetDatabase.DeleteAsset(PrefabPath)`，避免 `SaveAsPrefabAsset` 覆盖时保留历史损坏条目。
+     - 保存后重新加载 Prefab，检查组件脚本引用；若损坏则通过 `MonoScript.FromMonoBehaviour` 修复并 `AssetDatabase.SaveAssets()`。
+     - 新增 `EnsureMonoScriptReference<T>` 与 `RepairMissingScript<T>` 两个辅助方法。
+  2. `Assets/_Project/Scripts/Editor/BoneSetupSelfTest.cs`
+     - #6 在 `GetComponent` 返回 null 时，额外检测是否存在 `m_Script` 为空的损坏 MonoBehaviour，给出“重新生成 Prefab”的明确指引。
+  3. 本地 `Assets/_Project/Prefabs/HeroineBone.prefab`
+     - 直接把该损坏条目的 `m_Script` 从 `{fileID: 0}` 改为 `UnityBoneCharacterView` 脚本的正确 GUID，使用户无需再次手动点菜单即可跑通自检。
+- **本地验证**：修复前 `PASS 5 / WARN 0 / FAIL 1`（#6 FAIL）；修复后预期 `PASS 6 / WARN 0 / FAIL 0`。
+- **推送**：commit `3ec97d5` 已推送至 `feature/2.5d`；照例同步 `.git/packed-refs` 本地分支/远程跟踪引用。
+- **诚实边界**：本环境无 Unity，代码修复基于静态检查；Prefab YAML 手动补 GUID 已核对与 `CharacterView.cs.meta` 一致。最终放行以用户本地重跑自检后 `PASS 6 / WARN 0 / FAIL 0` 为准。
+- **遗留给用户**：Unity 自动重编完成后，点 `Shuimo/2.5D/运行 骨骼绑定自检`，确认报告为 `PASS 6 / WARN 0 / FAIL 0`。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1172,4 +1194,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 41）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 42）*
