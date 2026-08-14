@@ -162,19 +162,11 @@ namespace Shuimo.EditorTools
             animator.runtimeAnimatorController = ac;
 
             // 5. UnityBoneCharacterView（clip 默认已填 idle/walk/attack/hit/death）
-            var resolved = CharacterView.ResolveOn(root.transform);
-            if (resolved == null)
-            {
-                Debug.LogWarning("[HeroineBone] CharacterView.ResolveOn 返回 null，未挂视图组件。");
-            }
-            else if (!(resolved is UnityBoneCharacterView))
-            {
-                Debug.LogWarning("[HeroineBone] ResolveOn 未解析到骨骼视图（回落默认 Sprite 视图）。");
-            }
-            else
-            {
-                Debug.Log("[HeroineBone] 已挂 UnityBoneCharacterView（骨骼驱动视图）。");
-            }
+            // 直接显式挂骨骼视图，不走 ResolveOn，避免回落到 SpriteCharacterView。
+            UnityBoneCharacterView bv = root.GetComponent<UnityBoneCharacterView>()
+                ?? root.gameObject.AddComponent<UnityBoneCharacterView>();
+            bv.Bind(skin);
+            Debug.Log("[HeroineBone] 已挂 UnityBoneCharacterView（骨骼驱动视图）。");
 
             // 6. 存 Prefab
             if (!Directory.Exists(PrefabDir))
