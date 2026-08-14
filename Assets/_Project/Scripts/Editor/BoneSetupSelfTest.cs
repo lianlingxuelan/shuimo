@@ -216,6 +216,15 @@ namespace Shuimo.EditorTools
             Component view = prefab.GetComponent(viewType);
             if (view == null)
             {
+                // 进一步判断：是否存在脚本引用损坏的 MonoBehaviour（m_Script 为空）。
+                bool hasMissingScript = HasMissingScriptComponent(prefab);
+                if (hasMissingScript)
+                {
+                    return CheckResult.Fail(
+                        "预制体缺少 UnityBoneCharacterView 组件（发现脚本引用损坏的 MonoBehaviour，" +
+                        "可能是之前生成的 Prefab 保留了损坏条目）。\n" +
+                        "指引：点菜单 Shuimo/2.5D/一键生成女主绑骨Prefab 重新生成（会自动删除旧 Prefab）。");
+                }
                 return CheckResult.Fail(
                     "预制体缺少 UnityBoneCharacterView 组件。\n" +
                     "指引：选中测试角色 → Component → Unity Bone Character View。");
@@ -258,6 +267,30 @@ namespace Shuimo.EditorTools
                 }
             }
             return null;
+        }
+
+        /// <summary>检查 Prefab 上是否存在 m_Script 引用为空的损坏 MonoBehaviour。</summary>
+        private static bool HasMissingScriptComponent(GameObject prefab)
+        {
+            if (prefab == null)
+            {
+                return false;
+            }
+            MonoBehaviour[] all = prefab.GetComponentsInChildren<MonoBehaviour>(true);
+            foreach (MonoBehaviour mb in all)
+            {
+                if (mb == null)
+                {
+                    return true; // GetComponents 返回 null 即表示 Missing Script。
+                }
+                SerializedObject so = new SerializedObject(mb);
+                SerializedProperty scriptProp = so.FindProperty("m_Script");
+                if (scriptProp != null && scriptProp.objectReferenceValue == null)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>收尾：汇总并落盘报告。</summary>

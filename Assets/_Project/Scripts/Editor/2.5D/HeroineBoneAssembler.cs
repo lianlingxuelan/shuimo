@@ -166,6 +166,9 @@ namespace Shuimo.EditorTools
             UnityBoneCharacterView bv = root.GetComponent<UnityBoneCharacterView>()
                 ?? root.gameObject.AddComponent<UnityBoneCharacterView>();
             bv.Bind(skin);
+            // 立刻确保 MonoScript 引用正确落盘；某些 Unity 版本/程序集重载后
+            // AddComponent 的脚本引用可能延迟，导致 Prefab 保存成 Missing Script。
+            EnsureMonoScriptReference(bv);
             Debug.Log("[HeroineBone] 已挂 UnityBoneCharacterView（骨骼驱动视图）。");
 
             // 6. 存 Prefab
@@ -175,7 +178,38 @@ namespace Shuimo.EditorTools
                 AssetDatabase.Refresh();
             }
             int boneCount = skin.boneTransforms.Length;
-            PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
+
+            // 6.1 旧 Prefab 若已存在且组件损坏（如 m_Script:{fileID:0}），
+            //     SaveAsPrefabAsset 的“覆盖”行为可能保留损坏条目。先删掉旧的，
+            //     让本次保存从零创建，避免历史损坏状态污染。
+            if (AssetDatabase.LoadAssetAtPath<Object>(PrefabPath) != null)
+            {
+                AssetDatabase.DeleteAsset(PrefabPath);
+                AssetDatabase.Refresh();
+            }
+
+            GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
+            if (savedPrefab == null)
+            {
+                Object.DestroyImmediate(root);
+                Report("Prefab 保存失败（SaveAsPrefabAsset 返回 null）。请检查 Console 是否有其他报错。", true);
+                return false;
+            }
+
+            // 6.2 验证并修复 UnityBoneCharacterView 的脚本引用。
+            //     个别 Unity 版本/程序集重载场景下，AddComponent 后 MonoScript
+            //     引用可能没写进 Prefab，表现为 m_Script:{fileID:0}（Missing Script）。
+            var viewOnPrefab = savedPrefab.GetComponent<UnityBoneCharacterView>();
+            if (viewOnPrefab == null)
+            {
+                // 组件存在但脚本引用损坏时 GetComponent<T> 会返回 null，
+                // 尝试按损坏组件修复：找到所有 MonoBehaviour，把脚本为空的重新绑定。
+                RepairMissingScript<UnityBoneCharacterView>(savedPrefab);
+            }
+            else
+            {
+                EnsureMonoScriptReference(viewOnPrefab);
+            }
 
             // 清理场景临时对象（Prefab 已落盘）
             Object.DestroyImmediate(root);
@@ -327,6 +361,100 @@ namespace Shuimo.EditorTools
 
             idle.motion = clip;
             EditorUtility.SetDirty(idle);
+        }
+
+        // =====================================================================
+        // Prefab 保存后修复：防止 MonoScript 引用丢失（m_Script:{fileID:0}）
+        // =====================================================================
+
+        /// <summary>
+        /// 确保 MonoBehaviour 的 m_Script 引用指向正确的 MonoScript 资产。
+        /// 在 AddComponent 后因程序集重载导致引用未落盘时，可通过 MonoScript.FromMonoBehaviour
+        /// 重新绑定并写回。
+        /// </summary>
+        private static void EnsureMonoScriptReference<T>(T behaviour) where T : MonoBehaviour
+        {
+            if (behaviour == null)
+            {
+                return;
+            }
+            SerializedObject so = new SerializedObject(behaviour);
+            SerializedProperty scriptProp = so.FindProperty("m_Script");
+            if (scriptProp == null)
+            {
+                return;
+            }
+            if (scriptProp.objectReferenceValue != null)
+            {
+                return;
+            }
+            MonoScript ms = MonoScript.FromMonoBehaviour(behaviour);
+            if (ms == null)
+            {
+                Debug.LogWarning("[HeroineBone] 无法获取 " + typeof(T).Name + " 的 MonoScript，跳过修复。");
+                return;
+            }
+            scriptProp.objectReferenceValue = ms;
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(behaviour);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[HeroineBone] 已修复 " + typeof(T).Name + " 的 MonoScript 引用。");
+        }
+
+        /// <summary>
+        /// 当 GetComponent&lt;T&gt; 因脚本引用损坏返回 null 时，遍历 root 上所有
+        /// MonoBehaviour，把 m_Script 为空的条目重新绑定到 T 对应的 MonoScript。
+        /// </summary>
+        private static void RepairMissingScript<T>(GameObject root) where T : MonoBehaviour
+        {
+            if (root == null)
+            {
+                return;
+            }
+            MonoScript ms = null;
+            MonoBehaviour[] all = root.GetComponents<MonoBehaviour>();
+            foreach (MonoBehaviour mb in all)
+            {
+                if (mb == null)
+                {
+                    continue;
+                }
+                SerializedObject so = new SerializedObject(mb);
+                SerializedProperty scriptProp = so.FindProperty("m_Script");
+                if (scriptProp == null)
+                {
+                    continue;
+                }
+                if (scriptProp.objectReferenceValue != null)
+                {
+                    continue;
+                }
+                // 首次需要时才去拿 T 的 MonoScript。
+                if (ms == null)
+                {
+                    T dummy = root.GetComponent<T>();
+                    if (dummy == null)
+                    {
+                        // 当前没有正常实例，创建一个临时组件用来取 MonoScript，然后立刻销毁。
+                        dummy = root.AddComponent<T>();
+                        ms = MonoScript.FromMonoBehaviour(dummy);
+                        Object.DestroyImmediate(dummy, true);
+                    }
+                    else
+                    {
+                        ms = MonoScript.FromMonoBehaviour(dummy);
+                    }
+                }
+                if (ms == null)
+                {
+                    continue;
+                }
+                scriptProp.objectReferenceValue = ms;
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(mb);
+            }
+            AssetDatabase.SaveAssets();
+            Debug.Log("[HeroineBone] 已修复损坏的 " + typeof(T).Name + " 脚本引用。");
         }
 #endif
     }
