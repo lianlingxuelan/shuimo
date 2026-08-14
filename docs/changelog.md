@@ -1169,6 +1169,25 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **诚实边界**：本环境无 Unity，代码修复基于静态检查；Prefab YAML 手动补 GUID 已核对与 `CharacterView.cs.meta` 一致。最终放行以用户本地重跑自检后 `PASS 6 / WARN 0 / FAIL 0` 为准。
 - **遗留给用户**：Unity 自动重编完成后，点 `Shuimo/2.5D/运行 骨骼绑定自检`，确认报告为 `PASS 6 / WARN 0 / FAIL 0`。
 
+### 阶段 43 · 补交女主骨骼 Prefab 及生成资产（feature/2.5d，2026-08-14）
+
+- **触发**：用户按阶段 42 修复后重跑自检，#6 仍为 `FAIL`（`UnityBoneCharacterView clip 字段已填 — 预制体缺少 UnityBoneCharacterView 组件`）。
+- **根因**：阶段 42 仅修改了本地 `HeroineBone.prefab` 的 YAML，但事后排查 `git status` 发现该 Prefab 及一键生成的 `HeroineBoneAnimator.controller`、`heroine_idle.anim` 等资产**从未加入版本控制**（状态为 `??`）。本地 Prefab 的 `m_Script` 仍被 Unity 序列化为 `{fileID: 0}`，导致自检继续报 Missing Script。
+- **修复**：
+  1. 重新将 `HeroineBone.prefab` 根节点上损坏的 `m_Script: {fileID: 0}` 改为 `UnityBoneCharacterView` 的正确 GUID（与 `CharacterView.cs.meta` 一致：`9b0455cff8d8c3d40bb7a6d18522e172`）。
+  2. 将以下生成资产全部纳入 Git 跟踪并提交：
+     - `Assets/_Project/Prefabs/HeroineBone.prefab`
+     - `Assets/_Project/Prefabs/HeroineBone.prefab.meta`
+     - `Assets/_Project/Prefabs.meta`
+     - `Assets/_Project/Art/Characters/Heroine2D/HeroineBoneAnimator.controller`
+     - `Assets/_Project/Art/Characters/Heroine2D/HeroineBoneAnimator.controller.meta`
+     - `Assets/_Project/Art/Characters/Heroine2D/heroine_idle.anim`
+     - `Assets/_Project/Art/Characters/Heroine2D/heroine_idle.anim.meta`
+- **本地验证**：修复前 `PASS 5 / WARN 0 / FAIL 1`（#6 FAIL）；修复后预期 `PASS 6 / WARN 0 / FAIL 0`。
+- **推送**：commit `8a9e5d1` 已推送至 `feature/2.5d`；照例同步 `.git/packed-refs` 本地分支/远程跟踪引用。
+- **诚实边界**：本环境无 Unity，Prefab GUID 修复基于静态核对。最终放行以用户本地重跑自检后 `PASS 6 / WARN 0 / FAIL 0` 为准。
+- **遗留给用户**：Unity 自动重编完成后，点 `Shuimo/2.5D/运行 骨骼绑定自检`，确认报告为 `PASS 6 / WARN 0 / FAIL 0`。
+
 ---
 
 ## 附录 A · 关键指标速查（全阶段核实）
@@ -1194,4 +1213,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 42）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 43）*
