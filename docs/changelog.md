@@ -1071,6 +1071,20 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 38 · 纳入用户本地绑骨成果 + 进度盘点（feature/2.5d，2026-08-14）
+
+- **背景**：用户问「现在进度如何」。主理人核对 git 与本地 working tree，发现用户当天自行推进了绑骨（非主理人经手）：
+  - 新写 `Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs`：一键/自动（`InitializeOnLoadMethod`）把已绑骨的 `heroine_base_open` 组装为 `HeroineBone.prefab`（读 SpriteBone → 反射调原生 `SpriteSkinUtility.CreateBoneHierarchy` 建骨 → 挂 SpriteRenderer/SpriteSkin/Animator → 生成 5 状态 AnimatorController + 默认 idle 呼吸动画 → 挂 UnityBoneCharacterView → 存 Prefab）。`#if HAS_2D_BONE_PACKAGE` 守卫、幂等、不覆盖手录动画。主理人已 review，质量达标。
+  - `heroine_base_open.png.meta` 改 968 行 = 用户已在 Skinning Editor 完成画骨 + Auto Weights（骨骼/权重数据落盘）。
+  - `ProjectSettings.asset` 含 `HAS_2D_BONE_PACKAGE` 符号（自检报告 PASS 印证）。
+  - `SampleScene.unity` 挂了 enemyPrefab/bossPrefab 等布置；`bamboo_ink.fbx.meta` 调 useFileScale。
+  - 两份自检报告：`docs/bone-setup-selftest-report.md`（2PASS/1FAIL，缺 HeroineBone Prefab）、`docs/routeA-selftest-report.md`。
+- **提交**：用户拍板「主理人 review 后提交、绑骨归用户自己搞」。主理人纳入脚本+报告+骨骼 meta+场景/导入设置+指引更新（排除 Unity 自动重生成的 `*.csproj`），commit `5ff7df7` 已推送（远端同步，packed-refs 旧疾照例手动修正本地分支与远程跟踪引用，消除此前 `ahead 13` 假象）。
+- **当前双线状态**：① 选项 A 地图升级（多区域/巡逻/剑气）已完成待用户本地验收；② 绑骨由用户自持，Assembler 待用户点菜单/重开工程自动建 Prefab 后跑自检应全 PASS。
+- **红线**：本次仅纳入用户既有成果 + 档案，未新增运行时改动。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
