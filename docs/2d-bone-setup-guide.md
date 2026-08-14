@@ -6,6 +6,29 @@
 
 ---
 
+## 0.5 一键生成（推荐，跳过 1–7 手动画骨）
+
+> 骨骼数据（24 根 SpriteBone + 权重）已烘焙在 `heroine_base_open.png.meta` 里。
+> 用 `HeroineBoneAssembler.cs` 的自动钩子 + 一键菜单即可直接出成品，**不用碰 Skinning Editor**。
+
+1. **打开 Unity 工程**，等编译完成（Console 无红字）。
+2. **什么都不用点**：工程打开后会自动检测，若 `HeroineBone.prefab` 不存在就静默生成。
+   （若未自动生成，手动点顶部菜单 **`Shuimo/2.5D/一键生成女主绑骨Prefab`** 亦可。）
+3. 自动完成：
+   - 调 Unity 原生 `SpriteSkinUtility.CreateBoneHierarchy`（与 Inspector “Create Bones” 同一代码路径）
+     建 24 根骨骼 Transform 层级，回填 `rootBone`/`boneTransforms`；
+   - 挂 `SpriteRenderer` + `SpriteSkin` + `Animator`；
+   - 生成 `HeroineBoneAnimator.controller`（idle/walk/attack/hit/death 5 状态）；
+   - 自动生成默认 `heroine_idle.anim`（hip 呼吸浮动，循环）并绑到 idle；
+   - 挂 `UnityBoneCharacterView`（clip 默认已填）；
+   - 存 Prefab → `Assets/_Project/Prefabs/HeroineBone.prefab`。
+4. 把 `HeroineBone.prefab` 拖进场景，点 **Play** → 角色应原地轻微上下呼吸。
+
+> 若没生成且 Console 提示“未定义 HAS_2D_BONE_PACKAGE”，先按第 0 节加编译符号再跑。
+> walk/attack/hit/death 四个状态为空 Motion，不影响验证；后续按第 7 节补录动画即可。
+
+---
+
 ## 0. 前置检查
 
 1. 打开 Unity 工程后，等编译完成。
