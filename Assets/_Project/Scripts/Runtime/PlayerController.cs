@@ -148,6 +148,8 @@ namespace Xianxia.Unity.T2
                     + " extVel=" + ExternalVelocity.HasValue
                     + " speed=" + moveSpeed
                     + " dt=" + Time.deltaTime.ToString("F4")
+                    + " timeScale=" + Time.timeScale.ToString("F3")
+                    + " inst=" + GetInstanceID()
                     + " pos=" + transform.position);
             }
 
