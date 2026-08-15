@@ -1375,6 +1375,18 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 55 · 修复「玩家卡在原地抖/不移动」——2.5D 相机从未接管（2026-08-15）
+
+- **触发**：用户反馈"能动但卡在原地、一直卡来卡去、不移动"。
+- **根因（非玩家、是相机）**：`IsometricCameraRig`（2.5D 等距相机跟随）**既不在 SampleScene（GUID 出现 0 次）、也没被任何代码 AddComponent**——`ResolveCameraRig` 只 Find 不建。于是 2.5D 跟随从未运行；`ApplyCameraFraming` 只设了一次旋转/位置，随后每帧被旧 2D `CameraFollow.LateUpdate`（ExecutionOrder 100）用 `Z=-100` 覆盖 → 相机"斜着摆但位置是 2D 的"，画面错乱、玩家看似卡住/抖动。移动链路本身逐段核实无误（PlayerController 唯一写玩家 XY；内核 `SyncKernelIntoViews` 对 Faction.Player 有 continue 跳过；输入链 `GetAxisRaw`+try/catch 降级；`Time.timeScale` 全仓无写入）。
+- **交付**：`Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`
+  - `ResolveCameraRig()`：Find 不到时 `Camera.main.AddComponent<IsometricCameraRig>()` 补建，让 2.5D 跟随真正生效。
+  - `ApplyCameraFraming()`：禁用旧的 `CameraFollow` / `CameraShake`（`enabled=false`），避免与 2.5D 取景每帧抢相机位置。
+- **自证**：改前 `IsometricCameraRig` GUID 在 SampleScene.unity 出现 0 次（`grep -c` 确认），`CameraFollow`/`CameraShake` 各出现 1 次（确在场景）；改后补建分支 + 禁用分支均已落位，仅改 1 文件 +26 行。仍保留 `[PlayerDiag]` 诊断日志（阶段 54 遗留），定位后可移除。
+- **待用户本地验收**：重编 → Play → 玩家应能顺畅走动（相机 2.5D 等距跟随、不再抖动/卡住）；若仍异常，发 `[PlayerDiag]` 行判断：pos 振荡=玩家层、input=(0,0)=输入层。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
