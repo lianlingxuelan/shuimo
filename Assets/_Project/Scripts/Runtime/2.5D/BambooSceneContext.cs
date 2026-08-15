@@ -108,16 +108,16 @@ namespace Xianxia.Unity.T2
         public int worldBambooCount = 180;
 
         [Tooltip("世界层竹林最小间距（世界单位），过密会卡脚、过疏显得空")]
-        public float worldMinDist = 200.0f;
+        public float worldMinDist = 240.0f;
 
         [Tooltip("竹竿半径（同尺度）")]
-        public float trunkRadius = 14.0f;
+        public float trunkRadius = 22.0f;
 
         [Tooltip("竹子高度下限")]
-        public float heightMin = 170.0f;
+        public float heightMin = 320.0f;
 
         [Tooltip("竹子高度上限")]
-        public float heightMax = 250.0f;
+        public float heightMax = 480.0f;
 
         [Tooltip("每根竹子的竹叶面片数下限")]
         public int leavesMin = 3;

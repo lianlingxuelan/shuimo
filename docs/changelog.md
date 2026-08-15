@@ -1344,6 +1344,21 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 53 · 修复"玩家动不了" + 放大竹林（2026-08-15）
+
+- **触发**：用户 PlayMode 验收阶段 52 后反馈两件事——①「我怎么动不了了呀？」；②「竹林太小了，能不能搞大点？」
+- **根因（两件）**：
+  1. **动不了**：`CombatBridge.Start` 冷启动分支（原 `else`）必然 `SetMenuPaused(true)` 冻结玩法、并弹主菜单/操作引导面板，等玩家点「开始」+ 关引导才解冻；`PlayerController.Update` 在 `IsGameplayBlocked` 为 true 时整段 `return`，于是玩家完全不读输入、不移动。竹林碰撞体其实是 `isTrigger=true` 且玩家走 `transform.position` 不碰物理，与"动不了"无关（已排除）。
+  2. **竹林小**：竹子高度 `heightMin/Max=170/250`、竹竿半径 `trunkRadius=14`，在 `orthographicSize=352` 的视野下偏小；用 `bamboo_ink.fbx` 时 `scale=height/modelHeight`，调大 height 即放大模型。
+- **交付**：
+  - `CombatBridge.Start` 冷启动 `else` 分支改为**直接进入可玩状态**（不再 `SetMenuPaused(true)`、不再弹主菜单/引导），满足"逛水墨世界"演示目标；菜单与引导组件仍已在上方 `Build` 完成，未来可在暂停流程或单独入口唤起。重开（`skip`）分支冻结流程保持不变。仍走统一 `SetMenuPaused` 闸门，不直写 `Scheduler.Paused`（红线）。
+  - `BambooSceneContext` 字段放大：竹竿半径 `trunkRadius 14→22`、高度 `heightMin/Max 170/250 → 320/480`、世界层间距 `worldMinDist 200→240`（放大后略拉开间距避免过密挡视线）。
+- **自证**：两文件仅字段初值与分支文本改动、无结构性变动，花括号/括号配平；`IsGameplayBlocked = IsRunOver || _menuPaused`，冷启动 `_menuPaused` 保持默认 false → `IsGameplayBlocked=false` → `PlayerController` 正常读输入移动。
+- **诚实边界**：① 本环境无 Unity，无法 PlayMode 验证；② 冷启动跳过主菜单会令"冷启动先看主菜单"的集成假设不再成立，但组件单元测试 `P0_5_MenuHudTests` 直接 new 组件、PlayMode 测试 `P0_2_P0_4` 走 `SkipOnNextLoad=true` 的 `skip` 分支，**均不依赖此冷启动分支**，故不受影响；③ 竹子若仍嫌小可继续上调上述三字段，或下调 `orthographicSize` 让相机视野更近。
+- **遗留验收**：重编 → Play → ① 玩家可立即 WASD/方向键自由移动（无需点菜单）；② 竹林明显变大（竹高约翻倍、竹竿更粗）；③ 其他表现（白底/俯视/铺满）保持阶段 52。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1367,4 +1382,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-15，阶段 52）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-15，阶段 53）*
