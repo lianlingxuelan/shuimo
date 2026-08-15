@@ -1359,6 +1359,22 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 54 · 诊断"仍动不了" + 新增 Force Recompile (Clean Build) 菜单（2026-08-15）
+
+- **现象**：用户 PlayMode 反馈"还是动不了"，并提议搞一个 clean and rebuild 脚本。
+- **诊断结论**：
+  - 输入链正常：`activeInputHandler=0`（旧 Input Manager 生效）、Input System 包未装、Horizontal/Vertical 轴齐全；`KeyboardMouseInputSource.ReadAxes` 有 try/catch，缺轴会降级到手工合成 WASD/方向键——故"输入/设置问题"排除。
+  - 冻结逻辑已真移除：核对 205db51 实际提交，`CombatBridge.Start` 冷启动 `else` 分支已不再 `SetMenuPaused(true)`，`IsGameplayBlocked = IsRunOver || _menuPaused` 在开局应为 false。
+  - **根因 = 跑的是旧代码**：要么未 `git pull` 到 205db51，要么 Unity 没把 pull 下来的修复重新编译（仍跑旧 dll）。此场景恰是 clean+rebuild 能解决的。
+- **交付**：`Assets/_Project/Scripts/Editor/ShuimoSceneRebuilder.cs`
+  - 新增 `Shuimo/Scene/Force Recompile (Clean Build)`：调用 `CompilationPipeline.RequestScriptCompilation`（2023.1+ 带 `CleanBuildCache`），强制重编译全部脚本程序集，专治"pull 后修复不生效"。
+  - `Clean And Rebuild` 现顺带触发重编译，名字名副其实（注：编辑器内只重编脚本，删 Library 需关 Unity 手动操作）。
+  - 沿用编辑器菜单方式（Shuimo），不新增外部 PS1（符合用户既定偏好）。
+  - 单文件提交 `be228a6`（相对 205db51 仅改此 1 文件），远程 tip = be228a6。
+- **待用户本地验收**：pull 到 be228a6 → 全工程重编 → PlayMode 验证可移动；若仍不动，按"是否看到主菜单/引导遮罩、Console 有无报错"回查 `IsGameplayBlocked` / `IsRunOver`。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1382,4 +1398,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-15，阶段 53）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-15，阶段 54）*
