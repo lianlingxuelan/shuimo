@@ -4,9 +4,12 @@
 
 | 1 | PASS | 已定义 HAS_2D_BONE_PACKAGE。 |
 | 2 | PASS | Assets/_Project/Art/Characters/Heroine2D/heroine_base_open.png 的 Texture Type = Sprite。 |
-| 3 | FAIL | 未找到 HeroineBone 预制体（HeroineBone / HeroineBone_Test 均无）。 指引：按 docs/2d-bone-setup-guide.md 第 5–6 步，在场景创建测试角色并做成 Prefab：Assets/_Project/Prefabs/HeroineBone.prefab。 |
+| 3 | PASS | 已找到预制体：Assets/_Project/Prefabs/HeroineBone.prefab |
+| 4 | PASS | 预制体含 SpriteSkin（骨骼数据已绑定）。 |
+| 5 | PASS | AnimatorController 含 idle/walk/attack/hit/death 全部 5 状态。 |
+| 6 | FAIL | 预制体缺少 UnityBoneCharacterView 组件（发现脚本引用损坏的 MonoBehaviour，可能是之前生成的 Prefab 保留了损坏条目）。 指引：点菜单 Shuimo/2.5D/一键生成女主绑骨Prefab 重新生成（会自动删除旧 Prefab）。 |
 | 汇总 | 结果 |
 |---|---|
-| 汇总 | PASS 2 / WARN 0 / FAIL 1 |
+| 汇总 | PASS 5 / WARN 0 / FAIL 1 |
 
-_生成于：2026-08-14 00:24:11_
+_生成于：2026-08-15 14:09:45_

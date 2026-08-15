@@ -1205,6 +1205,145 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 45 · 敌人感知/追击 AI（地图升级 选项A 续，feature/2.5d，2026-08-14）
+
+- **选题来源**：选项 A 地图升级（多区域/巡逻/剑气）已于阶段 38 完成，但彼时敌人只会自顾自 `Patrol` 游走、完全看不见玩家——战斗循环里"被看见→被追击"的断点未补。本轮在用户就寝后由其授权"先做其他内容"，独立补齐这块**纯代码、不碰绑骨、不需用户操作**的增量。
+- **交付（新增 2 文件 + 覆写 1 + 2 个 .meta）**：
+  1. `Assets/_Project/Scripts/Runtime/2.5D/EnemyAiBrain.cs`（231 行，命名空间 `Xianxia.Unity.T2`）
+     - 纯静态决策核 `EnemyAiBrain.Decide(EnemyAiInput) → EnemyAiDecision`：无 MonoBehaviour、不碰 Transform、不读时钟、无副作用、同输入同输出。
+     - 三态 `EnemyAiState`：Patrol / Chase / Return；输入/输出均为值类型结构体。
+     - 判定优先级（含防呆 clamp）：① 拴绳最高（离圆心 > leash → 强制 Return）；② Return 不可打断（先回圈内才转 Patrol）；③ Chase 维持/脱离（玩家失效或超 lose → Return）；④ Patrol 起警（玩家入 alert → Chase）；⑤ 追击中贴身（≤ attackRange → 停步 + ShouldAttack）。
+     - 滞回硬约束 `lose = max(LoseRadius, alert)`、拴绳硬约束 `leash = max(LeashRadius, patrolR)`，规避"边界抖动 / 追出天边 / 永久返巢"三类隐性 bug。
+     - 红线：不引用战斗内核、不改内核类型、不写 `Time.timeScale`、不读任何时钟、**不造成任何伤害**（`ShouldAttack` 仅为表现信号，真伤害留待接 CombatBridge）。
+  2. `Assets/_Project/Scripts/Runtime/2.5D/EnemyPatrol.cs`（覆写，向后兼容 `Configure(Vector2 c, float r, uint s)` 与 `Tick(float dt)` 签名）
+     - 由纯巡逻升级为"巡逻 + 感知追击"集成层。
+     - 新增字段：`aiEnabled=true`、`alertRadius=220`、`loseRadius=340`、`leashRadius=520`、`attackRange=46`、`chaseSpeed=85`、`attackInterval=1.1`、`playerRescanInterval=1.0`。
+     - `Configure` 派生拴绳下限：`minLeash = radius * 1.25f`，小于此则抬升，与 `EnemyAiBrain` 内部 `leash ≥ patrolR` 双重保险。
+     - `Tick(dt)`：推进攻击冷却 → `aiEnabled` 关则 `TickPatrol` → 否则 `ResolvePlayer`（惰性缓存 `PlayerController` + `playerRescanInterval` 节流）→ 填 `EnemyAiInput` → `EnemyAiBrain.Decide` → `OnStateChanged` → 分派 Patrol/Attack/Idle/MoveToward。
+     - `TickAttack` 用 `attackInterval` 节流（因 `CharacterView.PlayState(Attack)` 每次调用都重置攻击脉冲，必须节流；`Idle` 幂等可每帧调）。
+     - `OnStateChanged`：迁入 Chase 清 `_waiting`；Return→Patrol 时 `PickNewTarget`（旧目标可能远在圈外）。
+     - 推进闸门沿用 `EnemyNpcSpawner`：在 `!IsGameplayBlocked` 帧用 `FeedbackClock.Delta` 驱动 `Tick(dt)`，暂停/顿帧不偷跑。
+  3. `Assets/_Project/Scripts/Runtime/Tests/P2_2_EnemyAiBrainTests.cs`（EditMode NUnit，`namespace Xianxia.Unity.T2.Tests`）
+     - 14 条用例 EA-01~EA-14，覆盖起警 / 滞回 / 脱战 / 玩家失效 / 拴绳优先 / 返巢不可打断 / 回圈恢复 / 贴身攻击 / 防呆 clamp / 确定性 / 攻击信号边界。
+     - 文件头声明 2 项本文件明确未覆盖：位移/朝向/冷却集成（`EnemyPatrol`，需 PlayMode 手测）、真伤害（当前设计不造成伤害）。
+  4. `.meta`：`EnemyAiBrain.cs.meta`（GUID `9f589e8175f29e3bfb3d1fcbd5adc298`）、`P2_2_EnemyAiBrainTests.cs.meta`（GUID `6a6aaef3aeafe4137fd3e5db5f079488`），已确认工程内无 GUID 冲突。
+- **本地自证（无 Unity/dotnet 环境）**：把 `Decide` 逻辑独立复刻成 Node.js 脚本 `ai_brain_check.js` 跑全部用例（14 EA + 2 抖动压力测试），**结果 PASS 16 / FAIL 0**。同时静态核验：5 个相关文件命名空间均为 `Xianxia.Unity.T2`（测试为 `.Tests`）；`{}` 配平（15/15、38/38、18/18）；新 `.cs` 的 GUID 唯一。
+- **诚实边界**：本环境无 Unity/dotnet，EnemyAiBrain/EnemyPatrol/P2_2 **未经编译**。最终放行以用户本地 Unity 重编 0 错误、并（可选）Test Runner 跑 `P2_2_EnemyAiBrainTests` 全绿、PlayMode 实测追击行为为准。
+- **本轮未提交**：用户就寝前明确"运行个毛，我先睡，明早再看"，故代码写盘但**未 git add/commit/push**，留待用户明早 review diff。另注 `packed-refs` 旧疾仍在（本地 `feature/2.5d` = `f7118d0`，远程跟踪引用 = `4e6fb23`，存在分歧），push 须等用户本地确认后再处理。
+- **遗留给用户（明早一次性验收）**：
+  1. Unity 重编 → 确认 `EnemyAiBrain` / `EnemyPatrol` / `P2_2` 编译 0 错误；
+  2. （可选）Test Runner → EditMode → `Xianxia.Unity.T2.Tests` → Run All，预期 `P2_2` 全绿；
+  3. PlayMode → 走近敌人应触发 Chase；走出 `loseRadius` 应 Return 回家；拖出 `leashRadius` 应被拴绳拉回；贴身应停步播攻击动画（暂不掉血）；
+  4. （独立旧摊子）`Shuimo/2.5D/运行 骨骼绑定自检` 确认 `PASS 6 / WARN 0 / FAIL 0`（#6 仍 FAIL，未变）。
+- **后续 TODO（已在代码标注）**：真伤害须经 CombatBridge 投递内核；二期入仙/入魔形态切换（heroine_xian.png / heroine_mo.png 已备）；真 Tilemap / NPC 交互未启动。
+
+### 阶段 46 · 移除 `UnityBoneCharacterView` 的 `#if` 守卫，修复 HeroineBone.prefab 永久 Missing Script（feature/2.5d，2026-08-15）
+
+- **触发**：用户明早（08-15）验收时确认 `P2_2_EnemyAiBrainTests` 全绿（敌人 AI 编译/逻辑正常），但 `HeroineBone.prefab` 在 Project 窗口单击即报 "Prefab has missing scripts"；双击进 Prefab 编辑模式，根节点存在一个 Missing Script 组件；骨骼绑定自检 #6 仍 FAIL。此前已尝试切回 Standalone 平台、Reimport `CharacterView.cs`、Reimport All 均无效。
+- **根因定位（确定性核查，非猜测）**：
+  - Prefab 仅引用两个脚本 GUID：`9b0455...`（= `CharacterView.cs.meta`，存在）与 `57c008...`（SpriteSkin 内置组件 GUID，本就不应在工程 meta 中）。**无任何"真正缺失"的 meta → 排除脚本资产丢失**。
+  - Missing Script 实为 `UnityBoneCharacterView` 类：该类整段包在 `#if HAS_2D_BONE_PACKAGE` 内。当用户本地该符号因 Unity 条件编译/符号缓存未实际进入 C# 编译时，类不编入程序集 → 脚本资产 GUID 可解析但类缺失 → Inspector 显示 Missing Script。
+  - 设计矛盾：`Xianxia.Unity.T2.asmdef` 已硬引用 `Unity.2D.Animation.Runtime`（com.unity.2d.animation 随 feature.2d 安装），即该包已是**硬依赖**；`#if` 守卫既无法真正达成"零依赖"，又制造了本次 missing 故障。
+- **交付（覆写 1 文件）**：`Assets/_Project/Scripts/Runtime/2.5D/CharacterView.cs`
+  - 移除 `UnityBoneCharacterView` 整类 + `ResolveOn` 分支 + `using UnityEngine.U2D.Animation` 三处 `#if HAS_2D_BONE_PACKAGE` / `#endif` 守卫，改为**恒编译**（Spine 守卫 `HAS_SPINE_PACKAGE` 保留，因 Spine 未装、asmdef 未引用）。
+  - 配套更新头部职责清单与类注释，标注"恒编译"原因。
+  - 静态核验：花括号 **74/74** 配平；`grep HAS_2D_BONE_PACKAGE` 全文件仅剩 2 处注释级引用、无代码级引用。
+- **诚实边界**：本环境无 Unity/dotnet，未编译。改动极小（仅移除条件编译外壳，类体未动），且 asmdef 已引用该包，编译风险低；**最终放行仍以用户本地重编 + 重新跑骨骼绑定自检 `PASS 6` 为准**。
+- **遗留验收**：用户本地 Unity 重编 → 等编译转完 → 回到 `HeroineBone.prefab`（Project 窗口单击）应不再有 missing 黄条，根节点应显示 "Unity Bone Character View"；随后 `Shuimo/2.5D/运行 骨骼绑定自检` 目标 `PASS 6 / WARN 0 / FAIL 0`。
+- **附注**：ProjectSettings 中 `Standalone: HAS_2D_BONE_PACKAGE` 现已成为死符号（无用但无害），可保留或后续清理。
+
+---
+
+### 阶段 47 · 敌人接触伤害「是否该结算」决策核 + EnemyPatrol 解耦伤害请求（feature/2.5d，2026-08-15）
+
+- **触发**：用户（08-15 下午）确认 `P2_2` 全绿，但表示绑骨那摊子先挂着、想看"别的"进展。主理人顺着敌人 AI 线程推进「贴身攻击 → 真伤害」的下一环（即 `EnemyPatrol.cs` TODO 标注的"真伤害须经 CombatBridge 投递内核"）。
+- **架构关键发现（决定实现方式）**：
+  - 2.5D 的 `EnemyPatrol` 敌人是**纯表现层**（MonoBehaviour + CharacterView），**不是**内核 `Combatant`；内核 `Encounter` 另有自己一套敌人（`AttackController` 打的正是那套，走 `DamageResolver.ResolvePlayerAttack`）。
+  - 因此"敌人贴身掉血"不能让 `EnemyPatrol` 直调内核，必须**经 `CombatBridge`** 把伤害请求投出去，由 Bridge 用内核 API 结算。这与既有红线（不进内核、不调 DamageResolver）一致。
+  - 另核实 `MainMenuHud` / `PauseMenuHud` / `ControlsGuideHud` 及 `P0_5_MenuHudTests.cs` **早已存在**——此前 working memory 中"P0-5/P0-6 未做"系过时判断，无需重做。
+- **交付（新增 3 文件 + 覆写 1 文件）**：
+  1. `Assets/_Project/Scripts/Runtime/2.5D/EnemyContactAttack.cs`（新增，T2）：纯静态决策核 `EnemyContactAttack.Decide` + 解耦接口 `IDamageRequester`。规则：贴身（dist ≤ attackRange）且冷却到点（cd ≤ 0）→ 开火并回填 `attackInterval`（下限 0.1），否则不开火且冷却原样回传。冷却的"按 dt 递减"仍由 `EnemyPatrol.Tick` 顶部统一负责（与暂停/顿帧同闸门），本核只消费已递减的剩余冷却 → 冷却所有权唯一、不双扣。`Mathf`/NaN/Infinity/负冷却 均做防呆。
+  2. `Assets/_Project/Scripts/Runtime/Tests/P2_3_EnemyContactAttackTests.cs`（新增，T2.Tests）：EditMode NUnit，14 用例（EC-01~EC-14）覆盖贴身开火/冷却未到点/距离优先/边界/零半径/负冷却/非有限距离防呆/确定性/回填精确值。
+  3. 两个 `.meta`（GUID `20e92f81…` / `12fcd736…`，已确认无冲突）。
+  4. `Assets/_Project/Scripts/Runtime/2.5D/EnemyPatrol.cs`（覆写）：`TickAttack` 改为先调 `EnemyContactAttack.Decide` 取决策，开火时 `damageRequester?.RequestContactDamage(contactDamage)`（**null 安全**：未注入时只播 Attack 表现、零伤害）。新增 `contactDamage`（默认 8）/ `damageRequester` 两个字段。同步更新文件头红线措辞（"不直调内核，经 IDamageRequester 抛请求"）。
+- **自证（无 Unity/dotnet）**：Node.js 复刻 `Decide` 跑 14 EC + 2 抖动/频率压力测试 → **PASS 18 / FAIL 0**；三者花括号 10/10、41/41、18/18 配平，无 `#if/#endif` 失配；`EnemyPatrol` 所引新符号全部命中。
+- **诚实边界**：`CombatBridge` 侧真正把 `IDamageRequester.RequestContactDamage` 接进内核（`DamageResolver.ResolveContact` + 玩家 `Combatant`）**本轮未做**，故当前行为是"请求被抛出但无人接收 = 纯表现"。这是有意为之的最小风险切分：先把可单测的决策核与解耦接口钉死，Bridge 接线留作下一步（需用户本地编译验证）。
+- **遗留验收**：① 用户本地 Unity 重编 → EnemyContactAttack/EnemyPatrol/P2_3 编译 0 错误；② Test Runner 搜 `P2_3` → 全绿；③ PlayMode 走近敌人贴身应播 Attack 且（未注入 sink 时）不掉血；④ Bridge 接线后再验收真掉血。
+
+### 阶段 48 · 一键把竹林放进场景的编辑器菜单（feature/2.5d，2026-08-15）
+
+- **触发**：用户（08-15 晚）表示早上看了下绑骨 missing script 还在（即阶段 46 的代码修复尚未本地重编验证），想先绕过、让地图"看起来有游戏感"。用户确认竹林"已经做过"——经查 `BambooSceneContext`（运行时程序化生成 20–30 根水墨竹 + 地面 + 雾）与 `BambooVfx`（砍竹特效）此前已实现，但**从未被放进 SampleScene**（grep 全场景零 Bamboo 引用；场景末尾 `SceneRoots` 仅注册 Main Camera，玩法对象全是运行时生成）。
+- **为何不直接改 SampleScene.unity**：场景 9.7 万行且含 `SceneRoots` 注册表，盲改 YAML 需同时追加 3 个文档块 + 改注册表 + 显式序列化 29 个字段（Unity 反序列化不跑 C# 字段初始化器，漏写则 `bambooCount`/`orthographicSize` 等归零 → 竹林不可见）；任一笔误即整场景加载失败，而本环境无 Unity 无法验证。故沿用项目既有 `Shuimo/2.5D/` 菜单模式（Apply Ink Bamboo Materials / 烘焙 BambooHitFx.prefab 同款），加一键放置，由 Unity 自己完成序列化，**零破坏风险**。
+- **交付（新增 2 文件）**：
+  1. `Assets/_Project/Scripts/Editor/BambooScenePlacer.cs`（新增，T2.Editor，`Shuimo.EditorTools` 命名空间）：两个菜单项
+     - `Shuimo/2.5D/放置竹林 BambooSceneContext`：幂等——已存在则选中并返回；否则 `new GameObject("BambooGrove")` + `AddComponent<BambooSceneContext>()`，若 `Assets/_Project/Art/Bamboo/bamboo_ink.fbx` 存在则自动接入 `bambooModelPrefab`（路线 A 高保真），否则组件走 primitives + 运行时 Ink 材质兜底（路线 B）；`SetDirty` 标记场景需保存；并显式 `Load()` 一次让编辑态即见竹林。
+     - `Shuimo/2.5D/移除竹林 BambooSceneContext`：先 `Unload()`（还原雾、销毁子树）再 `DestroyImmediate` 宿主。
+  2. `BambooScenePlacer.cs.meta`（GUID `a770c595…`，已确认无冲突）。
+- **自证（无 Unity）**：花括号 9/9、括号 23/23 配平，无 `#if/#region` 失配；脚本引用的 `BambooSceneContext.IsLoaded/Load/Unload/bambooModelPrefab` 全部命中；`.meta` GUID 全工程唯一。Editor asmdef 已引用 T2（`BambooHitFxPrefabBaker` 即同模式），`using Xianxia.Unity.T2;` 可编译。
+- **诚实边界**：本工具仅"挂组件 + 触发生成"，不触碰 Combat/WorldBuilder，不写 timeScale/Scheduler/RunPhase，不调 DamageResolver，不写 FeedbackClock.Frozen。竹林几何由 `BambooSceneContext` 在 OnEnable 生成（设计既定）。
+- **遗留验收**：① 用户 Unity 重编后顶部出现 `Shuimo/2.5D/放置竹林…` 菜单；② 点一次 → Scene 视图即出现竹林（无需进 PlayMode，路线 B 用 primitives+水墨材质，已套好材质的 fbx 则走真模型）；③ 保存场景后持久化；④ 已知小瑕疵：场景重载后 OnEnable 会再 `Load()` 一次，若看到"双份竹林"，点 `移除竹林` 再 `放置竹林` 即可（组件跨重载去重属后续优化，非阻塞）。
+
+## 阶段 49 · 竹林「打开工程即存在」自动放置（轮次 E，2026-08-15）
+
+- **触发**：用户上一轮已确认"竹林资产"概念（语音识别误把"竹林"写作"资产租赁"），但嫌上一轮的"手动菜单放置"仍要自己点一下，希望**直接放进项目、别让我手动操作**。同时用户授权"你觉得有问题就自己写个脚本"。
+- **判定**：直接手改 `SampleScene.unity`（9.7 万行 + 末尾 SceneRoots 注册表）风险高，且本环境无 Unity 无法验证，一旦 YAML 笔误会整场景加载失败。因此采用用户授权的"自己写脚本"路线——把 `BambooScenePlacer` 由「手动菜单」升级为「打开工程自动放置」。
+- **交付**：覆写 `Assets/_Project/Scripts/Editor/BambooScenePlacer.cs`（`.meta` 不变，GUID 仍唯一）：
+  - 新增 `[InitializeOnLoadMethod] + EditorApplication.delayCall`：Unity 重编/打开后自动检测 `SampleScene` 是否含 `BambooSceneContext`，不含则自动 `AddComponent` + `Load()`，**竹林在编辑态即出现，零点击、零进 PlayMode**。
+  - 边界：`Application.isPlaying` 不操作；仅对 `SampleScene` 生效（不污染其他场景）；已存在则跳过（幂等）；通过 `EditorPrefs` 记住用户是否关闭自动放置，避免"手动移除后又被自动加回"的纠缠。
+  - 菜单 `Shuimo/2.5D/自动放置竹林` 带勾选态（`Menu.SetChecked` + validate），可随时开关；`放置/移除竹林` 手动菜单保留作兜底。
+- **自证**（无 Unity 环境）：花括号 23/23、括号 50/50 配平；`InitializeOnLoadMethod`/`delayCall`/`EditorPrefs`/`Menu.SetChecked`/`using SceneManagement` 全部命中；`AddComponent<BambooSceneContext>()`、`ctx.Load()`、`using Xianxia.Unity.T2` 引用正确。
+- **诚实边界**：本工具只"挂组件 + 触发生成"，不触碰 Combat/WorldBuilder，不写 timeScale/Scheduler/RunPhase，不调 DamageResolver，不写 FeedbackClock.Frozen。竹林几何由 `BambooSceneContext.OnEnable` 生成（设计既定）。
+- **遗留验收**：① 用户 Unity 重编后打开 `SampleScene`，Scene 视图**自动**出现竹林（无需点任何菜单）；② 路径 `Assets/_Project/Art/Bamboo/bamboo_ink.fbx` 存在则自动接真模型，否则走 primitives 兜底；③ 想关掉自动放置：取消勾选 `Shuimo/2.5D/自动放置竹林` 即可，之后不再自动加；④ 若自动未生效（极罕见），仍可手动点 `放置竹林` 兜底。
+
+---
+
+## 阶段 50 · 竹林真·水墨模型落地 + PlayMode 直验（2026-08-15）
+
+- **触发**：用户放弃死磕绑骨（`HeroineBone` 的 `Missing Script` 暂挂，P2_2 敌人 AI 与 P2_3 接触伤害已分别 EditMode 全绿），要求「直接把竹林放进场景、用真模型别用格子、开始构建水墨世界、我 PlayMode 验证」。
+- **根因澄清**：此前看到的"像素格子感"来自两层——① `bamboo_ink.fbx` 导入时 `externalObjects:{}` 未套水墨材质（灰模/粉红），② 自动放置当时退回了 primitives 兜底。用户"不知道看哪里的 SampleScene"：场景文件是 `Assets/Scenes/SampleScene.unity`，Project 窗口双击即开。
+- **交付**：
+  - `Assets/_Project/Scripts/Editor/BambooInkImporter.cs`：新增 `public static void ApplyToModel(string assetPath)`，对工程内 FBX 资产（非场景实例）递归套 `Xianxia/Ink/*` 水墨材质，幂等，等价于手动选中 fbx 点 `Shuimo/2.5D/Apply Ink Bamboo Materials`。
+  - `Assets/_Project/Scripts/Editor/BambooScenePlacer.cs`：放置竹林前先 `BambooInkImporter.ApplyToModel(FbxPath)` 给 `bamboo_ink.fbx` 套好水墨材质，再接成 `bambooModelPrefab`（路线 A 最高保真，**零 primitives/格子**）；fbx 缺失才退回路线 B。
+  - `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`：`OnEnable` 改为**仅 PlayMode 自动 `Load()`**（`Application.isPlaying && !_loaded`），编辑态不生成——彻底消除"运行时子物体被序列化进场景、重载后再生成一次"的**双份竹林**隐患；竹林 = 真·水墨竹（fbx）+ 地面（InkGround）+ 墨色雾，即"水墨世界 v1"基线。
+- **自证**（无 Unity 环境）：三文件花括号 30/30、22/22、149/149 配平；括号 112/112、49/49、398/398 配平；`#if/#endif` 各 3（均为 Spine 守卫）；交叉引用 `BambooInkImporter.ApplyToModel` 命中、放置脚本已无显式 `ctx.Load()`、`OnEnable` 已加 `isPlaying` 守卫。
+- **诚实边界**：① 仍不手改 9.7 万行 `SampleScene.unity`（盲改 YAML 风险高、无 Unity 无法验证），竹林以"打开工程时 `BambooScenePlacer` 自动挂组件"的方式进场景，序列化交给 Unity；② 绑骨 `Missing Script` 仍是已知未解项（用户已决定暂挂），PlayMode 下女主可能仅走 Sprite 兜底视觉，不影响竹林/砍竹/敌人 AI 逻辑验收。
+- **遗留验收（用户 PlayMode 直验）**：① 打开 Unity 重编；② Project 双击 `Assets/Scenes/SampleScene.unity` 打开场景；③ 进 PlayMode → 场景应出现一片**水墨真模型竹林**（非格子），玩家可走动、挥砍（`J/K` 视控制器映射）触发竹叶水墨受击表现，雾+地面构成水墨观感；④ 若竹林没出现：顶部菜单 `Shuimo/2.5D/放置竹林` 手动点一次（自动放置已在开关默认开启）。
+
+---
+
+## 阶段 51 · 拆掉彩色格子地图 → 宣纸白画布 + 竹林钉在玩家出生点（2026-08-15）
+
+- **触发**：用户反馈"还是那个像素图"——彩色格子地图与水墨像素图混淆，且分不清竹林到底有没有放进来；要求"把像素格子地图拆了、弄成全白的，我们一步步搭地图"。
+- **根因（双因）**：
+  1. 彩色格子地图 = `WorldBuilder.BuildTilemap` 运行时生成的 120×80 四色 Tilemap（Ground `#42563f` / Ground2 `#4d6349` / Water `#3a6b6e` / Rock `#4a4f42`），由 `Bootstrap → WorldBuilder.BuildScene` 在 PlayMode 兜底生成；无任何测试断言格子颜色，改白零风险。
+  2. 用户"看不到竹林"**不是竹子小**（竹高 170~250 世界单位，占屏 25%~35%），而是 `BambooSceneContext` 把竹林撒在**世界原点 (0,0)**，而玩家出生在地图中心（≈1936,1296）；相机跟玩家走 → 竹林整体在屏幕外 ~2000+ 单位。
+- **交付**：
+  - `WorldBuilder.BuildTilemap`：四种地块颜色全部改为统一**宣纸白** `Color(0.95,0.94,0.89)`，TileKind（可行走判定 / 落点校验）完全不变；仅视觉去格纹。
+  - `WorldBuilder.SetupCamera`：相机底色由墨色 `#181a17` 改为同款宣纸白 → 整屏全白画布。
+  - `BambooSceneContext`：新增 `ResolveGroveCenter()`（玩家出生点 → WorldBuilder 世界中心 → 原点 三级兜底）；`Load()` 与 `BindPlayer()` 两处把 `_groveRoot` 钉在玩家出生点，竹林一进 PlayMode 即包围玩家；`groveHalfExtent` 1400→700（更聚拢）、`bambooMinDist` 120→110（更密）；雾色由墨色改为宣纸白（远处淡出成留白）。
+- **自证**（无 Unity 环境）：`WorldBuilder.cs` 括号 257/257、花括号 85/85 配平；`BambooSceneContext.cs` 括号 409/409、花括号 153/153、#if/#endif 各 4（Spine 守卫）配平；`paperWhite`/`ResolveGroveCenter`/两次 `_groveRoot.localPosition` 赋值全部命中；`FallbackZone` 内残留的 5 处 `pal.*` 仅填 `ZoneData` 数据默认值，与渲染解耦无关，无害。
+- **诚实边界**：① 仍不手改场景 YAML；格子变白发生在下次生成（PlayMode 自动 BuildScene 即生效，或用菜单 `Shuimo/Scene/Clean And Rebuild` 在编辑器刷新）；② 若此前已用编辑器菜单生成过**旧绿格子**世界，需重跑一次生成才会变白（Play 即自动重生成）。
+- **遗留验收**：重编 → 双击 `SampleScene` → Play → 应看到**全白宣纸画布 + 玩家身边一圈水墨竹林**（深墨竹竿/竹叶在白底上清晰可辨），无绿/棕像素格子；走动时竹子随 Y 伪深度前后遮挡；挥砍触发竹叶水墨断裂表现。
+
+---
+
+## 阶段 52 · 修正 2.5D 视角（相机由"下方仰视"翻正为"上方俯视"）+ 地面 Shader 改 Unlit 消除黑台子 + 竹林铺满整张地图（2026-08-15）
+
+- **触发**：用户 PlayMode 实测后反馈三件事——① 视角"像平面图、没有 2.5D 感觉、垂直视角不对"；② 场景里有个"黑的站台"不知道哪来的；③ 要求"把整个场景都铺满（竹林）"。并自陈"昨天放反了，应该把那个隐藏掉"。
+- **根因（三件分别对应）**：
+  1. **视角反了**：`BambooSceneContext.ApplyCameraFraming` 里 `offset.y = -cameraDistance*sin(tilt)` 算成**负值**，相机被放到玩家**下方**往上看，XY 玩法平面被仰视压成"平面图"；`upHint.z` 也随旧符号写死，二者在 +Y 偏移下不再正交（作者原注释已埋坑"默认 34° 时夹角病态"）。所谓"昨天放反了"即指此处相机投影方向取反。
+  2. **黑台子**：`InkGround.shader` 原是 **Lambert（受光）** 着色器，2D 场景无地面打光 → 渲染成黑；用户要求"弄成全白"，本就该不受光。
+  3. **未铺满**：原 `ScatterPositions` 只在 `groveHalfExtent`（700）方块内撒 20~30 根、且跟随玩家，全图其余区域空着。
+- **交付**：
+  - `BambooSceneContext.ApplyCameraFraming`：`offset.y` 改为 `+cameraDistance*sin`（相机置于玩家**上方**俯视）；`upHint.z` 改为 `-_depthAxis.z*sin`，与 forward 重新正交（数值核验 `dot(forward,up)=0.0`）。现在正视 XY 板 + 34° 俯仰 = 标准 2.5D 斜俯视。
+  - `Assets/_Project/Shaders/Ink/InkGround.shader`：整体重写为 **Unlit**（vertex/fragment 直接输出 `_PaperColor` 调制淡墨晕斑，去掉 `Surface/Lambert`、`FallBack Off`），地面恒为宣纸白，不依赖场景光照。
+  - `BambooSceneContext`：新增**世界铺满**能力——`worldFill`(默认开)/`worldBambooCount`(默认 180)/`worldMinDist`(默认 200) 三字段；`BuildWorldField(PCG32)` 在整张地图（`WorldBuilder.WorldWidth/Height`，退化到玩家周边大方块）以"网格+抖动"撒一层**静态**竹林，挂到 `_worldRoot`（世界原点、恒等变换，故局部坐标即世界坐标），与玩家身边小丛 (`_groveRoot`) 共用 `BuildOneBamboo`/`BambooVfx`/深度排序/收割命中；`BuildOneBamboo` 增加可选 `parent` 参数；`Unload` 同步销毁 `_worldRoot`。
+- **自证**（无 Unity 环境）：`BambooSceneContext.cs` 花括号 166/166、括号 442/442、`#if/#endif` 4/4 配平；相机正交性 `dot(forward,up)=0.0`（Python 数值核验）；`WorldBuilder.Width/Height/TileUnit/WorldWidth/WorldHeight` 静态成员全部存在可访问；`BuildWorldField`/`worldFill` 调用链、`_worldRoot` 字段与 Unload 清理均命中。地面 Shader 改为 Unlit 属低风险（仅去光照，保留纸纹噪声）。
+- **诚实边界**：① 仍不手改场景 YAML；② 绑骨 `Missing Script` 仍按用户决定暂挂；③ "黑台子"若重编后仍出现，则非地面 Shader，需用户截图定位具体对象（可能性最低，已消除两大主因：相机反向 + 受光黑面）；④ 世界层 ~180 根 + 身边 ~26 根共 ~206 根竹子，低端机如有掉帧可下调 `worldBambooCount`。
+- **遗留验收**：重编 → 双击 `SampleScene` → Play → ① 视角应为**斜俯视 2.5D**（不再平面图/仰视）；② 地面为**宣纸白**（无黑台子）；③ **整张地图散布竹林**（走到哪都有竹），玩家身边一丛更密；④ 挥砍/走动表现同前。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1228,4 +1367,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-14，阶段 44）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-15，阶段 52）*

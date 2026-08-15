@@ -94,11 +94,21 @@ namespace Xianxia.Unity.T2
         [Tooltip("竹子数量，运行时会被夹到 [20,30]")]
         public int bambooCount = 26;
 
-        [Tooltip("竹林可行走区半边长（XY 平面正方形）")]
-        public float groveHalfExtent = 1400.0f;
+        [Tooltip("竹林可行走区半边长（XY 平面正方形）。调小 = 竹林更聚拢在玩家身边")]
+        public float groveHalfExtent = 700.0f;
 
         [Tooltip("竹子之间的最小间距，泊松式撒点用")]
-        public float bambooMinDist = 120.0f;
+        public float bambooMinDist = 110.0f;
+
+        [Header("世界铺满（把竹林撒满整张地图，不只是玩家身边，构成完整竹林世界）")]
+        [Tooltip("开启后，在整张地图范围再撒一层静态竹林；关掉则只在玩家身边聚一小丛")]
+        public bool worldFill = true;
+
+        [Tooltip("世界层竹林数量上限（性能与观感平衡，建议 120–220）")]
+        public int worldBambooCount = 180;
+
+        [Tooltip("世界层竹林最小间距（世界单位），过密会卡脚、过疏显得空")]
+        public float worldMinDist = 200.0f;
 
         [Tooltip("竹竿半径（同尺度）")]
         public float trunkRadius = 14.0f;
@@ -195,8 +205,8 @@ namespace Xianxia.Unity.T2
         [Tooltip("是否由本组件接管场景雾")]
         public bool enableFog = true;
 
-        [Tooltip("雾色（墨色系）")]
-        public Color fogColor = new Color(0.094f, 0.102f, 0.090f, 1.0f);
+        [Tooltip("雾色（宣纸白，与画布同色，远处淡出成水墨留白）")]
+        public Color fogColor = new Color(0.95f, 0.94f, 0.89f, 1.0f);
 
         [Tooltip("线性雾起点距离")]
         public float fogStart = 400.0f;
@@ -298,6 +308,7 @@ namespace Xianxia.Unity.T2
         private readonly List<Material> _ownedMaterials = new List<Material>();
 
         private Transform _groveRoot;
+        private Transform _worldRoot;
         private bool _loaded;
 
         private Transform _player;
@@ -336,7 +347,10 @@ namespace Xianxia.Unity.T2
 
         private void OnEnable()
         {
-            if (!_loaded)
+            // 仅运行时（PlayMode）自动生成竹林；编辑态不生成，避免把运行时生成的子物体
+            // 序列化进场景文件、重载后 OnEnable 再生成一次导致「双份竹林」。
+            // 想预览就直接进 PlayMode；菜单放置也不在编辑态强制生成。
+            if (Application.isPlaying && !_loaded)
             {
                 Load();
             }
@@ -376,6 +390,11 @@ namespace Xianxia.Unity.T2
             _groveRoot.localScale = Vector3.one;
             // 注意：这里**故意不调** ShuimoGenerated.Mark(...)，见文件头红线 1。
 
+            // 把竹林根对准玩家出生点附近，确保进入 PlayMode 后相机立刻被竹林包围，
+            // 而不是漂到远离玩家的世界原点（否则玩家看不到竹、误以为没放进来）。
+            // 玩家晚于本组件生成也没关系：BindPlayer 里会再对准一次。
+            _groveRoot.localPosition = (Vector3)ResolveGroveCenter();
+
             BuildGround();
             ApplyFog();
 
@@ -393,6 +412,12 @@ namespace Xianxia.Unity.T2
                 }
             }
 
+            // 世界铺满：在整张地图再撒一层静态竹林，构成完整竹林世界（不随玩家移动）。
+            if (worldFill)
+            {
+                BuildWorldField(rng);
+            }
+
             _loaded = true;
             ApplyCameraFraming();
 
@@ -401,6 +426,30 @@ namespace Xianxia.Unity.T2
                 _bamboos.Count, target,
                 bambooModelPrefab != null ? "bamboo_ink 模型" : "primitives 兜底",
                 _depthAxis));
+        }
+
+        /// <summary>
+        /// 竹林中心：让玩家一进 PlayMode 就身处竹林之中。
+        /// 优先级：玩家出生点 → WorldBuilder 已生成世界时取其中心 → 世界原点。
+        /// 这样无论 BuildScene 与本组件 OnEnable 的先后，竹林都不会漂到玩家视野外。
+        /// </summary>
+        private Vector2 ResolveGroveCenter()
+        {
+#if UNITY_2023_1_OR_NEWER
+            PlayerController pc = Object.FindFirstObjectByType<PlayerController>();
+#else
+            PlayerController pc = Object.FindObjectOfType<PlayerController>();
+#endif
+            if (pc != null)
+            {
+                return new Vector2(pc.transform.position.x, pc.transform.position.y);
+            }
+            if (WorldBuilder.Grid != null && WorldBuilder.Width > 0 && WorldBuilder.Height > 0)
+            {
+                return new Vector2(WorldBuilder.Width * WorldBuilder.TileUnit * 0.5f,
+                                   WorldBuilder.Height * WorldBuilder.TileUnit * 0.5f);
+            }
+            return Vector2.zero;
         }
 
         /// <summary>
@@ -418,6 +467,12 @@ namespace Xianxia.Unity.T2
             {
                 SafeDestroy(_groveRoot.gameObject);
                 _groveRoot = null;
+            }
+
+            if (_worldRoot != null)
+            {
+                SafeDestroy(_worldRoot.gameObject);
+                _worldRoot = null;
             }
 
             RestoreFog();
@@ -466,6 +521,13 @@ namespace Xianxia.Unity.T2
             if (cameraRig != null)
             {
                 cameraRig.BindTarget(player);
+            }
+
+            // 玩家首次绑定时把竹林根对准玩家出生点：Load 时的 best-effort 可能早于玩家生成，
+            // 这里补一次，保证竹林始终在玩家视野内（只钉在出生点，不随玩家走动而跟随）。
+            if (_groveRoot != null && _player != null)
+            {
+                _groveRoot.localPosition = new Vector3(_player.position.x, _player.position.y, 0.0f);
             }
 
             ApplyCameraFraming();
@@ -705,13 +767,73 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>
+        /// 世界铺满：在整张地图（默认 WorldBuilder 已生成的 120×80×32 世界，或退化到玩家周边大区域）
+        /// 用「网格 + 抖动」撒一层静态竹林，挂在 _worldRoot（世界原点、恒等变换）下，故局部坐标即世界坐标。
+        /// 这部分竹子**不随玩家移动**，用于让整张地图看起来都是竹林，而非只有玩家身边一小丛。
+        /// 与玩家身边的小丛（_groveRoot）共用 BuildOneBamboo / BambooVfx / 深度排序 / 收割命中逻辑。
+        /// </summary>
+        private void BuildWorldField(PCG32 rng)
+        {
+            _worldRoot = new GameObject("WorldBambooField").transform;
+            _worldRoot.SetParent(transform, false);
+            _worldRoot.localPosition = Vector3.zero;
+            _worldRoot.localRotation = Quaternion.identity;
+            _worldRoot.localScale = Vector3.one;
+
+            // 世界范围：优先用 WorldBuilder 已生成的世界尺寸；否则退化到「以竹林中心为原点的大方块」。
+            float worldW, worldH;
+            if (WorldBuilder.Width > 0 && WorldBuilder.Height > 0)
+            {
+                worldW = WorldBuilder.WorldWidth;
+                worldH = WorldBuilder.WorldHeight;
+            }
+            else
+            {
+                Vector2 c = ResolveGroveCenter();
+                worldW = c.x * 2.0f + 3800.0f;
+                worldH = c.y * 2.0f + 2600.0f;
+            }
+
+            float margin = worldMinDist * 0.5f;
+            float usableW = Mathf.Max(1.0f, worldW - margin * 2.0f);
+            float usableH = Mathf.Max(1.0f, worldH - margin * 2.0f);
+            int cols = Mathf.Max(1, Mathf.FloorToInt(usableW / worldMinDist));
+            int rows = Mathf.Max(1, Mathf.FloorToInt(usableH / worldMinDist));
+            int cap = Mathf.Max(0, worldBambooCount);
+            int idx = 0;
+            int placed = 0;
+
+            for (int r = 0; r < rows && placed < cap; r++)
+            {
+                for (int c = 0; c < cols && placed < cap; c++)
+                {
+                    float jx = rng.NextRange(-worldMinDist * 0.4f, worldMinDist * 0.4f);
+                    float jy = rng.NextRange(-worldMinDist * 0.4f, worldMinDist * 0.4f);
+                    float x = margin + (c + 0.5f) * worldMinDist + jx;
+                    float y = margin + (r + 0.5f) * worldMinDist + jy;
+                    float h = rng.NextRange(heightMin, heightMax);
+                    BambooVfx v = BuildOneBamboo(idx++, new Vector2(x, y), h, rng, _worldRoot);
+                    if (v != null)
+                    {
+                        _bamboos.Add(v);
+                        placed++;
+                    }
+                }
+            }
+
+            Debug.Log(string.Format(
+                "[2.5D] 世界铺满：额外撒下 {0} 根静态竹林（世界范围 {1:0}x{2:0}，网格 {3}x{4}）。",
+                placed, worldW, worldH, cols, rows));
+        }
+
+        /// <summary>
         /// 生成一根竹子：父节点挂 BambooVfx，子节点是竹竿 + 竹叶。
         /// 若 <see cref="bambooModelPrefab"/> 已配置则用真模型（路线 A），否则 primitives（路线 B）。
         /// </summary>
-        private BambooVfx BuildOneBamboo(int index, Vector2 planXY, float height, PCG32 rng)
+        private BambooVfx BuildOneBamboo(int index, Vector2 planXY, float height, PCG32 rng, Transform parent = null)
         {
             GameObject root = new GameObject(string.Format("Bamboo_{0:D2}", index));
-            root.transform.SetParent(_groveRoot, false);
+            root.transform.SetParent(parent != null ? parent : _groveRoot, false);
             root.transform.localPosition = new Vector3(planXY.x, planXY.y, 0.0f);
             root.transform.localRotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
@@ -1121,10 +1243,12 @@ namespace Xianxia.Unity.T2
             float sin = Mathf.Sin(rad);
             float cos = Mathf.Cos(rad);
 
-            // 相机沿深度轴退到 cameraDistance，并在 -Y 方向抬高，形成俯视斜角。
+            // 相机沿深度轴退到 cameraDistance，并在 +Y 方向抬高，形成俯视斜角
+            // （邓注：原 -Y 会把相机放到玩家下方往上看，变成"仰视平面图"；
+            //  2.5D 应是从上方俯看，故取 +Y）。
             Vector3 offset = new Vector3(
                 0.0f,
-                -cameraDistance * sin,
+                cameraDistance * sin,
                 _depthAxis.z * cameraDistance * cos);
 
             // 朝向：看向玩法平面原点方向。
@@ -1140,8 +1264,10 @@ namespace Xianxia.Unity.T2
             // Quaternion.LookRotation 直接退化报错、相机朝向失效；
             // 且默认 34° 时夹角已经很病态（sin68° ≈ 0.93）。
             // 用正交化后的 up，任意 tilt ∈ [0,70] 都稳定。
+            // 注意：offset.y 改为 + 后，up 的 Z 分量须取 -_depthAxis.z*sin 才与 forward 正交
+            // （推导见上方注释，原 +_depthAxis.z*sin 只在 -Y 偏移时成立）。
             Vector3 forward = (-offset).normalized;
-            Vector3 upHint = new Vector3(0.0f, cos, _depthAxis.z * sin);
+            Vector3 upHint = new Vector3(0.0f, cos, -_depthAxis.z * sin);
             Quaternion rot = forward.sqrMagnitude > 1e-6f
                 ? Quaternion.LookRotation(forward, upHint)
                 : Quaternion.identity;

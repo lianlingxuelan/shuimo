@@ -409,15 +409,20 @@ namespace Xianxia.Unity.T2
             renderer.mode = TilemapRenderer.Mode.Chunk;         // Chunk 才会合批
             renderer.sortOrder = TilemapRenderer.SortOrder.TopLeft;
 
-            ZonePalette pal = theme != null ? theme.Palette : null;
+            // 【水墨世界基线：空白宣纸画布】
+            // 原四色调色板（Ground/Ground2/Water/Rock）是 PRD 早期的「占位格子图」观感，
+            // 用户反馈它与「水墨像素图」混淆、且分不清竹林是否真的放进场景。这里把四种地块
+            // 全部渲染为同一张宣纸白：逻辑上 TileKind（可行走判定 / 落点校验）完全不变，
+            // 视觉上变成一张无格纹的空白画布，后续再逐步往上叠加水墨地形（路径 / 水洼 / 岩石皴擦）。
             Sprite white = SpriteFactory.WhiteTile();
+            Color paperWhite = new Color(0.95f, 0.94f, 0.89f, 1.0f);   // 宣纸白（非纯白，保留水墨纸感）
 
-            // 四种地块 = 四个 Tile 实例，共用一张贴图，只有 color 不同。
+            // 四种地块 = 四个 Tile 实例，共用一张贴图，颜色统一为宣纸白（无格子感）。
             Tile[] tiles = new Tile[4];
-            tiles[(int)TileKind.Ground] = MakeTile(white, ParseColor(pal != null ? pal.Ground : null, new Color32(0x42, 0x56, 0x3f, 0xff)), "ground");
-            tiles[(int)TileKind.Ground2] = MakeTile(white, ParseColor(pal != null ? pal.Ground2 : null, new Color32(0x4d, 0x63, 0x49, 0xff)), "ground2");
-            tiles[(int)TileKind.Water] = MakeTile(white, ParseColor(pal != null ? pal.Water : null, new Color32(0x3a, 0x6b, 0x6e, 0xff)), "water");
-            tiles[(int)TileKind.Rock] = MakeTile(white, ParseColor(pal != null ? pal.Rock : null, new Color32(0x4a, 0x4f, 0x42, 0xff)), "rock");
+            tiles[(int)TileKind.Ground]  = MakeTile(white, paperWhite, "ground");
+            tiles[(int)TileKind.Ground2] = MakeTile(white, paperWhite, "ground2");
+            tiles[(int)TileKind.Water]   = MakeTile(white, paperWhite, "water");
+            tiles[(int)TileKind.Rock]    = MakeTile(white, paperWhite, "rock");
 
             int total = Width * Height;
             Vector3Int[] positions = new Vector3Int[total];
@@ -656,7 +661,7 @@ namespace Xianxia.Unity.T2
             cam.orthographic = true;
             cam.orthographicSize = CameraOrthoSize;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.094f, 0.102f, 0.090f, 1.0f);   // 墨色底
+            cam.backgroundColor = new Color(0.95f, 0.94f, 0.89f, 1.0f);   // 宣纸白底（水墨世界基线，与地形同色 → 全白画布）
             cam.nearClipPlane = 0.3f;
             cam.farClipPlane = 1000.0f;
             cam.transform.position = new Vector3(player.position.x, player.position.y, -100.0f);

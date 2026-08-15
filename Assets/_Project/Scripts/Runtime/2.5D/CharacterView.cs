@@ -10,6 +10,8 @@
 //     PlayState / SetFacing / OnTick 抽象契约、ResolveOn 工厂。
 //   - SpriteCharacterView（默认）：用 SpriteRenderer，零 Spine 依赖，立即可用。
 //   - SpineCharacterView（可选）：仅当 HAS_SPINE_PACKAGE 定义时编译，引用 Spine 运行时。
+//   - UnityBoneCharacterView（2D 骨骼）：本 asmdef 已硬引用 2D Animation 包，故恒编译；
+//     仅当运行时探测到 SpriteSkin 才启用，否则回落 Sprite。
 //
 // 【红线（与 BambooVfx 同口径）】
 //   1. 动画推进唯一时钟 = FeedbackClock.Delta；Tick() 只读 FeedbackClock.Frozen 作闸门，
@@ -37,9 +39,8 @@ namespace Xianxia.Unity.T2
 #if HAS_SPINE_PACKAGE
     using Spine.Unity;
 #endif
-#if HAS_2D_BONE_PACKAGE
+    // 2D 骨骼命名空间：本 asmdef 已硬引用 Unity.2D.Animation.Runtime，恒可用，故不包 #if。
     using UnityEngine.U2D.Animation;
-#endif
 
     /// <summary>角色视图动画状态（战斗事件驱动）。</summary>
     public enum CharacterAnimState
@@ -146,8 +147,7 @@ namespace Xianxia.Unity.T2
             }
 #endif
 
-#if HAS_2D_BONE_PACKAGE
-            // 探测 Unity 2D Animation 骨骼组件（类型引用被 #if 隔离，缺包不编译）。
+            // 探测 Unity 2D Animation 骨骼组件（本 asmdef 已硬引用 2D Animation 包，恒可用）。
             // 优先级低于 Spine（若两者都装，Spine 优先），高于默认 Sprite 回落。
             SpriteSkin skin = root.GetComponent<SpriteSkin>();
             if (skin != null)
@@ -157,7 +157,6 @@ namespace Xianxia.Unity.T2
                 bv.Bind(skin);
                 return bv;
             }
-#endif
 
             // 默认：Sprite 视图（零依赖，立即可用）。
             SpriteCharacterView sp = root.GetComponent<SpriteCharacterView>()
@@ -506,16 +505,15 @@ namespace Xianxia.Unity.T2
 #endif // HAS_SPINE_PACKAGE
 
 // =============================================================================
-// Unity 2D Animation 骨骼视图守卫（与 Spine 同口径）
-//   整个 UnityBoneCharacterView 类 + ResolveOn 分支均包在 #if HAS_2D_BONE_PACKAGE
-//   内。未定义符号时整类不编译 → 工程零 2D-Animation 依赖零报错。
-//   启用：Player Settings > Scripting Define Symbols 追加 HAS_2D_BONE_PACKAGE，
-//   并确保本 asmdef 引用了 UnityEngine.U2D.Animation 模块
-//   （com.unity.2d.animation 已随 com.unity.feature.2d 安装，无需额外装包）。
+// Unity 2D Animation 骨骼视图
+//   原本整体包在 #if HAS_2D_BONE_PACKAGE 内，但该 asmdef 已硬引用
+//   Unity.2D.Animation.Runtime（com.unity.2d.animation 随 com.unity.feature.2d 安装），
+//   符号守卫既无法真正达成“零依赖”，又会在符号未被编译器实际吃进时让类消失、
+//   导致 HeroineBone.prefab 报 Missing Script。故改为恒编译（与 Spine 可选依赖区分）。
+//   仅当运行时探测到 SpriteSkin 才实例化，未挂骨骼资源的角色自动回落 Sprite，无损。
 // =============================================================================
-#if HAS_2D_BONE_PACKAGE
     /// <summary>
-    /// Unity 2D Animation 骨骼角色视图（仅当 HAS_2D_BONE_PACKAGE 定义时编译）。
+    /// Unity 2D Animation 骨骼角色视图（恒编译：本 asmdef 已硬引用 2D Animation 包）。
     /// 探测 SpriteSkin（2D 骨骼绑定组件），用 Animator 手动 Update(FeedbackClock.Delta)
     /// 喂动画，与全场顿帧同步冻结（同 Spine 分支的推进闸门语义）。
     /// 受击对根骨骼做基于 dt 的抖动；朝向翻转翻 rootBone 的 localScale.x 符号。
@@ -698,5 +696,4 @@ namespace Xianxia.Unity.T2
             }
         }
     }
-#endif // HAS_2D_BONE_PACKAGE
 }
