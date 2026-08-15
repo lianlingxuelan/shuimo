@@ -76,11 +76,13 @@ namespace Xianxia.Unity.T2
         /// <summary>敌人占位圆直径（世界单位）。</summary>
         public const int EnemyBodySize = 26;
 
-        /// <summary>敌人首波生成的最小 / 最大半径（相对玩家出生点）。</summary>
-        public const float SpawnRingMin = 260.0f;
+        // P2_3：Boss 出生距离临时拉远，原 260 直接刷在玩家脸前、把玩家完全钉死，
+        // 让人根本无法验证移动。1500 ≈ 5+ tile，玩家至少有空间跑两步看清移动松/紧。
+        // Boss 战调好手感后再改回。
+        public const float SpawnRingMin = 1500.0f;
 
         /// <summary>敌人首波生成的最大半径。</summary>
-        public const float SpawnRingMax = 620.0f;
+        public const float SpawnRingMax = 1800.0f;
 
         // ---------------------------------------------------------------------
         // 生成结果（供 EnemySpawner / PlayerController / DeterminismDump 读取）

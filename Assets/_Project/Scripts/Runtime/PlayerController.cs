@@ -86,6 +86,11 @@ namespace Xianxia.Unity.T2
         // 「动不了」诊断计时器：每 2 秒打一条关键状态，定位闸门/输入的确切成因。
         private float _diagTimer;
 
+        // P2_3 诊断：Update 末尾（Move 写完）记下的位置；LateUpdate 时若被外部
+        // 偷偷改写（其他脚本的 LateUpdate/OnTrigger/外部 AI 拽回等），差距 > 0.5
+        // 单位就打日志定位「谁在回写玩家位置」。
+        private Vector3 _posAfterUpdate;
+
         /// <summary>
         /// 取得战斗桥引用：优先用缓存，没有就自己找一次。
         ///
@@ -161,6 +166,25 @@ namespace Xianxia.Unity.T2
             ReadInput();
             Move(Time.deltaTime);
             UpdateFacingMarker();
+            _posAfterUpdate = transform.position;
+        }
+
+        /// <summary>
+        /// P2_3 诊断 LateUpdate：检测 Update 之后是否还有别的代码改写玩家位置。
+        /// 间距 > 0.5 单位认为「被外力拽走」，立即报「谁在改 + 改了多大」。
+        /// </summary>
+        private void LateUpdate()
+        {
+            Vector3 now = transform.position;
+            Vector3 diff = now - _posAfterUpdate;
+            if (diff.sqrMagnitude > 0.25f)
+            {
+                Debug.LogWarning("[PlayerDiag] POS REWRITE frame=" + Time.frameCount
+                    + " parent=" + (transform.parent != null ? transform.parent.name : "<null>")
+                    + " afterUpdate=" + _posAfterUpdate
+                    + " now=" + now
+                    + " Δ=" + diff);
+            }
         }
 
         /// <summary>
