@@ -83,6 +83,9 @@ namespace Xianxia.Unity.T2
         // 战斗桥缓存（惰性查找一次，之后复用）。P0-2 闸门每帧读 b.IsRunOver 要用。
         private CombatBridge _bridge;
 
+        // 「动不了」诊断计时器：每 2 秒打一条关键状态，定位闸门/输入的确切成因。
+        private float _diagTimer;
+
         /// <summary>
         /// 取得战斗桥引用：优先用缓存，没有就自己找一次。
         ///
@@ -132,6 +135,21 @@ namespace Xianxia.Unity.T2
             // P0-5 起改读 IsGameplayBlocked：它把"终局"与"菜单打开"合成同一道闸门，
             // 否则主菜单/暂停面板盖在屏幕上时玩家仍能用 WASD 在幕后乱走。
             CombatBridge b = ResolveBridge();
+
+            // [诊断] 每 2 秒打印一次闸门与输入状态，用于定位「动不了」的确切成因。
+            _diagTimer += Time.unscaledDeltaTime;
+            if (_diagTimer >= 2.0f)
+            {
+                _diagTimer = 0.0f;
+                Vector2 axis = InputBinder.MoveAxis();
+                Debug.Log("[PlayerDiag] bridge=" + (b != null)
+                    + " blocked=" + (b != null && b.IsGameplayBlocked)
+                    + " runOver=" + (b != null && b.IsRunOver)
+                    + " menuPaused=" + (b != null && b.IsMenuPaused)
+                    + " input=(" + axis.x.ToString("F2") + "," + axis.y.ToString("F2") + ")"
+                    + " pos=" + transform.position);
+            }
+
             if (b != null && b.IsGameplayBlocked)
             {
                 return;

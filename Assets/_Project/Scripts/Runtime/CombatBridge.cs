@@ -161,6 +161,12 @@ namespace Xianxia.Unity.T2
             get { return IsRunOver || _menuPaused; }
         }
 
+        /// <summary>菜单是否打开（诊断用只读暴露）。与 IsGameplayBlocked 同源。</summary>
+        public bool IsMenuPaused
+        {
+            get { return _menuPaused; }
+        }
+
         /// <summary>玩家实体。未初始化时为 null。</summary>
         public Combatant Player
         {
