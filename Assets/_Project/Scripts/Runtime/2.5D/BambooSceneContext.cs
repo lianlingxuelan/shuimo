@@ -1229,6 +1229,19 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
+            // 2.5D 模式由 IsometricCameraRig 独占相机跟随。禁用旧的 2D CameraFollow / CameraShake，
+            // 否则它们每帧在 LateUpdate 里用 Z=-100 覆盖相机位置，与 2.5D 取景互相打架 → 画面抖动/卡住。
+            CameraFollow follow2d = cam.GetComponent<CameraFollow>();
+            if (follow2d != null && follow2d.enabled)
+            {
+                follow2d.enabled = false;
+            }
+            CameraShake shake2d = cam.GetComponent<CameraShake>();
+            if (shake2d != null && shake2d.enabled)
+            {
+                shake2d.enabled = false;
+            }
+
             cam.orthographic = true;
             cam.orthographicSize = orthographicSize;
             // 深度轴上要能装下最高的竹子 + 相机距离，否则近/远裁剪面会切掉竹梢。
@@ -1299,6 +1312,19 @@ namespace Xianxia.Unity.T2
 #else
             cameraRig = Object.FindObjectOfType<IsometricCameraRig>();
 #endif
+
+            // 2.5D 模式下相机跟随必须由 IsometricCameraRig 独占。
+            // 它此前既不在场景、也没被任何代码 AddComponent（本方法只 Find 不建），
+            // 导致 2.5D 等距跟随从未运行、旧的 2D CameraFollow 每帧覆盖相机位置 → 画面错乱/抖动。
+            // 这里补建到 Main Camera 上，让 2.5D 跟随真正生效。
+            if (cameraRig == null)
+            {
+                Camera main = Camera.main;
+                if (main != null)
+                {
+                    cameraRig = main.gameObject.AddComponent<IsometricCameraRig>();
+                }
+            }
         }
 
         /// <summary>取当前生效的相机：优先 rig 自身的 Camera，其次 Camera.main。</summary>
