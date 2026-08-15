@@ -211,7 +211,7 @@ namespace Shuimo.EditorTools
             {
                 return CheckResult.Fail(
                     "运行时未识别 UnityBoneCharacterView 类型。\n" +
-                    "指引：确认 HAS_2D_BONE_PACKAGE 已定义（检查 1），且 CharacterView.cs 已包含该类型。");
+                    "指引：确认 HAS_2D_BONE_PACKAGE 已定义（检查 1），且 UnityBoneCharacterView.cs 已包含该类型（拆为单类文件后引用才不丢失）。");
             }
             Component view = prefab.GetComponent(viewType);
             if (view == null)

@@ -47,8 +47,8 @@ namespace Shuimo.EditorTools
         private const string PrefabPath = PrefabDir + "/HeroineBone.prefab";
         private const string AnimatorPath =
             "Assets/_Project/Art/Characters/Heroine2D/HeroineBoneAnimator.controller";
-        private const string CharacterViewScriptPath =
-            "Assets/_Project/Scripts/Runtime/2.5D/CharacterView.cs";
+        private const string UnityBoneCharacterViewScriptPath =
+            "Assets/_Project/Scripts/Runtime/2.5D/UnityBoneCharacterView.cs";
         private static readonly string[] RequiredStates = { "idle", "walk", "attack", "hit", "death" };
 
         [MenuItem("Shuimo/2.5D/一键生成女主绑骨Prefab", false, 220)]
@@ -170,7 +170,7 @@ namespace Shuimo.EditorTools
             bv.Bind(skin);
             // 立刻确保 MonoScript 引用正确落盘；某些 Unity 版本/程序集重载后
             // AddComponent 的脚本引用可能延迟，导致 Prefab 保存成 Missing Script。
-            EnsureMonoScriptReference(bv, CharacterViewScriptPath);
+            EnsureMonoScriptReference(bv, UnityBoneCharacterViewScriptPath);
             Debug.Log("[HeroineBone] 已挂 UnityBoneCharacterView（骨骼驱动视图）。");
 
             // 6. 存 Prefab
@@ -206,11 +206,11 @@ namespace Shuimo.EditorTools
             {
                 // 组件存在但脚本引用损坏时 GetComponent<T> 会返回 null，
                 // 尝试按损坏组件修复：找到所有 MonoBehaviour，把脚本为空的重新绑定。
-                RepairMissingScript<UnityBoneCharacterView>(savedPrefab, CharacterViewScriptPath);
+                RepairMissingScript<UnityBoneCharacterView>(savedPrefab, UnityBoneCharacterViewScriptPath);
             }
             else
             {
-                EnsureMonoScriptReference(viewOnPrefab, CharacterViewScriptPath);
+                EnsureMonoScriptReference(viewOnPrefab, UnityBoneCharacterViewScriptPath);
             }
 
             // 6.3 最终兜底：直接扫描 Prefab YAML，把仍损坏的 m_Script 用已知 GUID 修复。
@@ -375,8 +375,8 @@ namespace Shuimo.EditorTools
 
         /// <summary>
         /// 确保 MonoBehaviour 的 m_Script 引用指向正确的 MonoScript 资产。
-        /// 在 AddComponent 后因程序集重载导致引用未落盘时，直接按 .cs 资产路径加载
-        /// MonoScript 并写回，避免 MonoScript.FromMonoBehaviour 在 Missing Script 时返回 null。
+        /// 在 AddComponent 后因程序集重载导致引用未落盘时，优先用 MonoScript.FromMonoBehaviour
+        /// （按运行时类型解析，单类文件时恒正确），失败再按 .cs 资产路径加载兜底。
         /// </summary>
         private static void EnsureMonoScriptReference<T>(T behaviour, string scriptAssetPath)
             where T : MonoBehaviour
@@ -395,7 +395,13 @@ namespace Shuimo.EditorTools
             {
                 return;
             }
-            MonoScript ms = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptAssetPath);
+            // 优先按运行时类型取 MonoScript（单类文件时恒正确，不依赖文件名/主类）。
+            MonoScript ms = MonoScript.FromMonoBehaviour(behaviour);
+            if (ms == null)
+            {
+                // 兜底：组件类型不可解析时按 .cs 资产路径加载（拆分后该文件为单类）。
+                ms = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptAssetPath);
+            }
             if (ms == null)
             {
                 Debug.LogWarning(
@@ -413,7 +419,7 @@ namespace Shuimo.EditorTools
         /// <summary>
         /// 当 GetComponent&lt;T&gt; 因脚本引用损坏返回 null 时，遍历 root 上所有
         /// MonoBehaviour，把 m_Script 为空的条目重新绑定到 T 对应的 MonoScript。
-        /// 这里直接按 .cs 资产路径加载 MonoScript，不依赖 FromMonoBehaviour。
+        /// 优先用 MonoScript.FromType(typeof(T))，失败再按 .cs 资产路径加载兜底。
         /// </summary>
         private static void RepairMissingScript<T>(GameObject root, string scriptAssetPath)
             where T : MonoBehaviour
@@ -422,7 +428,13 @@ namespace Shuimo.EditorTools
             {
                 return;
             }
-            MonoScript ms = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptAssetPath);
+            // 优先按运行时类型取 MonoScript（单类文件时恒正确，不依赖文件名/主类）。
+            MonoScript ms = MonoScript.FromType(typeof(T));
+            if (ms == null)
+            {
+                // 兜底：组件类型不可解析时按 .cs 资产路径加载（拆分后该文件为单类）。
+                ms = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptAssetPath);
+            }
             if (ms == null)
             {
                 Debug.LogWarning(
@@ -458,7 +470,7 @@ namespace Shuimo.EditorTools
         /// <summary>
         /// 最终兜底：直接扫描 Prefab YAML。若 UnityBoneCharacterView 特征字段（clipIdle）
         /// 所在的 MonoBehaviour 块里 m_Script 仍为 {fileID: 0}，则强行写为
-        /// CharacterView.cs 的已知 GUID。这是对抗 Unity 在条件编译/程序集重载后
+        /// UnityBoneCharacterView.cs 的已知 GUID。这是对抗 Unity 在条件编译/程序集重载后
         /// 脚本引用丢失的最后手段。
         /// </summary>
         private static void RepairMissingScriptInPrefabYaml(string prefabPath)
@@ -477,7 +489,7 @@ namespace Shuimo.EditorTools
                 @"\s+hitShakeDuration: [\d.]+\n" +
                 @"\s+hitShakeAmplitude: [\d.]+\n" +
                 @"\s+clipIdle:)";
-            const string targetGuid = "9b0455cff8d8c3d40bb7a6d18522e172";
+            const string targetGuid = "0bb5ffdf01ff4b48866c1e99478ede64";
             string replacement = "m_Script: {fileID: 11500000, guid: " + targetGuid + ", type: 3}$1";
 
             string result = System.Text.RegularExpressions.Regex.Replace(

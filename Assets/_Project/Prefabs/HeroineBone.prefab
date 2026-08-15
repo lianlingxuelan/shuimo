@@ -407,6 +407,49 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
+--- !u!114 &5012713266454145942
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4607526729027553993}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57c008f954fe54a8bb972de1018a2cb8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_RootBone: {fileID: 3603970003814168749}
+  m_BoneTransforms:
+  - {fileID: 3603970003814168749}
+  - {fileID: 4213394343744207079}
+  - {fileID: 8218723372890382266}
+  - {fileID: 7594893575381696750}
+  - {fileID: 597356197783609115}
+  - {fileID: 3426425009992463433}
+  - {fileID: 2677109060122456936}
+  - {fileID: 658990802429696411}
+  - {fileID: 5073418360483819721}
+  - {fileID: 8976474137552593800}
+  - {fileID: 7841273891373544190}
+  - {fileID: 6992800855944314633}
+  - {fileID: 6209789641519273212}
+  - {fileID: 7734396150977523248}
+  - {fileID: 4163744665285469905}
+  - {fileID: 6506599592303706733}
+  - {fileID: 8404018580238123788}
+  - {fileID: 5263277912548718958}
+  - {fileID: 8893699077049047080}
+  - {fileID: 2050406481589694826}
+  - {fileID: 7542595724241524231}
+  - {fileID: 5612079013054681205}
+  - {fileID: 5809186709991020732}
+  - {fileID: 2334705378706328612}
+  m_Bounds:
+    m_Center: {x: 0, y: 0, z: 0}
+    m_Extent: {x: 0, y: 0, z: 0}
+  m_AlwaysUpdate: 1
+  m_AutoRebind: 0
 --- !u!95 &145634684314471118
 Animator:
   serializedVersion: 5
@@ -437,7 +480,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 4607526729027553993}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9b0455cff8d8c3d40bb7a6d18522e172, type: 3}
+  m_Script: {fileID: 11500000, guid: 0bb5ffdf01ff4b48866c1e99478ede64, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   hitShakeDuration: 0.22
