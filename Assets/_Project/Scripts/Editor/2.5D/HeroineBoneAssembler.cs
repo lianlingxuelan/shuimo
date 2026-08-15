@@ -419,7 +419,9 @@ namespace Shuimo.EditorTools
         /// <summary>
         /// 当 GetComponent&lt;T&gt; 因脚本引用损坏返回 null 时，遍历 root 上所有
         /// MonoBehaviour，把 m_Script 为空的条目重新绑定到 T 对应的 MonoScript。
-        /// 优先用 MonoScript.FromType(typeof(T))，失败再按 .cs 资产路径加载兜底。
+        /// 直接按 .cs 资产路径加载：拆分后该文件为单类，path 即唯一标识 MonoScript，
+        /// 拿到的 fileID 必为 11500000（指向本类）。Unity 2022.3 没有 MonoScript.FromType，
+        /// 故此处固定走路径方案，跨版本稳定。
         /// </summary>
         private static void RepairMissingScript<T>(GameObject root, string scriptAssetPath)
             where T : MonoBehaviour
@@ -428,13 +430,8 @@ namespace Shuimo.EditorTools
             {
                 return;
             }
-            // 优先按运行时类型取 MonoScript（单类文件时恒正确，不依赖文件名/主类）。
-            MonoScript ms = MonoScript.FromType(typeof(T));
-            if (ms == null)
-            {
-                // 兜底：组件类型不可解析时按 .cs 资产路径加载（拆分后该文件为单类）。
-                ms = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptAssetPath);
-            }
+            // 按 .cs 资产路径加载 MonoScript；单类文件下 path 即唯一标识，fileID=11500000 必指向 T。
+            MonoScript ms = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptAssetPath);
             if (ms == null)
             {
                 Debug.LogWarning(
