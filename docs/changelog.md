@@ -1387,6 +1387,16 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 56 · 移除 HeroineBone.prefab 孤儿 MonoBehaviour（2026-08-15）
+
+- **触发**：用户反馈 Inspector 长期显示 "HeroineBone (Prefab Asset) Prefab has missing scripts"，底部 Console 报 "GameObject named 'HeroineBone' references runtime script in scene file. Fixing!"。
+- **根因**：prefab 内含两个 MonoBehaviour，其中一个引用脚本 GUID `57c008f954fe54a8bb972de1018a2cb8`。`grep` 该 GUID 在整个 Assets（含所有 .meta）**仅命中 prefab 自身**，`git grep` 全历史亦仅命中 `8a9e5d1`（prefab 首次入库），对应 .meta 文件**从未存在**——prefab 自 8a9e5d1 提交起就是孤儿引用。组件内含 m_RootBone + m_BoneTransforms 等字段，疑为旧自定义骨骼控制器，后被 UnityBoneCharacterView（GUID `9b0455`，CharacterView.cs）取代但漏删旧组件引用。
+- **交付**：直接用 python 精确删除 prefab 中行 410–452 的孤儿 MonoBehaviour 块（保留 CharacterView 组件和骨骼 Transform）。删后校验：`57c008` 引用 0 次、`9b0455` 保留、`--- !u!114` 从 2 降到 1，prefab 结构合法。
+- **自证**：diff 43 deletions(-)、0 insertions、1 file。提交 `b770d16`（远程 tip）。CharacterView 阶段 46 修复仍有效（`#if HAS_2D_BONE_PACKAGE` 已摘、`9b0455` GUID 完好）。
+- **待用户本地验收**：重编后选中 HeroineBone.prefab → Inspector 不再有 "Missing Script" 警告；点 `Shuimo/2.5D/运行 骨骼绑定自检` 期望 PASS 6。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
