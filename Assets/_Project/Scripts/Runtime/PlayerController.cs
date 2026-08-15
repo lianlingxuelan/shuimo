@@ -136,17 +136,18 @@ namespace Xianxia.Unity.T2
             // 否则主菜单/暂停面板盖在屏幕上时玩家仍能用 WASD 在幕后乱走。
             CombatBridge b = ResolveBridge();
 
-            // [诊断] 每 2 秒打印一次闸门与输入状态，用于定位「动不了」的确切成因。
+            // [诊断] 每 2 秒打印移动链路每一环，定位「输入读到但不动」的断点。
             _diagTimer += Time.unscaledDeltaTime;
             if (_diagTimer >= 2.0f)
             {
                 _diagTimer = 0.0f;
                 Vector2 axis = InputBinder.MoveAxis();
-                Debug.Log("[PlayerDiag] bridge=" + (b != null)
-                    + " blocked=" + (b != null && b.IsGameplayBlocked)
-                    + " runOver=" + (b != null && b.IsRunOver)
-                    + " menuPaused=" + (b != null && b.IsMenuPaused)
+                Debug.Log("[PlayerDiag] blocked=" + (b != null && b.IsGameplayBlocked)
                     + " input=(" + axis.x.ToString("F2") + "," + axis.y.ToString("F2") + ")"
+                    + " moveDir=(" + MoveDir.x.ToString("F2") + "," + MoveDir.y.ToString("F2") + ")"
+                    + " extVel=" + ExternalVelocity.HasValue
+                    + " speed=" + moveSpeed
+                    + " dt=" + Time.deltaTime.ToString("F4")
                     + " pos=" + transform.position);
             }
 
