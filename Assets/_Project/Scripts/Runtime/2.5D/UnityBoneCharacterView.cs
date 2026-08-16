@@ -85,7 +85,9 @@ namespace Xianxia.Unity.T2
             HasView = _skin != null && _animator != null;
             if (_skin != null)
             {
-                _skin.enabled = true;
+                // 不强制启用 SpriteSkin：若 prefab 中权重未绘制（Sprite Editor 里 weight 全 0），
+                // 启用 SpriteSkin 会导致 SpriteRenderer 被骨骼系统接管后无法渲染，角色直接消失。
+                // 保留 prefab 的 enabled 状态，让美术在 Sprite Editor 画完权重后再手动勾选。
                 // 手动推进：避免 Animator 用 deltaTime 自动播放，改由 FeedbackClock.Delta 驱动，
                 // 实现与 Spine 分支一致的顿帧同步（Frozen 时 OnTick 不调用 → Animator 不动）。
                 if (_animator != null && _animator.playableGraph.IsValid())
