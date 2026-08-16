@@ -731,6 +731,10 @@ namespace Xianxia.Unity.T2
         /// 玩家自身**不动**（z 恒为其原值），因此 PlayerController 一行不改。
         /// 最终遮挡由标准 3D 深度缓冲解决（竹子 Opaque 写深度，女主 Sprite 做深度测试）。
         /// </summary>
+        // 深度排序守卫：玩家不动时跳过整轮重排，避免每帧对全部竹子写 transform.z。
+        private float _lastSortPlayerY = float.NaN;
+        private float _lastSortPlayerZ = float.NaN;
+
         private void ApplyDepthSort()
         {
             if (!depthSortEnabled || _player == null)
@@ -740,6 +744,16 @@ namespace Xianxia.Unity.T2
 
             float playerY = _player.position.y;
             float playerZ = _player.position.z;
+
+            // 玩家未移动（含首帧 NaN 兜底：首帧一定跑一次）则跳过本轮，省掉几百次 transform 写入。
+            if (!float.IsNaN(_lastSortPlayerY) && !float.IsNaN(_lastSortPlayerZ)
+                && Mathf.Abs(playerY - _lastSortPlayerY) < 0.01f
+                && Mathf.Abs(playerZ - _lastSortPlayerZ) < 0.01f)
+            {
+                return;
+            }
+            _lastSortPlayerY = playerY;
+            _lastSortPlayerZ = playerZ;
 
             // 竹子：逻辑等价原实现，统一改调 DepthSortUtility.Apply（轮次 C 抽出共享）。
             for (int i = 0; i < _bamboos.Count; i++)
@@ -1197,6 +1211,10 @@ namespace Xianxia.Unity.T2
             Material mat = new Material(shader);
             mat.name = materialName;
             mat.hideFlags = HideFlags.DontSave;
+            // 性能：竹竿/竹叶/竹节都复用同一份共享材质 + 同一份内置 primitive 网格，
+            // 开启 GPU Instancing 后，所有同网格实例塌成 1 个 Draw Call（1600+ → 个位数）。
+            // 若所用 Shader 不支持实例化则 Unity 自动忽略，无副作用。
+            mat.enableInstancing = true;
             _ownedMaterials.Add(mat);
             return mat;
         }

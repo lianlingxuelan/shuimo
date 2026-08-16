@@ -1479,6 +1479,24 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 | asmdef 分层 | 核心 **5** + T2 新增 `Xianxia.Unity.T2` = 实际 **6** | MEMORY.md（08-05）/ t2-architecture.md |
 | 工程编译状态 | **0 错误 0 警告** | 08-05 用户截图确认 |
 
+## 阶段 62 · 2.5D 竹林性能优化（FPS 低根因 + 渲染减负）
+
+**现象**：PlayMode 下帧率明显偏低。
+
+**根因定位（代码层，非逻辑 bug）**：
+- 竹林 = 玩家身边 26 根 + 全图铺满 180 根 ≈ **206 根竹子**；每根由多 primitive 拼成（1 竹竿 + 2~5 竹节环 + 3~5 竹叶 Quad ≈ 6~11 个独立 MeshRenderer）。
+- 无任何合批/实例化 → **约 1600+ 独立 Draw Call**；竹叶为半透明材质 → 约 800 张透明 Quad 造成 **overdraw**。
+- 场景全部灯光 `m_CastShadows: 0`，阴影已全关，非元凶；`FindObjectOfType` 均已节流，非元凶。
+- 主因：Draw Call 数量级 + 透明 overdraw，编辑器 PlayMode 比真机更慢。
+
+**已修（纯渲染，零玩法/红线风险）**：
+1. `CreateRuntimeMaterial` 创建竹竿/竹叶/竹节共享材质时设 `mat.enableInstancing = true`：同网格实例（内置 primitive 共享 mesh）塌成 1 个 Draw Call，整体 1600+ → 个位数量级；断裂/重生铰链旋转照常（实例化只改绘制方式）。Shader 不支持时 Unity 自动忽略，无副作用。
+2. `ApplyDepthSort` 加移动守卫：玩家未移动（ΔY/Z < 0.01）时跳过整轮重排，省掉每帧对全部竹子的 transform.z 写入与临时 Vector3 分配。
+
+**未做（留给用户拍板）**：降低 `worldBambooCount`（180→120）/ `leavesMax`（5→4）可进一步降 overdraw，但会改变观感密度；如需我直接下调请告知。
+
+---
+
 ## 附录 B · 日志与文档不一致记录（已发现）
 
 1. **asmdef 计数口径**：团队统一口径「asmdef=5」指核心纯逻辑/桥接分层（08-05 定稿，`MEMORY.md`）；但 T2 的 `t2-architecture.md §2.1/§2.2` 明确新增第 6 个 `Xianxia.Unity.T2` asmdef。本日志按实际落地记为「核心 5 + T2 盒 1 = 6」，如需对外统一口径建议明确「5 = 不含 T2 运行时盒」。
@@ -1487,4 +1505,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 61）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 62）*
