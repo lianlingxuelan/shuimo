@@ -33,7 +33,7 @@ namespace Xianxia.Unity.T2
             GameObject t = new GameObject("InventoryText");
             t.transform.SetParent(_canvasGo.transform, false);
             _text = t.AddComponent<Text>();
-            _text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            _text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             _text.color = new Color(0.16f, 0.22f, 0.14f, 1.0f); // 墨绿，呼应水墨
             _text.fontSize = 30;
             _text.alignment = TextAnchor.MiddleRight;
