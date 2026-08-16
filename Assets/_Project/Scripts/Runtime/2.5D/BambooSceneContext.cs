@@ -56,6 +56,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using Xianxia.Combat;
 using Xianxia.Core;
 
 namespace Xianxia.Unity.T2
@@ -353,6 +354,7 @@ namespace Xianxia.Unity.T2
         private readonly List<Transform> _harvestTargets = new List<Transform>();
 
         private CombatBridge _bridge;
+        private CombatEventsT3Unity _eventsT3;
         private float _bridgeRetry;
         private float _playerRetry;
 
@@ -493,6 +495,8 @@ namespace Xianxia.Unity.T2
             _registeredSortables.Clear();
             _harvestTargets.Clear();
 
+            UnsubscribeT3();
+
             if (_groveRoot != null)
             {
                 SafeDestroy(_groveRoot.gameObject);
@@ -580,6 +584,10 @@ namespace Xianxia.Unity.T2
             // 绝不读写 CombatScheduler.Paused、绝不碰 Time.timeScale。
             CombatBridge bridge = ResolveBridge();
             bool blocked = bridge != null && bridge.IsGameplayBlocked;
+
+            // 监听 T3 技能事件：T3 开启后 AttackController.SwingCount 不再增长，
+            // 竹子检测必须同步订阅内核技能施放事件，否则普攻砍不到竹子。
+            ResolveT3Subscription(bridge);
 
             if (_attack != null)
             {
@@ -1425,6 +1433,58 @@ namespace Xianxia.Unity.T2
             _bridge = Object.FindObjectOfType<CombatBridge>();
 #endif
             return _bridge;
+        }
+
+        // -----------------------------------------------------------------
+        // T3 事件订阅：让 T3 开启后的普攻技能也能触发竹子检测
+        // -----------------------------------------------------------------
+
+        /// <summary>把 _eventsT3 挂到 CombatBridge.EventsT3 上，随 CombatBridge 重建自动重挂。</summary>
+        private void ResolveT3Subscription(CombatBridge bridge)
+        {
+            if (bridge == null)
+            {
+                return;
+            }
+            CombatEventsT3Unity ev = bridge.EventsT3;
+            if (ev == null)
+            {
+                return;
+            }
+            if (ev == _eventsT3)
+            {
+                return;
+            }
+            UnsubscribeT3();
+            _eventsT3 = ev;
+            _eventsT3.SkillCast += OnT3SkillCast;
+        }
+
+        private void UnsubscribeT3()
+        {
+            if (_eventsT3 != null)
+            {
+                _eventsT3.SkillCast -= OnT3SkillCast;
+                _eventsT3 = null;
+            }
+        }
+
+        /// <summary>T3 技能施放回调。玩家近战类技能（ActionKind.Attack + 有伤害）触发扇形砍竹检测。</summary>
+        private void OnT3SkillCast(Combatant caster, SkillDef def, Vector2 facing)
+        {
+            if (_player == null || caster == null || caster.Faction != Faction.Player)
+            {
+                return;
+            }
+            if (def == null || def.Action != ActionKind.Attack || !def.DealsDamage)
+            {
+                return;
+            }
+            if (facing.sqrMagnitude < 1e-6f)
+            {
+                facing = Vector2.right;
+            }
+            DetectHarvest(facing.normalized);
         }
 
         // =====================================================================
