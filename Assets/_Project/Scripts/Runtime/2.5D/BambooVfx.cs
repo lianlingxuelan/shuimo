@@ -36,6 +36,7 @@
 // 三级取用优先级：Inspector 引用 → Resources.Load("2.5D/BambooHitFx") → 运行时构造。
 // -----------------------------------------------------------------------------
 
+using System;
 using UnityEngine;
 using Xianxia.Combat.UnityBridge;
 
@@ -57,9 +58,6 @@ namespace Xianxia.Unity.T2
 
         /// <summary>运行时构造的占位粒子对象名（用户可据此在 Unity 内转正式 prefab）。</summary>
         public const string RuntimeFxName = "BambooHitFx_Runtime";
-
-        /// <summary>断裂后残留物的自动清理时间（秒，按 FeedbackClock.Delta 计）。</summary>
-        public const float DebrisLifetime = 6.0f;
 
         // =====================================================================
         // Inspector 参数
@@ -137,6 +135,30 @@ namespace Xianxia.Unity.T2
         private float _accumDmg;
         private bool _broken;
 
+        // ---- 砍竹内容闭环（掉落 + 重生，feature/2.5d 内容轮次）----
+        /// <summary>竹子被砍断时触发一次（_broken 由 false→true 的瞬间）。场景层订阅它来掉材料。</summary>
+        public event Action<BambooVfx> OnBroken;
+
+        [Header("重生")]
+        [Tooltip("断后多久重新长出来（秒，按 FeedbackClock.Delta 计，顿帧同步冻结）")]
+        public float regrowSeconds = 12.0f;
+
+        [Tooltip("重新生长动画时长（秒）")]
+        public float regrowGrowDuration = 0.8f;
+
+        // 整根竹子（含叶）复位所需的关键变换。叶子是 trunk 的子节点，
+        // 因此只要把 trunk 移回原位、复位变换，叶子会一并归位。
+        private Transform _trunkHomeParent;
+        private Vector3 _trunkHomePos;
+        private Quaternion _trunkHomeRot;
+        private Vector3 _trunkHomeScale;
+        private bool _homeCaptured;
+
+        private Transform _hinge;
+        private float _regrowRemain;
+        private float _growElapsed;
+        private bool _growing;
+
         private float _shakeRemain;
         private Vector3 _shakeAxis = Vector3.right;
         private Quaternion _trunkRestRotation = Quaternion.identity;
@@ -146,8 +168,6 @@ namespace Xianxia.Unity.T2
         private Transform _fallingPart;
         private Quaternion _fallFrom = Quaternion.identity;
         private Quaternion _fallTo = Quaternion.identity;
-
-        private float _debrisRemain;
 
         // 运行时粒子实例的寿命管理（用 FeedbackClock.Delta 计时，顿帧同步冻结）
         private readonly System.Collections.Generic.List<FxInstance> _liveFx =
@@ -201,6 +221,16 @@ namespace Xianxia.Unity.T2
             // 姿态。这里注入的才是权威竹竿，必须强制重抓，否则晃动会以错误姿态为基准。
             _restCaptured = false;
             CaptureRest();
+
+            // 记录整根竹子的「家」变换，供重生时复位（含其下所有叶子子节点）。
+            if (_trunk != null)
+            {
+                _trunkHomeParent = _trunk.parent;
+                _trunkHomePos = _trunk.localPosition;
+                _trunkHomeRot = _trunk.localRotation;
+                _trunkHomeScale = _trunk.localScale;
+                _homeCaptured = true;
+            }
         }
 
         private void Awake()
@@ -291,7 +321,21 @@ namespace Xianxia.Unity.T2
             TickShake(dt);
             TickFall(dt);
             TickFx(dt);
-            TickDebris(dt);
+
+            // 砍竹内容闭环：倒下动画播完后开始重生倒计时；生长动画推进。
+            // 全部走 FeedbackClock.Delta，顿帧期间 dt=0 → 与全场景同步冻结。
+            if (_broken && _fallingPart == null && !_growing)
+            {
+                _regrowRemain -= dt;
+                if (_regrowRemain <= 0.0f)
+                {
+                    Regrow();
+                }
+            }
+            if (_growing)
+            {
+                TickGrow(dt);
+            }
         }
 
         /// <summary>阻尼正弦晃动，绕 <see cref="_shakeAxis"/> 摆动竹竿。</summary>
@@ -407,26 +451,6 @@ namespace Xianxia.Unity.T2
             }
         }
 
-        /// <summary>断裂残留物延时清理，避免砍完一片竹林后场景里堆满断竹。</summary>
-        private void TickDebris(float dt)
-        {
-            if (!_broken || _debrisRemain <= 0.0f)
-            {
-                return;
-            }
-
-            _debrisRemain -= dt;
-            if (_debrisRemain <= 0.0f)
-            {
-                _debrisRemain = 0.0f;
-                if (_fallingPart != null)
-                {
-                    Destroy(_fallingPart.gameObject);
-                    _fallingPart = null;
-                }
-            }
-        }
-
         // =====================================================================
         // 断裂
         // =====================================================================
@@ -444,6 +468,14 @@ namespace Xianxia.Unity.T2
             }
             _broken = true;
             _shakeRemain = 0.0f;
+            _regrowRemain = regrowSeconds;
+
+            // 通知场景层「这根被砍断了」——只触发一次（_broken 由 false→true 的瞬间）。
+            // 场景层据此给玩家加竹材掉落。本类严格只管表现，掉落数据由场景层负责。
+            if (OnBroken != null)
+            {
+                OnBroken(this);
+            }
 
             if (_trunk != null)
             {
@@ -460,6 +492,7 @@ namespace Xianxia.Unity.T2
                 // 用一个「铰链」节点承载倾倒：把它放在断口高度，
                 // 竹竿挂到它下面，旋转铰链即可实现绕断口倒下。
                 GameObject hinge = new GameObject("BreakHinge");
+                _hinge = hinge.transform;
                 hinge.transform.SetParent(transform, false);
                 hinge.transform.localPosition = _depthAxis * (_height * breakHeightRatio);
                 hinge.transform.localRotation = Quaternion.identity;
@@ -481,8 +514,6 @@ namespace Xianxia.Unity.T2
             {
                 col.enabled = false;
             }
-
-            _debrisRemain = DebrisLifetime;
 
             Vector3 world = transform.position + _depthAxis * (_height * breakHeightRatio);
             SpawnFx(new Vector2(world.x, world.y), dir);
@@ -808,6 +839,72 @@ namespace Xianxia.Unity.T2
                     new GradientAlphaKey(0.0f, 1.0f)
                 });
             return g;
+        }
+
+        // =====================================================================
+        // 重生（砍竹内容闭环：断后定时长回）
+        // =====================================================================
+
+        /// <summary>
+        /// 重生：把整根竹子（含叶，叶子是 trunk 的子节点）从断口铰链移回原位，
+        /// 并以高度生长动画重新立起。纯表现，不通知战斗内核。
+        /// 复用 Configure 时记录的「家」变换，因此无需外部重建对象。
+        /// </summary>
+        private void Regrow()
+        {
+            if (_trunk != null && _homeCaptured)
+            {
+                _trunk.SetParent(_trunkHomeParent, false);
+                _trunk.localPosition = _trunkHomePos;
+                _trunk.localRotation = _trunkHomeRot;
+                // 从近 0 高度开始生长，避免重生瞬间的位置跳变。
+                _trunk.localScale = new Vector3(
+                    _trunkHomeScale.x,
+                    Mathf.Max(0.01f, _trunkHomeScale.y * 0.02f),
+                    _trunkHomeScale.z);
+            }
+
+            if (_hinge != null)
+            {
+                Destroy(_hinge.gameObject);
+                _hinge = null;
+            }
+
+            _fallingPart = null;
+            _broken = false;
+            _growing = true;
+            _growElapsed = 0.0f;
+            _accumDmg = 0.0f;
+            _hits = 0;
+
+            // 断时禁用过的软碰撞体恢复生效，竹子重新可被命中与遮挡。
+            Collider col = GetComponent<Collider>();
+            if (col != null)
+            {
+                col.enabled = true;
+            }
+        }
+
+        /// <summary>重生生长动画：竹竿高度从近 0 缓动回原高（EaseIn）。</summary>
+        private void TickGrow(float dt)
+        {
+            if (_trunk == null || !_homeCaptured)
+            {
+                _growing = false;
+                return;
+            }
+
+            _growElapsed += dt;
+            float t = regrowGrowDuration > 1e-4f ? Mathf.Clamp01(_growElapsed / regrowGrowDuration) : 1.0f;
+            float eased = t * t;
+            float y = Mathf.Lerp(Mathf.Max(0.01f, _trunkHomeScale.y * 0.02f), _trunkHomeScale.y, eased);
+            _trunk.localScale = new Vector3(_trunkHomeScale.x, y, _trunkHomeScale.z);
+
+            if (t >= 1.0f)
+            {
+                _trunk.localScale = _trunkHomeScale;
+                _growing = false;
+            }
         }
 
         // =====================================================================

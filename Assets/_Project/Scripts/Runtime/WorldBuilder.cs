@@ -541,18 +541,43 @@ namespace Xianxia.Unity.T2
 
         private static Transform BuildPlayer(Transform parent, Vector2 spawn)
         {
-            GameObject go = new GameObject("Player");
-            go.transform.SetParent(parent, false);
+            GameObject go;
+            bool isBone = false;
+
+            // ===== 美术阶段 E：优先使用 2D Animation 骨骼角色 prefab =====
+            // prefab 自带 SpriteRenderer + SpriteSkin + UnityBoneCharacterView，
+            // BambooSceneContext 会通过 CharacterView.ResolveOn 识别并驱动动画。
+            // 加载失败则回落到原来的程序化蓝方块 + HeroineAnimator 方案。
+            GameObject bonePrefab = Resources.Load<GameObject>("HeroineBone");
+            if (bonePrefab != null)
+            {
+                go = Object.Instantiate(bonePrefab);
+                go.name = "Player";
+                isBone = true;
+            }
+            else
+            {
+                go = new GameObject("Player");
+                SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = SpriteFactory.SolidRect("player", PlayerBodySize, PlayerBodySize,
+                                                    new Color(0.42f, 0.62f, 0.92f, 1.0f));
+                sr.sortingOrder = 10;
+            }
+
+            // P0-移动 bug 修复：玩家作为世界根节点的子物体会被父物体的 transform 变化拖拽。
+            // POS REWRITE 诊断显示 Update 之后玩家 world position 被神秘改写（调用栈为空，
+            // 非托管代码直接赋值），疑似父物体 Shuimo_T2World 在运行期被移动。把玩家提升到
+            // 场景根节点，彻底隔离父物体干扰；战斗/相机系统都直接持有 player 引用，不受影响。
+            go.transform.SetParent(null, false);
             go.transform.position = new Vector3(spawn.x, spawn.y, 0.0f);
 
-            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-            // ★兜底第一行：**无条件**先设程序化蓝方块。
-            //   下面的水墨精灵是"升级"，不是"替代"——精灵资源缺失 / 换平台读不到盘时，
-            //   这一行保证玩家身上永远有一个可见的 Sprite，行为与接入精灵之前逐字节一致。
-            //   千万不要因为"现在有精灵了"就删掉它（见设计 K10）。
-            sr.sprite = SpriteFactory.SolidRect("player", PlayerBodySize, PlayerBodySize,
-                                                new Color(0.42f, 0.62f, 0.92f, 1.0f));
-            sr.sortingOrder = 10;
+            // ★ 骨骼角色渲染：直接使用 HeroineBone.prefab 自带的原始美术资源。
+            // prefab 的 SpriteRenderer 已绑定用户原图
+            //   Assets/_Project/Art/Characters/Heroine2D/heroine_base_open.png
+            // （GUID da6e9774…，8/13 提交 5b5e490，从未丢失），
+            // Animator 已绑定 HeroineBoneAnimator.controller（GUID b882eb0d…，含 heroine_idle 动画）。
+            // 不再运行时覆盖 sprite —— 之前误判"原图缺失"而注入 AI 生成图是错的，已撤销。
+            // 用户要求保留 AI 生成的 Resources/Characters/heroine.png，但不强制使用。
 
             // 朝向指示：一根从体心指向 lastFacing 的短条。占位美术里没有它，
             // 玩家就完全看不出自己朝哪边——而扇形攻击判定恰恰吃朝向。
@@ -579,10 +604,9 @@ namespace Xianxia.Unity.T2
             // 为玩家阵营时调用 PlayerHitFlash.Play(...) 分流派发。
             //
             // 【为什么 Awake 一定能拿到 SpriteRenderer】
-            // 上面 :541 已经 AddComponent<SpriteRenderer>() 并设了蓝方块占位，
-            // 早于本行。PlayerHitFlash.Awake 里 GetComponent<SpriteRenderer>() 必中，
-            // 但仍自带惰性解析兜底（见 PlayerHitFlash.EnsureRenderer），装配顺序
-            // 即便将来被调整也不会空引用崩。
+            // 骨骼 prefab 的 root 上已有 SpriteRenderer；回落路径里上面也 AddComponent 过。
+            // PlayerHitFlash.Awake 里 GetComponent<SpriteRenderer>() 必中，但仍自带惰性
+            // 解析兜底（见 PlayerHitFlash.EnsureRenderer）。
             go.AddComponent<PlayerHitFlash>();
 
             go.AddComponent<AttackController>();
@@ -603,40 +627,52 @@ namespace Xianxia.Unity.T2
             go.AddComponent<SkillController>();   // K / 鼠标右键 → Skill1，L → Skill2
             go.AddComponent<DodgeController>();   // Shift / Space 闪避
 
-            // ===== 美术阶段 E：把蓝方块「升级」为 39 帧水墨女主精灵 =====
-            //
-            // 【为什么挂在最后】HeroineAnimator.Awake() 会 GetComponent 上面这些战斗组件
-            // 来做状态轮询（AddComponent 会立刻触发 Awake），先挂就一个都拿不到。
-            //
-            // 【三层 fallback 的第三层】前两层在 SpriteFactory.TryLoadPng（失败返 null 不抛）
-            // 和 HeroineAnimator.Warmup（读不到 idle 首帧则 IsReady=false）。这里是最后一层：
-            // 蓝方块已经在上面无条件设过了，精灵只是"能升级就升级"。
-            HeroineAnimator anim = go.AddComponent<HeroineAnimator>();
-            if (anim.IsReady)
+            if (!isBone)
             {
-                // 精灵接管渲染。朝向条**弱化保留**而非删除：
-                // 攻击扇形吃 8 向 lastFacing，而走路动画只有 4 向（上/下/左/右），
-                // 站桩不动时 idle 图完全不表达朝向——删了玩家就看不出自己在往哪打。
-                // 所以留一根更细更淡的：看得见，但不跟角色抢戏。
-                // （这里能安全复用 "player_facing" 这个 key，正是因为 SolidRect 的
-                //   缓存 key 已修成包含 w/h/fill——否则会静默拿回上面那根粗的。）
+                // ===== 美术阶段 E（fallback）：把蓝方块「升级」为 39 帧水墨女主精灵 =====
+                //
+                // 【为什么挂在最后】HeroineAnimator.Awake() 会 GetComponent 上面这些战斗组件
+                // 来做状态轮询（AddComponent 会立刻触发 Awake），先挂就一个都拿不到。
+                //
+                // 【三层 fallback 的第三层】前两层在 SpriteFactory.TryLoadPng（失败返 null 不抛）
+                // 和 HeroineAnimator.Warmup（读不到 idle 首帧则 IsReady=false）。这里是最后一层：
+                // 蓝方块已经在上面无条件设过了，精灵只是"能升级就升级"。
+                HeroineAnimator anim = go.AddComponent<HeroineAnimator>();
+                if (anim.IsReady)
+                {
+                    // 精灵接管渲染。朝向条**弱化保留**而非删除：
+                    // 攻击扇形吃 8 向 lastFacing，而走路动画只有 4 向（上/下/左/右），
+                    // 站桩不动时 idle 图完全不表达朝向——删了玩家就看不出自己在往哪打。
+                    // 所以留一根更细更淡的：看得见，但不跟角色抢戏。
+                    int slimW = Mathf.Max(1, facingW / 2);
+                    fsr.sprite = SpriteFactory.SolidRect("player_facing", slimW, 7,
+                                                         new Color(0.86f, 0.93f, 1.0f, 0.45f));
+                }
+                else
+                {
+                    // 39 帧读不到（StreamingAssets 没拷过去 / 文件损坏 / 平台不支持同步读盘）：
+                    // 卸掉动画机，保留 40×40 蓝方块 + 原样朝向条，行为与接入精灵之前完全一致。
+                    if (Application.isPlaying)
+                    {
+                        Object.Destroy(anim);
+                    }
+                    else
+                    {
+                        Object.DestroyImmediate(anim);
+                    }
+                }
+            }
+            else
+            {
+                // 骨骼角色：朝向条弱化，避免跟角色抢戏。
                 int slimW = Mathf.Max(1, facingW / 2);
                 fsr.sprite = SpriteFactory.SolidRect("player_facing", slimW, 7,
                                                      new Color(0.86f, 0.93f, 1.0f, 0.45f));
             }
-            else
-            {
-                // 39 帧读不到（StreamingAssets 没拷过去 / 文件损坏 / 平台不支持同步读盘）：
-                // 卸掉动画机，保留 40×40 蓝方块 + 原样朝向条，行为与接入精灵之前完全一致。
-                if (Application.isPlaying)
-                {
-                    Object.Destroy(anim);
-                }
-                else
-                {
-                    Object.DestroyImmediate(anim);
-                }
-            }
+
+            // 砍竹内容闭环：玩家持有材料背包 + 竹材 HUD（纯数据 / 纯显示，不碰战斗内核）。
+            go.AddComponent<PlayerInventory>();
+            go.AddComponent<InventoryHud>();
 
             return go.transform;
         }
@@ -872,6 +908,10 @@ namespace Xianxia.Unity.T2
         /// 销毁场景里所有带 <see cref="ShuimoGenerated"/> 的根节点，返回销毁数量。
         /// 与编辑器工具的 CleanGeneratedObjects 同义 —— 之所以再写一遍而不是复用，
         /// 是因为那个方法在 Editor 程序集里，运行时兜底路径够不着。
+        ///
+        /// 此外会清理旧版场景里预置的 Shuimo_T2World 根节点下的 Combat / Player
+        /// 残留对象；这些对象没有随新版生成流程重建，会导致内核玩家位置被钉在
+        /// 初始点、技能特效在原地释放。
         /// </summary>
         public static int DestroyGeneratedRoots()
         {
@@ -886,20 +926,81 @@ namespace Xianxia.Unity.T2
             for (int i = 0; i < roots.Length; i++)
             {
                 GameObject go = roots[i];
-                if (go == null || go.GetComponent<ShuimoGenerated>() == null)
+                if (go == null)
                 {
                     continue;
                 }
-                if (Application.isPlaying)
+
+                // ① 新版生成根：带 ShuimoGenerated，整棵销毁。
+                if (go.GetComponent<ShuimoGenerated>() != null)
                 {
-                    Object.Destroy(go);
+                    if (Application.isPlaying)
+                    {
+                        Object.Destroy(go);
+                    }
+                    else
+                    {
+                        Object.DestroyImmediate(go);
+                    }
+                    n++;
+                    continue;
                 }
-                else
+
+                // ② 旧版场景残留：名为 RootName 但没有生成标记的根节点，
+                //    只销毁其下会干扰战斗系统的 Combat 和 Player 子物体。
+                if (go.name == RootName)
                 {
-                    Object.DestroyImmediate(go);
+                    Transform t = go.transform;
+                    for (int c = t.childCount - 1; c >= 0; c--)
+                    {
+                        Transform child = t.GetChild(c);
+                        if (child.name == "Combat" || child.name == "Player")
+                        {
+                            if (Application.isPlaying)
+                            {
+                                Object.Destroy(child.gameObject);
+                            }
+                            else
+                            {
+                                Object.DestroyImmediate(child.gameObject);
+                            }
+                            n++;
+                        }
+                    }
                 }
-                n++;
             }
+
+            // ③ 终极兜底：场景中任何名为 "Player" 或 "Combat" 的 GameObject，
+            //    无论挂在哪个根节点下，全部清理。旧版 SampleScene 里这些对象
+            //    可能直接放在根层级，前面按 RootName 遍历会漏掉。
+            //    必须在新版 BuildPlayer 之前执行，否则旧 Player 上的 PlayerController
+            //    会在新玩家生成后仍然触发 Awake 警告并干扰移动。
+            GameObject[] allPlayers = GameObject.FindObjectsOfType<GameObject>();
+            for (int i = allPlayers.Length - 1; i >= 0; i--)
+            {
+                GameObject go = allPlayers[i];
+                if (go == null)
+                {
+                    continue;
+                }
+                if (go.scene != scene)
+                {
+                    continue;
+                }
+                if (go.name == "Player" || go.name == "Combat")
+                {
+                    if (Application.isPlaying)
+                    {
+                        Object.Destroy(go);
+                    }
+                    else
+                    {
+                        Object.DestroyImmediate(go);
+                    }
+                    n++;
+                }
+            }
+
             return n;
         }
 

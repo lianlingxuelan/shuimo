@@ -139,6 +139,17 @@ namespace Xianxia.Unity.T2
         [Tooltip("命中扇形角度。默认直接复用 AttackController.AttackArcDeg（90）")]
         public float harvestArcDeg = AttackController.AttackArcDeg;
 
+        [Header("砍竹掉落（内容闭环）")]
+        [Tooltip("每根竹子砍断掉落的竹材数量")]
+        public int bambooWoodPerBreak = 2;
+
+        [Tooltip("额外掉落嫩笋的概率（0-100）")]
+        [Range(0.0f, 100.0f)]
+        public float bambooShootChance = 20.0f;
+
+        [Tooltip("嫩笋掉落数量")]
+        public int bambooShootPerBreak = 1;
+
         // =====================================================================
         // 相机取景（见设计 §2.4 / §6.3）
         // =====================================================================
@@ -300,6 +311,25 @@ namespace Xianxia.Unity.T2
             if (t != null)
             {
                 _harvestTargets.Remove(t);
+            }
+        }
+
+        /// <summary>
+        /// 竹子被砍断的回调（订阅 <see cref="BambooVfx.OnBroken"/>）。
+        /// 这是砍竹内容闭环的「掉落」环节：给玩家背包加竹材 / 概率嫩笋。
+        /// 竹子的重生由 BambooVfx 自身管理，本方法只处理掉落数据。
+        /// </summary>
+        /// <param name="v">被砍断的竹子（其对象会原地重生，本方法无需处理其生命周期）。</param>
+        private void HandleBambooBroken(BambooVfx v)
+        {
+            if (PlayerInventory.Instance == null)
+            {
+                return;
+            }
+            PlayerInventory.Instance.AddMaterial(PlayerInventory.BambooWood, bambooWoodPerBreak);
+            if (UnityEngine.Random.value * 100.0f < bambooShootChance)
+            {
+                PlayerInventory.Instance.AddMaterial(PlayerInventory.BambooShoot, bambooShootPerBreak);
             }
         }
 
@@ -854,6 +884,7 @@ namespace Xianxia.Unity.T2
 
             BambooVfx vfx = root.AddComponent<BambooVfx>();
             vfx.Configure(trunk, _depthAxis, height, trunkRadius, inkLeafPrefab, leafMaterial);
+            vfx.OnBroken += HandleBambooBroken;
             return vfx;
         }
 

@@ -1425,6 +1425,21 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 59 · 砍竹内容闭环：掉落竹材 + 竹林重生 + 玩家背包 HUD（2026-08-16）
+
+- **触发**：用户确认人物可见后转向内容，"竹林素材适合做砍竹吗" → 决定先跑通"砍竹→掉材→竹林恢复"闭环（方案 A），美术先用现有程序化竹子。
+- **现状盘点**：砍竹机制层已就绪（`BambooVfx` 断裂倾倒留桩、扇形命中、`FeedbackClock.Delta` 顿帧同步），但缺「掉落 / 重生 / 采集入库」三块内容。
+- **交付（全在 2.5D 子树 + 两个新运行时文件，零内核改动）**：
+  - `PlayerInventory.cs`（新）：极简材料背包（Dictionary），单例，挂玩家；`AddMaterial/Count/Consume`，纯数据不碰战斗内核。
+  - `InventoryHud.cs`（新）：独立 Canvas + Legacy Text，右下角显示「竹材 xN　嫩笋 xM」，挂玩家，OnDestroy 清理自建 Canvas 避免叠加。
+  - `BambooVfx` 加重生：断后保留断竹（移除原 6 秒自动销毁），`regrowSeconds=12` 走 `FeedbackClock.Delta` 倒数，`Regrow()` 把整根竹子（含叶）从断口铰链复位并以高度生长动画重新立起；`OnBroken` 事件在断的瞬间触发一次。
+  - `BambooSceneContext`：`BuildOneBamboo` 订阅 `OnBroken`；`HandleBambooBroken` 给玩家加竹材（`bambooWoodPerBreak=2`，`bambooShootChance=20%` 概率额外掉嫩笋）；`DetectHarvest` 已有 `IsBroken` 跳过，断竹不会再被重复命中。
+  - `WorldBuilder.BuildPlayer`：玩家挂 `PlayerInventory` + `InventoryHud`。
+- **红线遵守**：背包/重生/掉落全部纯表现或纯数据，不写 `FeedbackClock.Frozen`、不调 `DamageResolver`、不碰 `Time.timeScale`；重生计时复用 `FeedbackClock.Delta` 与全场景顿帧同步。
+- **待用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode，砍竹应看到：竹倒下→右下角竹材+2→12 秒后原地长出新竹；重开（R）背包清零。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1448,4 +1463,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 58）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 59）*
