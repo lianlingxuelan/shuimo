@@ -1397,6 +1397,34 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 57 · 角色不可见：SpriteSkin 权重全零导致渲染失败（2026-08-16）
+
+- **触发**：用户 Force Recompile 后 PlayMode 仍看不到女主；同时要求把 AI 生成的 heroine.png 从 Resources/Characters 挪走。
+- **根因**：`HeroineBone.prefab` 引用的 `heroine_base_open.png` 在 Sprite Editor 里**只建了骨骼、没有绘制顶点权重**（`.meta` 中 `weights` 数组全 0，`boneIndex` 全 0）。启用 `SpriteSkin` 后，骨骼系统接管 `SpriteRenderer` 但权重无效，导致角色完全不渲染。
+- **交付**：
+  - 将 AI 生成图 `Assets/_Project/Resources/Characters/heroine.png` 移到 `Assets/_Project/Resources/_unused/heroine.png`，与用户原图彻底分开。
+  - `HeroineBone.prefab`（`Prefabs/` 与 `Resources/` 两份同步）的 `SpriteSkin` 组件 `m_Enabled` 设为 0，让 `SpriteRenderer` 走普通渲染。
+  - `UnityBoneCharacterView.Bind()` 不再强制 `_skin.enabled = true`，改为尊重 prefab 的 enabled 状态；避免运行时又把未就绪的 SpriteSkin 拉起来。
+- **自证**：`grep` `heroine_base_open.png.meta` 的 `weights:` 段，所有 `weight[i]: 0` / `boneIndex[i]: 0`；`git show --stat` 本次提交仅 4 文件（2 个 prefab + 1 meta + 1 script），无额外历史文件混入。
+- **待用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode，应能看到原图水墨女主正常显示并移动。
+- **后续恢复骨骼变形**：在 Unity Sprite Editor 中为 `heroine_base_open.png` 绘制顶点权重后，重新勾选 `HeroineBone.prefab` 的 `SpriteSkin` 组件即可。
+
+---
+
+## 阶段 58 · 女主显示过小：prefab 放大 2.5× + 2.5D 相机拉近（2026-08-16）
+
+- **触发**：用户确认人物已可见、游戏流畅，但女主在画面中仅占约 1.5% 屏幕高度，看不清是不是原图，感觉还是"像素"。
+- **根因**：
+  - `HeroineBone.prefab` root 的 `localScale = 1`，而 `heroine_base_open.png` 的 PPU 较高，导致 SpriteRenderer 世界尺寸只有约 `5.85 × 10.24`。
+  - 2.5D 模式下 `BambooSceneContext.orthographicSize = 352`，屏幕视野高度 704；人物高度 10.24，占比仅约 1.45%，自然像一个小点。
+- **交付**：
+  - `HeroineBone.prefab`（`Prefabs/` 与 `Resources/` 两份同步）root `m_LocalScale` 从 `{1,1,1}` 改为 `{2.5,2.5,1}`，人物世界尺寸放大到约 `14.6 × 25.6`。
+  - `BambooSceneContext.cs` 默认值 `orthographicSize` 从 `352` 改为 `240`，相机拉近，人物在屏幕中占比约为原来的 3.7 倍。
+- **影响**：视野范围会缩小（看到的竹林更少），但角色更清晰；移动速度体感会略快，如不适可调 `MoveSpeed` 或进一步微调相机。
+- **待用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode，确认女主清晰可见、能正常走动攻击。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1420,4 +1448,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-15，阶段 54）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 58）*

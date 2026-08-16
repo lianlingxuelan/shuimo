@@ -143,9 +143,9 @@ namespace Xianxia.Unity.T2
         // 相机取景（见设计 §2.4 / §6.3）
         // =====================================================================
 
-        [Header("相机取景（覆写 IsometricCameraRig 的占位默认值）")]
-        [Tooltip("正交视野尺寸。352 = WorldBuilder.CameraOrthoSize，与 2D 取景同尺度")]
-        public float orthographicSize = 352.0f;
+    [Header("相机取景（覆写 IsometricCameraRig 的占位默认值）")]
+    [Tooltip("正交视野尺寸。越小 = 相机越近、人物越大。240 在 2.5D 下人物占比明显更大")]
+    public float orthographicSize = 240.0f;
 
         [Tooltip("相机俯仰角（度）。0 = 正视 XY 板（纯 2D 观感），越大越斜、竹子越立体")]
         [Range(0.0f, 70.0f)]
