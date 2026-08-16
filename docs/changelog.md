@@ -1450,6 +1450,20 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 61 · 砍竹触发修复：T3 开启后普攻也能砍倒竹子（2026-08-16）
+
+- **触发**：用户 PlayMode 验收砍竹闭环，反馈"竹子没倒"、竹材数不涨；同时提到"音效也没听到"。
+- **根因**：`BambooSceneContext` 只轮询 `AttackController.SwingCount` 增长沿来触发 `DetectHarvest`。T3 战斗系统默认开启后，普攻改走 `CombatBridge.RequestCast(IntentSlot.Basic)` 这条内核技能路径，`AttackController.Swing()` 不再被调用，SwingCount 永远不涨，导致扇子检测从未触发。
+- **交付**：
+  - `CombatEventsT3Unity` 新增事件 `SkillCast(caster, def, facing)`，在 `OnSkillCast` 内核通知后触发。
+  - `BambooSceneContext` 订阅 `bridge.EventsT3.SkillCast`：仅在玩家（caster.Faction == Player）施放近战攻击类技能（`def.Action == ActionKind.Attack && def.DealsDamage`）时调用 `DetectHarvest(facing)`。
+  - 保留原 `SwingCount` 轮询：T2 / baseline 模式仍可砍竹。
+  - 非攻击技能（右键/L/空格等）**不触发**砍竹——这是刻意设计：只有近战挥砍类动作才能伐竹，法阵/莲花/闪避不该砍竹。
+- **关于音效**：当前 `BambooVfx` 与 `CombatEventsT3Unity` 均未加载任何砍竹音效资源（工程里没有 `Resources/Audio/`）。命中与断裂有粒子/晃动/倒下表现，但音频处于真空。后续若要砍竹音效，需补充资源并接线。
+- **待用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode，走到竹子附近（约 70 世界单位内），按住左键/J 普攻，应看到：竹子被命中后先晃动 → 第 2 下倒下 → 右下角竹材 +2 → 约 12 秒后原地长出新竹。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1473,4 +1487,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 60）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 61）*
