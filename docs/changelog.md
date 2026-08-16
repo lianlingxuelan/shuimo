@@ -1440,6 +1440,16 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+## 阶段 60 · 砍竹闭环验收：修复 InventoryHud 字体异常（2026-08-16）
+
+- **触发**：用户执行阶段 59 的 PlayMode 验收，控制台报 `ArgumentException: Arial.ttf is no longer a valid built-in font. Please use LegacyRuntime.ttf`，HUD 未正常显示。
+- **根因**：`InventoryHud.cs` 使用 `Resources.GetBuiltinResource<Font>("Arial.ttf")`；Unity 2022.3 已移除该内置字体资源名，运行时会直接抛异常。
+- **交付**：`InventoryHud.cs` 改为 `Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")`，与 Unity 2022.3 内置默认字体一致。
+- **影响范围**：仅 1 个文件 1 行改动，零逻辑变更；其他砍竹/背包/重生逻辑保持阶段 59 状态不变。
+- **待用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode，确认不再报字体异常，右下角显示「竹材 xN　嫩笋 xM」，砍竹掉落与重生正常。
+
+---
+
 ## 附录 A · 关键指标速查（全阶段核实）
 
 | 指标 | 值 | 来源 |
@@ -1463,4 +1473,4 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 59）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 60）*
