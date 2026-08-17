@@ -1721,6 +1721,33 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 4. Console 若出现 `UpgradeLegacyDefaults` 升级日志 = 旧场景已被自动修正。
 5. 本环境无 Unity，编译/运行须用户本地验收。
 
+### 阶段 68 · 竹林自然倾斜，摆脱黑色柱子感（2026-08-17）
+
+**用户反馈**：当前视角下竹子像黑色柱子、不像正常生长；「竹子倒了之后，才像是我们正常生长的一个状态」。
+
+**根因判断**
+- 程序生成的 Cylinder 竹竿严格沿全局 `_depthAxis`（±Z，指向相机）戳出，每根竹子方向完全一致，在 2.5D 视角下呈现为整齐排列的黑色竖条，缺乏真实竹林的自然歪斜与倒伏。
+
+**已落地（单任务闭环）**
+1. **`BambooSceneContext.cs`**：
+   - 新增 `bambooLeanAngle`（默认 `16°`，范围 0-60°），控制单根竹子最大自然倾斜角。
+   - 新增 `SampleGrowthDirection(PCG32 rng)`：以 `_depthAxis` 为基准，随机向 XY 平面某个方位歪斜 `[0, bambooLeanAngle]`，用 `Quaternion.AngleAxis` 精确旋转得到每根竹子的独立生长方向 `growDir`。
+   - `BuildTrunkFromPrimitive`、`BuildTrunkFromModel`、`BuildLeaves`、`AddSoftCollider` 全部接收 `growDir`，竹节/竹叶/碰撞体中心沿实际生长方向排布，不再硬套全局 `_depthAxis`。
+   - `UpgradeLegacyDefaults()` 增加 `bambooLeanAngle = 16.0f`，旧场景 PlayMode 自动获得倾斜效果。
+2. **`BambooVfx.cs`**：
+   - `_depthAxis` 字段语义明确为「单根竹子的实际生长方向」（由 `BambooSceneContext` 传入的 `growDir`）。
+   - 断裂铰链位置、断口以上叶片筛选、粒子 up 轴、重生生长动画均沿用该方向，保证倾斜竹子的砍倒/重生仍正确。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile`。
+2. PlayMode 看场景：
+   - 每根竹子向不同方向略有歪斜，竹林更像自然生长，不再像整齐黑柱子。
+   - 竹叶、竹节随竹竿一起倾斜，没有脱节。
+3. 砍一根竹子测试：断裂口在倾斜竹竿上正确生成，上半段倒向命中方向；重生后从断口沿倾斜方向长回。
+4. 开 Stats 确认 **Batches / SetPass 仍保持低位**（倾斜不改变 instancing，预期 ≤ 10）。
+5. Console 若出现 `UpgradeLegacyDefaults` 升级日志 = 旧场景已被自动修正。
+6. 本环境无 Unity，编译/运行须用户本地验收。
+
 ---
 
 **落盘日期**：2026-08-17
