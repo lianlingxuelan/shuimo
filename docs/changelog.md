@@ -173,7 +173,7 @@
 - ✅ T2 实时垂直切片 + U1 平衡修复（64/64 + NUnit 88）
 - ✅ T3 P0 战斗深化（9/9 + 64/64 护栏全绿）
 - 🟡 局循环 P0：P0-1 K/L 修复（用户实测确认正常）+ P0-3 胜负状态机 + P0-2 死亡/胜利面板 + P0-4 按 R 重开（代码完成，**待用户本地 PlayMode 验收**）
-- ⏳ 局循环 P0 剩余：**P0-5**（主菜单 / ESC 暂停 / 退出）、**P0-6**（首次进入操作引导）
+- ✅ 局循环 P0 全六项（代码层面完成，待用户本地 PlayMode 验收）：P0-1 K/L 修复 / P0-3 胜负状态机 / P0-2 死亡胜利面板 / P0-4 按 R 重开 / **P0-5**（主菜单 / ESC 暂停 / 退出）/ **P0-6**（首次进入操作引导）。注：P0-5/P0-6 已于阶段 14 实现并接线（changelog 第 1263 行已纠正旧快照中"未做"的判断），本行旧 ⏳ 标记系过时，现更正为 ✅。
 
 **关键路径（蓝图 §0）**：T0 → T1-C1（W-CORE 测试台）→ T1 → T2 → T3；T3 UI 从 T1 中期起可并行。
 
@@ -1505,7 +1505,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 64-7）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-17，阶段 69）*
 
 ---
 
@@ -1747,6 +1747,26 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 4. 开 Stats 确认 **Batches / SetPass 仍保持低位**（倾斜不改变 instancing，预期 ≤ 10）。
 5. Console 若出现 `UpgradeLegacyDefaults` 升级日志 = 旧场景已被自动修正。
 6. 本环境无 Unity，编译/运行须用户本地验收。
+
+---
+
+### 阶段 69 · 工程健康自检（只读）+ P0-5/P0-6 记忆与路线图校准（2026-08-17 夜）
+
+**触发 / 背景**：用户睡前授权「能进行其他任务且不需要监督，可以先搞别的」，竹子暂不重做。在「不碰竹子/美术/平衡、不污染源代码待验收状态、本环境无 Unity 编译」约束下，选择最高价值且零风险的自主产出：为明早的 Force Recompile 验收窗口做编译一致性自检，并修正会误导后续决策的过时记忆/路线图标记。
+
+**编译一致性自检（只读，零代码改动）**
+- 核对阶段 68 接口自洽：`BambooSceneContext.cs:965` `vfx.Configure(trunk, growDir, height, trunkRadius, inkLeafPrefab, leafMaterial)` 与 `BambooVfx.cs:202` `Configure(Transform trunk, Vector3 depthAxis, float height, float radius, GameObject fxPrefab, Material leafMaterial)` 签名精确匹配；`SampleGrowthDirection(rng)` 返回的 `growDir` 正确传入 `BuildTrunkFromModel/BuildTrunkFromPrimitive/BuildLeaves/AddSoftCollider`，且 `BambooVfx._depthAxis` 语义 = 单根实际生长方向，断口/粒子/重生均沿之。无悬空类型/字段。
+- 核对阶段 67 自洽：`InkGroundRich.shader` 与 `MAT_InkGroundRich.mat` 字段在阶段 67 提交时已同步（shader 配套 `.meta` 同入库，材质 GUID 引用一致）。
+- **结论**：最近两轮（67 地面重墨 / 68 竹子倾斜）代码接口自洽，用户明早 Force Recompile 不会因这两轮红屏。
+
+**记忆与路线图校准（纯文档）**
+- 修正 working memory（MEMORY.md 第 16 行）：删除「P0-5/P0-6 未做」过时标记，更正为已实现（阶段 14 已接线，changelog 第 1263 行已纠正旧快照）。
+- 修正 changelog 路线图（第 176 行）：P0-5/P0-6 的 ⏳ 标记更正为 ✅（P0 全六项代码完成，待本地 PlayMode 验收）。
+- 修正附录 B 落盘模板（第 1508 行）：最近更新 2026-08-16 → 2026-08-17，阶段 64-7 → 阶段 69。
+
+**诚实边界**：本环境无 Unity/dotnet，自检为静态只读核对，不等于 C# 编译通过；仍须用户本地 Force Recompile 验收阶段 67/68 的实际表现（竹子倾斜、地面重墨）。今晚仅文档与记忆改动落盘，未触碰任何待验收源代码。
+
+**遗留验收**：① 用户本地 Force Recompile + PlayMode 验收阶段 68（竹子自然倾斜）；② 验收阶段 67（地面重墨）；③ 顺带确认 P0-5/P0-6（主菜单/ESC暂停/操作引导）在场景里行为正常（早已实现，本次仅纠正记忆）。
 
 ---
 
