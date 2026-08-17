@@ -5,18 +5,18 @@ Shader "Xianxia/Ink/InkGroundRich"
 {
     Properties
     {
-        _PaperColor    ("宣纸色", Color) = (0.95, 0.94, 0.89, 1)
-        _InkColor      ("淡墨色", Color) = (0.78, 0.76, 0.70, 1)
-        _InkDeep       ("浓墨色(笔触)", Color) = (0.45, 0.43, 0.40, 1)
-        _BlotScale     ("墨晕粒度", Range(0.5, 20)) = 3.5
-        _BlotStrength  ("墨晕强度", Range(0, 0.8)) = 0.55
+        _PaperColor    ("宣纸色", Color) = (0.96, 0.95, 0.90, 1)
+        _InkColor      ("淡墨色", Color) = (0.70, 0.68, 0.62, 1)
+        _InkDeep       ("浓墨色(笔触)", Color) = (0.35, 0.33, 0.30, 1)
+        _BlotScale     ("墨晕粒度", Range(0.5, 20)) = 2.2
+        _BlotStrength  ("墨晕强度", Range(0, 0.9)) = 0.75
         _StrokeAngle   ("笔触方向(度)", Range(0, 180)) = 35.0
-        _StrokeScale   ("笔触拉伸", Range(1, 12)) = 3.0
-        _StrokeStrength("笔触强度", Range(0, 0.6)) = 0.35
+        _StrokeScale   ("笔触拉伸", Range(1, 12)) = 2.5
+        _StrokeStrength("笔触强度", Range(0, 0.8)) = 0.55
         _FineScale     ("细纸纹粒度", Range(1, 160)) = 90.0
-        _FineStrength  ("细纸纹强度", Range(0, 0.3)) = 0.15
-        _TintColor     ("远景冷调", Color) = (0.88, 0.90, 0.95, 1)
-        _TintStrength  ("冷调强度", Range(0, 0.2)) = 0.08
+        _FineStrength  ("细纸纹强度", Range(0, 0.3)) = 0.12
+        _TintColor     ("远景冷调", Color) = (0.86, 0.88, 0.94, 1)
+        _TintStrength  ("冷调强度", Range(0, 0.2)) = 0.06
     }
     SubShader
     {
@@ -114,12 +114,13 @@ Shader "Xianxia/Ink/InkGroundRich"
                 float fine = vnoise(p * _FineScale * 0.1);
 
                 // 让墨晕/笔触边缘更锐利，形成明显的水墨斑块（否则太淡会像纯色纸）
-                float blotMark = smoothstep(0.35, 0.70, blot) * _BlotStrength;
-                float strokeMark = smoothstep(0.30, 0.65, stroke) * _StrokeStrength;
+                float blotMark = smoothstep(0.30, 0.65, blot) * _BlotStrength;
+                float blotCore = smoothstep(0.58, 0.82, blot) * _BlotStrength * 0.55;
+                float strokeMark = smoothstep(0.25, 0.55, stroke) * _StrokeStrength;
 
                 fixed3 col = _PaperColor.rgb;
                 col = lerp(col, _InkColor.rgb, blotMark);
-                col = lerp(col, _InkDeep.rgb, strokeMark);
+                col = lerp(col, _InkDeep.rgb, saturate(strokeMark + blotCore));
                 col = lerp(col, _InkColor.rgb * 0.92, fine * _FineStrength);
                 col = lerp(col, _TintColor.rgb, _TintStrength * fbm(p * 0.5));
 
