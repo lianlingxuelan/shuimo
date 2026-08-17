@@ -98,8 +98,8 @@ namespace Xianxia.Unity.T2
         [Tooltip("竹林可行走区半边长（XY 平面正方形）。调小 = 竹林更聚拢在玩家身边")]
         public float groveHalfExtent = 700.0f;
 
-        [Tooltip("竹子之间的最小间距，泊松式撒点用")]
-        public float bambooMinDist = 110.0f;
+        [Tooltip("竹子之间的最小间距，泊松式撒点用。半径变小后可适度加密")]
+        public float bambooMinDist = 85.0f;
 
         [Header("世界铺满（把竹林撒满整张地图，不只是玩家身边，构成完整竹林世界）")]
         [Tooltip("开启后，在整张地图范围再撒一层静态竹林；2.5D 俯视下这层在屏幕外也吃 draw call，默认关闭")]
@@ -111,14 +111,14 @@ namespace Xianxia.Unity.T2
         [Tooltip("世界层竹林最小间距（世界单位），过密会卡脚、过疏显得空")]
         public float worldMinDist = 240.0f;
 
-        [Tooltip("竹竿半径（同尺度）")]
-        public float trunkRadius = 22.0f;
+        [Tooltip("竹竿半径（同尺度）。2.5D 俯视下 9 左右显细长，避免粗黑柱子感")]
+        public float trunkRadius = 9.0f;
 
         [Tooltip("竹子高度下限")]
-        public float heightMin = 320.0f;
+        public float heightMin = 360.0f;
 
         [Tooltip("竹子高度上限")]
-        public float heightMax = 480.0f;
+        public float heightMax = 520.0f;
 
         [Tooltip("每根竹子的竹叶面片数下限")]
         public int leavesMin = 3;
@@ -389,8 +389,10 @@ namespace Xianxia.Unity.T2
         {
             // 旧版默认：身边 28 根 + 世界铺满 180 根 + 5 片叶 = 近 15000 Batches。
             // 也处理部分升级场景（如 bambooCount/worldBambooCount 已改但 leavesMax 仍为旧值 5）。
+            // 2026-08-17：再加「半径 >=20」判定，旧场景里的粗黑大竹子自动变细长。
             bool isLegacy = (bambooCount == 28 && worldBambooCount == 180 && worldFill && leavesMax >= 5)
-                || (bambooCount == 13 && worldBambooCount == 22 && !worldFill && leavesMax >= 5);
+                || (bambooCount == 13 && worldBambooCount == 22 && !worldFill && leavesMax >= 5)
+                || (trunkRadius >= 20.0f);
             if (!isLegacy)
             {
                 return;
@@ -400,7 +402,11 @@ namespace Xianxia.Unity.T2
             worldBambooCount = 22;
             worldFill = false;
             leavesMax = 2;
-            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版高密度默认值，已自动升级到性能默认值：bambooCount=13, worldBambooCount=22, worldFill=false, leavesMax=2。");
+            trunkRadius = 9.0f;
+            heightMin = 360.0f;
+            heightMax = 520.0f;
+            bambooMinDist = 85.0f;
+            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版默认值，已自动升级：bambooCount=13, worldBambooCount=22, worldFill=false, leavesMax=2, trunkRadius=9, height=360-520, bambooMinDist=85。");
         }
 
         private void OnEnable()
@@ -1020,7 +1026,8 @@ namespace Xianxia.Unity.T2
             }
 
             // 竹节：沿竿身等距放几圈略粗的短环，水墨竹的辨识度主要来自竹节。
-            int nodes = Mathf.Clamp(Mathf.RoundToInt(height / 60.0f), 2, 5);
+            // 半径变细后竹节间距也略收，避免节环过疏。
+            int nodes = Mathf.Clamp(Mathf.RoundToInt(height / 55.0f), 2, 6);
             for (int i = 1; i <= nodes; i++)
             {
                 float t = (float)i / (nodes + 1);
@@ -1064,8 +1071,9 @@ namespace Xianxia.Unity.T2
                 float t = rng.NextRange(0.60f, 0.98f);
                 float yaw = rng.NextRange(0.0f, 360.0f);
                 float pitch = rng.NextRange(-35.0f, 25.0f);
-                float len = rng.NextRange(trunkRadius * 3.5f, trunkRadius * 6.5f);
-                float wide = rng.NextRange(trunkRadius * 0.7f, trunkRadius * 1.4f);
+                // 半径变细后，叶片相对竿身略放大，避免竹梢太秃。
+                float len = rng.NextRange(trunkRadius * 4.0f, trunkRadius * 7.5f);
+                float wide = rng.NextRange(trunkRadius * 0.8f, trunkRadius * 1.6f);
 
                 // 先摆到深度轴对齐的朝向，再叠加随机偏转，让叶片自然散开。
                 Quaternion basis = Quaternion.FromToRotation(Vector3.up, _depthAxis);
@@ -1225,16 +1233,23 @@ namespace Xianxia.Unity.T2
 
             if (groundMaterial == null)
             {
-                groundMaterial = CreateRuntimeMaterial("Xianxia/Ink/InkGround", "MAT_Ink_Ground_Runtime");
+                // 地面改用增强版水墨地表，与竹林同款重墨风格。
+                groundMaterial = CreateRuntimeMaterial("Xianxia/Ink/InkGroundRich", "MAT_Ink_Ground_Rich_Runtime");
                 if (groundMaterial != null)
                 {
-                    SetColorIfHas(groundMaterial, "_PaperColor", new Color(0.95f, 0.94f, 0.89f, 1.0f));
-                    SetColorIfHas(groundMaterial, "_InkColor", new Color(0.86f, 0.85f, 0.80f, 1.0f));
-                    SetFloatIfHas(groundMaterial, "_BlotScale", 3.0f);
-                    SetFloatIfHas(groundMaterial, "_BlotStrength", 0.22f);
-                    SetFloatIfHas(groundMaterial, "_FineScale", 60.0f);
-                    SetFloatIfHas(groundMaterial, "_FineStrength", 0.08f);
-                    SetColorIfHas(groundMaterial, "_Color", new Color(0.93f, 0.92f, 0.87f, 1.0f));
+                    SetColorIfHas(groundMaterial, "_PaperColor", new Color(0.92f, 0.90f, 0.84f, 1.0f));
+                    SetColorIfHas(groundMaterial, "_InkColor", new Color(0.42f, 0.39f, 0.33f, 1.0f));
+                    SetColorIfHas(groundMaterial, "_InkDeep", new Color(0.12f, 0.11f, 0.09f, 1.0f));
+                    SetFloatIfHas(groundMaterial, "_BlotScale", 2.0f);
+                    SetFloatIfHas(groundMaterial, "_BlotStrength", 0.85f);
+                    SetFloatIfHas(groundMaterial, "_StrokeAngle", 35.0f);
+                    SetFloatIfHas(groundMaterial, "_StrokeScale", 2.5f);
+                    SetFloatIfHas(groundMaterial, "_StrokeStrength", 0.65f);
+                    SetFloatIfHas(groundMaterial, "_FineScale", 90.0f);
+                    SetFloatIfHas(groundMaterial, "_FineStrength", 0.14f);
+                    SetColorIfHas(groundMaterial, "_TintColor", new Color(0.84f, 0.86f, 0.92f, 1.0f));
+                    SetFloatIfHas(groundMaterial, "_TintStrength", 0.05f);
+                    SetColorIfHas(groundMaterial, "_Color", new Color(0.90f, 0.88f, 0.82f, 1.0f));
                 }
             }
 

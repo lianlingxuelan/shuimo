@@ -5,18 +5,18 @@ Shader "Xianxia/Ink/InkGroundRich"
 {
     Properties
     {
-        _PaperColor    ("宣纸色", Color) = (0.96, 0.95, 0.90, 1)
-        _InkColor      ("淡墨色", Color) = (0.70, 0.68, 0.62, 1)
-        _InkDeep       ("浓墨色(笔触)", Color) = (0.35, 0.33, 0.30, 1)
-        _BlotScale     ("墨晕粒度", Range(0.5, 20)) = 2.2
-        _BlotStrength  ("墨晕强度", Range(0, 0.9)) = 0.75
+        _PaperColor    ("宣纸色", Color) = (0.92, 0.90, 0.84, 1)
+        _InkColor      ("淡墨色", Color) = (0.42, 0.39, 0.33, 1)
+        _InkDeep       ("浓墨色(笔触)", Color) = (0.12, 0.11, 0.09, 1)
+        _BlotScale     ("墨晕粒度", Range(0.5, 20)) = 2.0
+        _BlotStrength  ("墨晕强度", Range(0, 0.95)) = 0.85
         _StrokeAngle   ("笔触方向(度)", Range(0, 180)) = 35.0
         _StrokeScale   ("笔触拉伸", Range(1, 12)) = 2.5
-        _StrokeStrength("笔触强度", Range(0, 0.8)) = 0.55
+        _StrokeStrength("笔触强度", Range(0, 0.9)) = 0.65
         _FineScale     ("细纸纹粒度", Range(1, 160)) = 90.0
-        _FineStrength  ("细纸纹强度", Range(0, 0.3)) = 0.12
-        _TintColor     ("远景冷调", Color) = (0.86, 0.88, 0.94, 1)
-        _TintStrength  ("冷调强度", Range(0, 0.2)) = 0.06
+        _FineStrength  ("细纸纹强度", Range(0, 0.3)) = 0.14
+        _TintColor     ("远景冷调", Color) = (0.84, 0.86, 0.92, 1)
+        _TintStrength  ("冷调强度", Range(0, 0.2)) = 0.05
     }
     SubShader
     {
@@ -96,7 +96,8 @@ Shader "Xianxia/Ink/InkGroundRich"
 
             fixed4 frag (v2f i) : SV_Target
             {
-                float2 p = i.wpos.xz * 0.25;
+                // 0.18 让单块墨晕覆盖更大范围，避免地面被细碎噪声切成"花布"。
+                float2 p = i.wpos.xz * 0.18;
 
                 // 大尺度淡墨晕染（多频）
                 float blot = fbm(p * _BlotScale);
@@ -108,21 +109,23 @@ Shader "Xianxia/Ink/InkGroundRich"
                 float along = dot(p, dir);
                 float across = dot(p, perp);
                 float2 sp = float2(along, across / _StrokeScale);
-                float stroke = vnoise(sp * 6.0);
+                float stroke = vnoise(sp * 5.0);
 
                 // 细纸纹
-                float fine = vnoise(p * _FineScale * 0.1);
+                float fine = vnoise(p * _FineScale * 0.15);
 
                 // 让墨晕/笔触边缘更锐利，形成明显的水墨斑块（否则太淡会像纯色纸）
-                float blotMark = smoothstep(0.30, 0.65, blot) * _BlotStrength;
-                float blotCore = smoothstep(0.58, 0.82, blot) * _BlotStrength * 0.55;
-                float strokeMark = smoothstep(0.25, 0.55, stroke) * _StrokeStrength;
+                float blotMark = smoothstep(0.26, 0.60, blot) * _BlotStrength;
+                float blotCore = smoothstep(0.52, 0.78, blot) * _BlotStrength * 0.70;
+                float strokeMark = smoothstep(0.22, 0.50, stroke) * _StrokeStrength;
 
                 fixed3 col = _PaperColor.rgb;
                 col = lerp(col, _InkColor.rgb, blotMark);
                 col = lerp(col, _InkDeep.rgb, saturate(strokeMark + blotCore));
-                col = lerp(col, _InkColor.rgb * 0.92, fine * _FineStrength);
-                col = lerp(col, _TintColor.rgb, _TintStrength * fbm(p * 0.5));
+                col = lerp(col, _InkColor.rgb * 0.90, fine * _FineStrength);
+                // 整体略压暗，让宣纸底托住浓墨而不发飘。
+                col = lerp(col, col * 0.92, 0.12);
+                col = lerp(col, _TintColor.rgb, _TintStrength * fbm(p * 0.4));
 
                 return fixed4(col, 1.0);
             }
