@@ -93,10 +93,10 @@
 
 ## 7. 用户本地落地步骤（最快路径）
 
-1. Hierarchy 右键 → 3D Object → **Plane**。
-2. Inspector → Rotation **X = -90°**（平面默认竖着，转平躺）。
+1. Hierarchy 右键 → 3D Object → **Plane**（注意：Plane 默认**已是水平、面朝上 +Y**，是地面专用图元；**竖着面朝前的是 Quad，别选错**）。
+2. Rotation **保持 (0,0,0)** —— **不要**转 X = -90°（那是把 Plane 立成一堵墙的常见错误，2026-08-17 已勘误）。
 3. 新建 Material → Shader 选 **Xianxia/Ink/InkGround** → 拖到 Plane。
-4. 缩放使 Plane 覆盖 ~3840×2560（或你确认的游玩范围）。
+4. 缩放使 Plane 覆盖 ~3840×2560（默认 Plane 为 10×10，故 Scale **X≈384、Z≈256**，Y 保持 1）。
 5. 确认 Mesh Collider 在（让角色站得住）。
 6. `Shuimo/Scene/Force Recompile` → PlayMode 看效果：地面宣纸白、角色不穿地、竹林落在地面上。
 
