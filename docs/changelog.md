@@ -1505,4 +1505,194 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 62）*
+*本 Changelog 由 software-product-manager 依据 `F:\AI-project\xianxia-rpg\2026-07-30-00-16-54\.workbuddy\memory\` 全量日志与 `docs/`、`ancientGame\shuimofeng\shuimofeng\docs\` 设计文档逐行核实后归纳，2026-08-07 首次落盘；阶段 7（局循环 P0）由主理人齐活林于 2026-08-08 追加。后续每完成一轮任务，由主理人按现有结构追加一节并更新本行日期。（最近更新 2026-08-16，阶段 64-7）*
+
+---
+
+## 阶段 63 · 商店资源盘点 + 砍竹音效闭环 + 传统 BGM 自举（2026-08-16 晚）
+
+**背景**：用户从 Unity 商店导入一批资源（"有的地图不适合画风，你先用着看看"），主理人盘点是否覆盖需求，并就地补齐缺口。
+
+**导入清单（Assets/ 下新增，时间戳 19:xx）**
+
+| 包 | 内容 | 画风契合 | 判定 |
+|---|---|---|---|
+| Xiaoyi_Traditional_Music_Pack | 3 首传统国风 BGM（岁华流年/月明悠悠/暖雪融春） | ✅ 仙侠 | **BGM 已够** |
+| Free Fantasy Music Pack | 10 首幻想 BGM | ⚠️ 西幻 | BGM 备选 |
+| Music Loops Mini Set | ~40 首循环乐（战斗/休闲/史诗） | ⚠️ 西幻 | BGM 备选 |
+| VVayToyek/中式玄幻剑合集包1 | 4 把国风剑 FBX（桃木/窥月/阳魂/阴魄）+贴图 | ✅ 仙侠 | **武器已够** |
+| Char_Feng | 1 个带骨骼动画的角色（Idle/Walk/Dance/Boxing/Death…）+ Animator | ⚠️ 偏写实 | **敌人/伙伴原型已够（1 个）** |
+| ISEffect + Luffy_Effect | 箭矢/剑气拖尾特效（多色 2D/3D prefab） | ⚠️ 抽象能量 | **VFX 可挪用（非莲花/法阵）** |
+| CottonFibreEffect | 线状/毛发 shader | ⚠️ niche | 低优先 |
+| M_MoonFlowersSky | 月下花海天空盒 + 灯光集 | ⚠️ 偏梦幻 | 夜景候选 |
+| Layer Lab | 2D 图标包 + 面板脚本 | ⚠️ UI | HUD 图标候选 |
+| A_piece_of_nature | 写实 3D 自然（chest/松/石/草 + 场景） | ❌ 不符 | **用户已说不适合，留作参考不接入** |
+| TerrainSampleAssets | Unity 地形样例（草/蕨/灌木 + ShaderGraph） | ❌ 不符 | 不接入（2.5D 不用地形） |
+| M_ComicsSkybox | 漫画风天空盒 | ❌ 不符 | 不接入 |
+| HDRPDefaultResources / UniversalRenderPipelineGlobalSettings | 渲染管线默认资源（导入时自动附带） | – | 工程用 BiRP（m_CustomRenderPipeline=0），属冗余，不动 |
+
+**需求覆盖结论（主理人拍板）**
+- ✅ **BGM**：国风三曲完美贴合，西幻两包作战斗备选 → **足够**。
+- ✅ **武器**：VVayToyek 四把国风剑 → **足够**（可当女主/敌人武器或陈列）。
+- ✅ **敌人/伙伴**：Char_Feng 一个带全套动画的模型 → **够起步**（多敌人类型靠复用/换色）。
+- ⚠️ **VFX（莲花/法阵）**：导入的是箭矢/剑气拖尾，**没有莲花/法阵母题**；可挪用拖尾做水剑挥斩，但签名级法阵/莲花仍需自绘 shader/SVG → **部分够**。
+- ❌ **砍竹音效（SFX）**：**所有包都是 BGM/循环乐，零音效**。这正是此前"音效没听到"的根因。
+
+**已做（本轮落地，纯代码、零新资源依赖）**
+1. `Audio/WoodSfx.cs`：运行时 PCM 合成竹裂声（脆裂噪声爆发 + 低频闷响 = Chop；轻挥命中 = Tick），懒加载缓存、全场景共享。
+2. `Audio/AmbientMusic.cs` + `AmbientMusicBootstrap`：把 Xiaoyi 三曲**拷贝**到 `Assets/_Project/Resources/Audio/BGM/`（原文件不动），`[RuntimeInitializeOnLoadMethod]` 自举常驻宿主，顺序循环播放国风 BGM，无需改任何场景/手工拖引用。
+3. `BambooVfx.cs`：受击播 Tick、断裂播 Chop（每根竹子懒挂 AudioSource）。**砍竹"有声"缺口闭环**，不再需要再买 SFX 包。
+
+**渲染管线安全**：`GraphicsSettings.m_CustomRenderPipeline = {fileID:0}` → 工程仍是 Built-in RP，自绘 Ink 着色器不受影响；HDRP/URP 包仅随导入附带、未启用。
+
+## 阶段 64 · 商店资源接入（一）：Feng 敌人候选 + 国风剑武器挂接（2026-08-16 晚）
+
+**目标（用户 19:44 点将）**：把已导入的 Char_Feng（敌人候选）与 VVayToyek 四把国风剑接进玩法。**红线**：全部新增、绝不删改既有角色（女主骨骼、原图、boss/witch/elder/musician 占位）。
+
+**方案（规避本环境无 Unity 的盲调风险）**
+- 新增 `Editor/StoreAssetImporter.cs`（`Shuimo/Store/Generate Prefabs` 菜单）：把裸 FBX 转成带材质/动画控制器的 prefab 并落 `Resources/{Enemies,Weapons}/`，运行时按固定路径 Load，零运行时 Editor 依赖。
+  - `Resources/Enemies/FengEnemy.prefab`：Feng.fbx + Feng.controller + 贴图材质，自动缩放到 ~220 单位。
+  - `Resources/Weapons/{Taomu,Kuiyue,Yanghun,Yinpo}Sword.prefab`：四把剑 + 贴图材质，缩放到 ~200 单位。
+- **敌人（②）**：`EnemyNpcSpawner` 新增 `EnemyKind.Feng` + 独立生成路径 `SpawnStoreFengEnemies`（**不依赖 config 是否存在**，从 Resources 加载 FengEnemy），`SpawnEnemy` 重构支持 `prefabOverride`/`harvestableOverride` 并对 `config==null` 空安全。默认 `spawnFengStoreEnemy=true`、`fengStoreEnemyCount=2`。既有 4 类占位一字未动。
+- **武器（①）**：新增 `PlayerWeaponRig.cs`——**不做**精灵骨骼子物体（2.5 倍缩放会放大 3D 剑、排序/坐标轴易翻车），而是把剑作为**场景根下的独立世界物体**跟随玩家，按 `LastFacing` 旋转；`holdDistance/holdHeight/extraRotDeg` 三个 Inspector 旋钮可调。挂到 `WorldBuilder.BuildPlayer`。资源缺失时自动禁用，画面与改动前完全一致。
+
+**验收/风险**
+- 用户需先点一次 `Shuimo/Store/Generate Prefabs` 生成 prefab，再 Force Recompile。
+- 剑的握持位置/角度需用户肉眼微调（本环境无法校验），调三个旋钮即可，无需改代码。
+- 本环境无 Unity，编译须用户本地确认。
+
+**阶段 64-1 · 40 米大刀修正（2026-08-16 夜，用户截图反馈后）**
+- 问题：用户 PlayMode 截图显示 VVayToyek 剑挂上了，但尺寸巨大、横在身前，戏称"40 米大刀"。
+- 根因：`StoreAssetImporter` 剑目标长度 200 单位 ≈ 角色身高，且 `PlayerWeaponRig` 默认 `holdDistance=95`、`extraRotDeg=-35` 把剑平举在身前远处，故显得又大又横。
+- 修正：
+  - `StoreAssetImporter`：剑目标长度 `200 → 70`（约为角色身高 1/3）。
+  - `PlayerWeaponRig`：默认改为背剑/拖剑姿态——`holdDistance=95→-30`（身后）、`holdHeight=35→15`、`extraRotDeg=-35→-135`（剑尖斜向下）、新增 `holdDepth=-10`（深度上位于玩家身后，避免遮挡角色）。
+- 既有角色、骨骼 prefab、4 类小怪占位、已生成的剑 prefab（需重新 Generate Prefabs 才会生效新缩放）均不动。
+
+**待接入（下轮点将）**
+- ✅ VVayToyek 剑 / Char_Feng 已在阶段 64 接入（候选级）。
+- ISEffect/Luffy 箭矢拖尾 → 水剑挥斩/法术弹道 VFX（莲花/法阵母题仍需自绘）。
+- M_MoonFlowersSky → 夜景天空盒候选；Layer Lab → HUD/菜单图标。
+- A_piece_of_nature 的写实松/石若后续要做"实景竹林"再考虑，当前不接入（与用户"不适合画风"一致）。
+
+**需用户本地验收**：Force Recompile 后 PlayMode —— ① 砍竹有脆裂声、挥砍有轻响；② 进场即循环国风 BGM；③ 其余商店包未改动、工程照常编译。本环境无 Unity，编译/听感须用户确认。
+
+## 阶段 64-2 · 竹林降密度 + 闪避"按空格无反应"排查（2026-08-16 晚）
+
+**用户反馈**：① 按空格没闪避效果；② 仍非常卡；③ 怀疑竹林放多了。
+
+**竹林降密度（确定修复）**
+- `BambooSceneContext` 默认 `worldBambooCount 180→90`、`leavesMax 5→3`。
+- 根因：阶段 62 的 GPU Instancing 已把 draw call 从 ~1600 塌到个位数，但 **180 根 × 每根 5 叶半透明 quad ≈ 900 张透明面片**造成 **overdraw（fillrate 瓶颈）**——Instancing 只降 draw call 不降 overdraw，相机拉近（orthographicSize 240、玩家 2.5 倍）后更重；同时 180 个 `BambooVfx` 每帧 `Update` 是 CPU 常驻开销。降数量直接同时降 overdraw 与 CPU。
+
+**闪避无反应排查（代码层逐行确认链路完全通）**
+- `ConfigureT3` 整个工程**仅定义、零调用** → `baselineMode` 恒为字段默认 `false` → T3 未被 Teardown；`SetupT3()` 在 `CombatBridge.Start` 首波后调用且 `controller.Encounter` 已就绪（CombatController.Awake 里 BuildEncounter）→ `_t3Enabled=true`。
+- `dodge_roll` 在 `SkillConfig.BuildDefaultTable` 注册（`AssignSlot(IntentSlot.Dodge, "dodge_roll")` + `Action=Dodge`），技能表完整。
+- `DodgeController` 由 `WorldBuilder`(628) 与 `EnsurePlayerT3Controllers`(939) 双处**幂等补挂**；空格在 `InputBindingProfile.dodgeKeys={LeftShift,RightShift,Space}`。
+- 普攻 `AttackController` 同样走 `InputBinder.Held(Attack)`（用户能砍竹=InputBinder 工作正常），闪避走同一总线无理由读不到空格。
+- `PlayerController.MoveExternal` 正确写 transform，`Move()` 在外部接管（`ExternalVelocity.HasValue`）时 return 防双位移。
+- **结论**：闪避链路代码层 100% 通，"无效果"只可能是**运行时表现层**（dodge 帧动画/特效缺失、或 130 单位位移在竹林俯视下被感知掩盖）。本环境无 Unity，无法自验。
+
+**新增一次性诊断日志**
+- `DodgeController.verboseLog`（Inspector 可调，默认开）：门控挡住时打印**一次**确切门控项（`b==null / !IsReady / BaselineMode / !T3Enabled / IsGameplayBlocked`）；空格按下打印意图写入（DodgeRequestCount++）；内核开始闪避打印 DodgeStartCount++。
+- 用户本地 `Force Recompile` 后 PlayMode 按一次空格：Console 即可定位——
+  - `DodgeRequestCount` 涨 → 输入 OK；
+  - `DodgeStartCount` 涨 → 位移已生效（属表现层/感知问题）；
+  - 两者皆不涨 → 门控或输入问题（日志会指明哪道门）。
+
+**用户本地验收**：① 竹林明显变稀、FPS 提升；② 按空格看 Console 日志定位闪避（若日志显示 DodgeStartCount 涨但视觉无翻滚=动画/特效缺失，回告主理人补表现层）。
+
+### 阶段 64-3：卡顿真凶定位（Instancing 从未生效）+ 竹林再砍 50%
+- **根因纠正（阶段 62 误判）**：此前阶段 62「GPU Instancing 优化」仅设 `mat.enableInstancing=true` 且材质共享，但自绘 `Xianxia/Ink/*` 两个 surface shader 的 `#pragma surface` **未加 `instancing` 关键字** → 自定义 surface shader 默认不支持实例化 → Instancing 实际从未生效。每根竹子的 trunk/node/leaf/ground 全是独立 draw call，45 根 ≈ 400+ 批次，砍数量仅治标。
+- **修复（根治）**：`BambooTrunk.shader` 的 `#pragma surface surf Lambert vertex:vert addshadow instancing`、`BambooLeaf.shader` 的 `#pragma surface surf Lambert alpha:blend instancing`。共享同材质实例的同网格竹子真正塌成个位数 draw call（不透明 + 半透明叶各 1 批次）。vert/surf 仅用内置变换与 worldPos，加 instancing 安全。
+- **按用户要求再砍 50% 竹林**：`worldBambooCount 90→45`、`leavesMax 3→2`（overdraw 进一步降）。
+- **已排除项**：`ProjectSettings/QualitySettings.asset` 全质量等级 `shadows:0 / pixelLightCount:0 / AA:0 / 无实时反射 / vSync:0` → 阴影与后处理非卡顿源；材质共享已确认（`EnsureMaterials` 用 `if(==null)` 守卫，仅首次创建）。
+- **预期收益**：draw call 从 ~400+ 塌到个位数（CPU 提交骤降）；Instancing 修复后 45 与 90 根性能应接近，画面密度可酌情调回（待用户验收后定）。
+- **注意**：Instancing 降 draw call 不降 fillrate；若修复后仍卡，属 GPU fillrate 层（Shader 复杂度 × 半透明 overdraw），需看 Stats 的 Tris/Batches 或 Profiler 定位。
+- **用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode 开 Stats 面板，看 **Batches / SetPass calls** 是否从数百塌到个位数；FPS 应明显回升。仍卡则发 Stats 数字（FPS/Batches/Tris/Verts）回告，主理人据此判断 fillrate 层并下刀（简化 Shader 或改 alpha-cutout）。
+
+### 阶段 64-4：Stats 仍 14894 Batches —— surface shader 缺 `multi_compile_instancing` + 远处铺满层黑洞
+- **用户反馈**：按 64-3 修复后 PlayMode 仍卡，Stats 显示 **Batches 14894 / SetPass 14891 / Tri 324.5k / Verts 562.7k / FPS 5.0**。该数值远超竹子几何量（核心 13 + 远景 22 根），说明 Instancing 仍未真正生效，且存在额外 draw call 黑洞。
+- **根因 1（shader 变体缺失）**：64-3 仅给 surface shader 加了 `instancing` 关键字，但 Unity 自定义 surface shader 还需要 `#pragma multi_compile_instancing` 才会生成实例化变体。缺此指令时 `mat.enableInstancing=true` 仍不生效。
+  - 修复：`BambooTrunk.shader` / `BambooLeaf.shader` 在 `#pragma surface ... instancing` 下各加一行 `#pragma multi_compile_instancing`。
+- **根因 2（外部材质未强制开 Instancing）**：若 Inspector 拖入的 trunk/leaf/ground 材质没勾选 Enable Instancing，也会失效。
+  - 修复：`BambooSceneContext.EnsureMaterials()` 末尾对 `trunkMaterial` / `leafMaterial` / `groundMaterial` 调用 `ForceInstancing()`，运行时强制启用。
+- **根因 3（远景铺满层 `worldFill`）**：`worldFill=true` 会在整张地图再撒 45 根静态竹，2.5D 俯视下大量在屏幕外仍被渲染，是隐形 draw call 黑洞。
+  - 修复：`worldFill` 默认值 `true → false`；`worldBambooCount 45 → 22`。
+- **按用户要求再砍 50% 竹林**：核心 `bambooCount 26 → 13`，远景 `worldBambooCount 45 → 22`。
+- **诊断增强**：`BambooSceneContext.Load()` 生成后统计并打印 `_groveRoot` + `_worldRoot` 下的 `MeshRenderer` 总数，帮助核对 Stats 数字是否来自竹子本身。
+- **用户本地验收**：
+  1. `Shuimo/Scene/Force Recompile`（必须，否则 scene 实例上的旧字段值会覆盖代码默认值）。
+  2. 选中 `BambooGrove` / `BambooSceneContext` 组件，确认 Inspector 上 `World Fill` 未勾选、`Bamboo Count=13`、`World Bamboo Count=22`。
+  3. PlayMode 开 Stats，预期 **Batches / SetPass 从 14894 塌到 <50**（核心 13 根约 100 个 MeshRenderer，Instancing 生效后塌成 2-3 个 batch）。
+  4. 如果数字还是过万，截图 Console 里 `[2.5D] 竹林已生成：... MeshRenderer 总数 = X` 那行发我，我据此判断黑洞在哪。
+
+### 阶段 64-5：场景组件旧默认值自动升级
+- **用户反馈**：截图显示 Stats 已正常（`Batches: 1 / SetPass calls: 2`），但 Inspector 中 `BambooGrove` 的 `BambooSceneContext` 仍显示旧值（`Bamboo Count=28`、`World Bamboo Count=180`、`World Fill=true`、`Leaves Max=5`）。用户确认"我没动哈"——即未手动修改 Inspector，这些值是旧场景对象的序列化默认值。
+- **根因**：Unity 脚本字段默认值修改后，已存在场景组件实例不会自动刷新；PlayMode 仍使用场景序列化值，除非用户 Reset 组件或重新拖放。此前 Stats 偶尔正常，是因为代码里 `EnsureMaterials` 的强制 `enableInstancing` 与 shader 变体已生效，但竹子数量仍由旧 Inspector 值决定，性能余量不稳固。
+- **修复**：`BambooSceneContext.Awake()` 增加 `UpgradeLegacyDefaults()`，检测到旧默认组合（`bambooCount==28 && worldBambooCount==180 && worldFill==true && leavesMax==5`）时，一次性自动覆盖为性能默认值（`13/22/false/2`），并在 Console 打印日志。非旧默认值不会触发，避免误伤用户 intentional 配置。
+- **用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode → Console 应出现升级日志；Inspector 旧值可保留（编辑态不显示运行时的覆盖），但 Stats 应稳定在低 Batches。
+
+### 阶段 64-6：Batches 反弹到 4402 —— bamboo_ink 模型多子网格/多材质黑洞
+- **用户反馈**：截图显示 Stats 反弹到 **Batches 4402 / SetPass 4401 / Tris 111.5k / Verts 194.1k / FPS 19.5**；Inspector 中 `Bamboo Count=13`、`World Bamboo Count=22`、`World Fill=false`，但 `Leaves Max=5`，且 `Bamboo Model Prefab=bamboo_ink`。
+- **根因**：35 根 primitive 竹子不可能产生 4400+ Batches。用户将 `bamboo_ink.fbx` 模型拖入 `Bamboo Model Prefab`，该模型为二进制 FBX，本地无法解析子网格数，但 Stats 铁证其包含**大量子网格/多种材质**；每根竹子 `Instantiate(bamboo_ink)` 都会复制出对应数量的 MeshRenderer，且模型自带材质未针对 Instancing 优化，draw call 直接爆炸。
+- **修复**：
+  - `BambooSceneContext` 新增 `forcePrimitiveBamboo = true`：2.5D 俯视下默认强制使用 primitives 竹子（Cylinder 竹竿 + Quad 竹叶，已验证 Ink shader Instancing 生效），**不删用户拖的模型引用**，但运行时不使用它。
+  - 放宽 `UpgradeLegacyDefaults()`：把 `leavesMax >= 5` 的残留旧值也降到 `2`，覆盖部分升级场景。
+  - 生成日志里几何来源显示按 `forcePrimitiveBamboo` 判定，避免误导。
+- **用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode → Console 应显示「几何来源 = primitives 兜底」；Stats 预期 **Batches ≤ 10 / SetPass ≤ 5**。
+
+### 阶段 64-7：性能修复一次性收口（停止来回试，交付可一次验收的成品）
+- **背景**：64-1~64-6 期间主理人采用"改一点→让用户验一点"的迭代，用户明确反馈**不希望边做边聊、来回让你测**，要求**一个任务彻底做完再聊下一个**。本阶段把性能问题收口为一份自洽、稳健、可一次验收的解决方案，不再分多轮。
+- **最终落地的完整方案（互相兜底，不依赖你 Inspector 怎么设）**：
+  1. **根因修复（shader）**：`BambooTrunk`/`BambooLeaf` 的 `#pragma surface` 已加 `instancing` 且追加 `#pragma multi_compile_instancing` —— 自定义 surface shader 必须两者齐备才生成实例化变体。这是 14894→个位数 Batches 的根本修复。
+  2. **运行时材质强制 Instancing**：`EnsureMaterials` 末尾对 trunk/leaf/ground 调 `ForceInstancing`；外部拖入的材质也会被强制开 Instancing。
+  3. **模型路径也强制 Instancing**（本轮新增）：`BuildTrunkFromModel` 实例化 `bamboo_ink` 后，遍历其 `MeshRenderer` 强制 `sharedMaterial.enableInstancing=true`，避免"用模型就炸 batches"。
+  4. **性能保险开关 `forcePrimitiveBamboo`（默认 true）**：2.5D 俯视下默认走 primitives（已验证 Instancing 生效，Batches≈1）；取消勾选才用你拖的 bamboo_ink 模型，且因第 3 条现在同样不卡。
+  5. **旧默认值自动升级 `UpgradeLegacyDefaults()`**：场景里残留的 `28/180/true/5` 这类高密度旧值在 Awake 自动覆盖为 `13/22/false/2`。
+  6. **诊断日志**：生成后打印「几何来源 + MeshRenderer 总数」，一次 PlayMode 即可核对。
+- **结论**：无论你 Inspector 怎么配（用不用模型、是否误拉高数量），Batches 都应稳定在个位数~十位数。若仍异常，仅需发一次 Console 的 `[2.5D] 竹林已生成：...` 日志行即可定位，无需多轮。
+
+### 阶段 65 · 帧率优化（解锁 VSync + 减少 CPU 冗余调用 + 诊断工具）
+
+**用户反馈**：Batches 已降至约 22（64-7 收口见效，GPU/draw call 已非瓶颈），但 **FPS 仅 ~100**，而此前"像素地图"能跑 **600 FPS**。用户原话："batches 下来了，但是之前的像素地图都要 600 的帧数，这个才多少元素就 100 帧数了，你在检查检查"。
+
+**根因判断（代码层 + Stats 指标）**
+- Batches ≈ 22 → GPU 提交与 draw call 开销极低，GPU 不是瓶颈。
+- FPS 卡在 ~100 且元素极少 → 最可能是 **VSync 锁到显示器刷新率**（用户显示器约 100Hz），GPU 空闲也最多 100 FPS；次要可能是 **CPU main 线程冗余调用**。
+
+**已落地（一次性收口，单任务闭环模式）**
+1. 新增 `Assets/_Project/Scripts/Runtime/Performance/FrameRateUnlocker.cs`：一键关闭 VSync + `Application.targetFrameRate = -1`，让 CPU/GPU 全速跑，排除限帧干扰。提供 `Shuimo/Performance/Unlock Frame Rate` / `Lock Frame Rate` / `Log Frame Rate State` 三个菜单项；也可代码调用 `FrameRateUnlocker.Unlock()` / `Lock()`。
+2. 新增 `Assets/_Project/Scripts/Runtime/Performance/FpsCounter.cs`：屏幕实时显示 `FPS / 帧时间(ms) / VSync 状态 / targetFrameRate`，仅 Editor/Development Build 绘制（`OnGUI`）。提供 `Shuimo/Performance/Create FPS Counter` 菜单快速挂到场景。用途：解锁后若 FPS 跃升到数百→证实瓶颈是 VSync；若仍低→看 Stats 的 `CPU main` / `Gfx.WaitForPresentOnGfxThread` 判断真实热点。
+3. 编辑 `PlayerController.cs`：新增 `_isRootConfirmed` 字段。玩家已为场景根节点时，跳过每帧 `transform.SetParent(null, true)` 的冗余 native 调用（即使 parent 已为 null，该调用仍触发引擎层开销）。确认无父节点后置位，不再重复解绑。
+4. 编辑 `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs` 的 `EnsurePlayerBound()`：引用（`_player`/`_attack`/`_playerController`）全部有效时**彻底早退**，不做 `Time.deltaTime` 减法、不进入重试计时，消除已绑定后的每帧冗余开销。
+5. 删除缺陷版 `PerformanceDiagnostics.cs`：原方案用 `mb.SendMessage("Update")` 测时会**重入调用 Update 造成双重执行/递归放大开销**，属设计缺陷，已删除（盘上仅剩 `.meta`）。改用 FpsCounter（只读显示）+ FrameRateUnlocker（解锁测试）组合，避免侵入被测对象。
+
+**用户本地验收（一次性）**
+1. 菜单 `Shuimo/Performance/Unlock Frame Rate`（关 VSync）。
+2. 菜单 `Shuimo/Performance/Create FPS Counter` 挂到场景。
+3. PlayMode 看 FpsCounter：
+   - 解锁后 FPS 从 ~100 跃升到数百 → 证实瓶颈是 VSync 锁到显示器刷新率，**非代码问题**；可保持解锁或 `Lock Frame Rate` 恢复。
+   - 解锁后仍低 → 发 FpsCounter 显示的 VSync/Target 状态 + Stats 的 `CPU main` / `Gfx.WaitForPresentOnGfxThread` 数值（或 Profiler 截图），主理人据此深挖 CPU main 热点。
+4. 本环境无 Unity，编译/运行须用户本地 `Shuimo/Scene/Force Recompile` 验收。
+
+### 阶段 66 · 闪避"原地闪一下"（有特效、人物不动）Bug 修复
+
+**用户反馈**：空格闪避有特效（翻滚/无敌帧表现），但人物实际没跟着位移，是"原地闪一下"。
+
+**根因（执行顺序竞态，非逻辑错误）**
+- `PlayerController` 为 `[DefaultExecutionOrder(-100)]`，`DodgeController` 为 `[DefaultExecutionOrder(-90)]`。Unity 执行顺序：序号越小越先跑，故 **PlayerController.Update(-100) 早于 DodgeController.Update(-90)**。
+- 每帧时序：① `PlayerController.Update` 先跑，`_posAfterUpdate = transform.position`（此刻尚无闪避位移），且 `Move()` 因 `ExternalVelocity.HasValue` 早退；② `DodgeController.Update` 随后调 `MoveExternal` 真正把玩家挪走；③ `PlayerController.LateUpdate` 比对 `now - _posAfterUpdate` 差值 > 0.01 → **误判为外力回拽，把闪避位移回退**。
+- 闪避"状态"（无敌帧/特效）由 `DriveFromKernel` 读取内核 action 后驱动，与位移无关，故特效照常播放、人物却每帧被拉回 → 完美对应"原地闪一下"。
+
+**修复（外科手术式，单任务闭环）**
+- `PlayerController.MoveExternal()` 在 `ApplyDisplacement` 之后补一行 `_posAfterUpdate = transform.position;`：外部位移（翻滚）发生在 Update 阶段、LateUpdate 之前，把快照抬高到外部位移之后，LateUpdate 护栏即正确放行合法位移。
+- 父物体拖拽护栏（P0-2 的真·外力）仍照常拦截：若真有外部在 Update 之后改写坐标，`now != 快照` 依旧触发回退。
+- 已核实 `MoveExternal` 全工程仅 DodgeController 一处调用，修复覆盖唯一外部移动源，不影响其他系统。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile` → PlayMode。
+2. 按空格闪避：人物应朝输入/朝向方向实打实翻滚出去（约 130 单位、0.25s），同时有无敌帧表现；不再"原地闪一下"。
+3. 回归：移动（WASD）、砍竹、死亡/暂停冻结仍正常（护栏未失效）。
+4. 本环境无 Unity，编译/运行须用户本地验收。
+- **用户本地验收（一次性）**：`Shuimo/Scene/Force Recompile` → PlayMode 开 Stats，预期 **Batches ≤ 10 / SetPass ≤ 5**；Console 见「几何来源 = primitives 兜底」与升级日志（若场景是旧默认值）。

@@ -92,8 +92,8 @@ namespace Xianxia.Unity.T2
         // =====================================================================
 
         [Header("竹林布局（世界单位 = px，PPU=1，与 2D 同尺度，见设计 §6.1）")]
-        [Tooltip("竹子数量，运行时会被夹到 [20,30]")]
-        public int bambooCount = 26;
+        [Tooltip("竹子数量，运行时会被夹到 [10,30]；2.5D 俯视再砍 50% 到 13")]
+        public int bambooCount = 13;
 
         [Tooltip("竹林可行走区半边长（XY 平面正方形）。调小 = 竹林更聚拢在玩家身边")]
         public float groveHalfExtent = 700.0f;
@@ -102,11 +102,11 @@ namespace Xianxia.Unity.T2
         public float bambooMinDist = 110.0f;
 
         [Header("世界铺满（把竹林撒满整张地图，不只是玩家身边，构成完整竹林世界）")]
-        [Tooltip("开启后，在整张地图范围再撒一层静态竹林；关掉则只在玩家身边聚一小丛")]
-        public bool worldFill = true;
+        [Tooltip("开启后，在整张地图范围再撒一层静态竹林；2.5D 俯视下这层在屏幕外也吃 draw call，默认关闭")]
+        public bool worldFill = false;
 
-        [Tooltip("世界层竹林数量上限（性能与观感平衡，建议 120–220）")]
-        public int worldBambooCount = 180;
+        [Tooltip("世界层竹林数量上限（性能与观感平衡，建议 60–220；2.5D 俯视满图再砍 50% 到 22）")]
+        public int worldBambooCount = 22;
 
         [Tooltip("世界层竹林最小间距（世界单位），过密会卡脚、过疏显得空")]
         public float worldMinDist = 240.0f;
@@ -123,8 +123,8 @@ namespace Xianxia.Unity.T2
         [Tooltip("每根竹子的竹叶面片数下限")]
         public int leavesMin = 3;
 
-        [Tooltip("每根竹子的竹叶面片数上限")]
-        public int leavesMax = 5;
+        [Tooltip("每根竹子的竹叶面片数上限（半透明叠加是 overdraw 主因，2.5D 俯视降到 2）")]
+        public int leavesMax = 2;
 
         [Tooltip("确定性布局用的区域种子 id（走 ZoneSeed.CreateRng，复刻 WorldBuilder 的随机纪律）")]
         public string zoneSeedId = "zone_bamboo_2_5d";
@@ -196,6 +196,9 @@ namespace Xianxia.Unity.T2
 
         [Tooltip("水墨竹子模型（路线 A）：把套好材质的 bamboo_ink.fbx 拖进来；留空则退回 primitives")]
         public GameObject bambooModelPrefab;
+
+        [Tooltip("性能保险开关（默认开）：用程序化 primitives 竹子（已验证 GPU Instancing，Batches≈1）。取消勾选才会用你拖进来的 Bamboo Model Prefab；取消后模型材质也会被强制开 Instancing，正常情况下同样不卡。若用模型仍卡，把这个开关重新勾上即可。")]
+        public bool forcePrimitiveBamboo = true;
 
         [Tooltip("竹竿材质。留空则运行时按 BambooInkImporter 同款参数建 Xianxia/Ink/BambooTrunk 材质")]
         public Material trunkMaterial;
@@ -375,6 +378,29 @@ namespace Xianxia.Unity.T2
         private void Awake()
         {
             ResolveCameraRig();
+            UpgradeLegacyDefaults();
+        }
+
+        /// <summary>
+        /// 自动把旧版高密度默认值升级到当前性能默认值。
+        /// 场景组件序列化值不会随脚本默认值刷新，故在运行时做一次一次性修正。
+        /// </summary>
+        private void UpgradeLegacyDefaults()
+        {
+            // 旧版默认：身边 28 根 + 世界铺满 180 根 + 5 片叶 = 近 15000 Batches。
+            // 也处理部分升级场景（如 bambooCount/worldBambooCount 已改但 leavesMax 仍为旧值 5）。
+            bool isLegacy = (bambooCount == 28 && worldBambooCount == 180 && worldFill && leavesMax >= 5)
+                || (bambooCount == 13 && worldBambooCount == 22 && !worldFill && leavesMax >= 5);
+            if (!isLegacy)
+            {
+                return;
+            }
+
+            bambooCount = 13;
+            worldBambooCount = 22;
+            worldFill = false;
+            leavesMax = 2;
+            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版高密度默认值，已自动升级到性能默认值：bambooCount=13, worldBambooCount=22, worldFill=false, leavesMax=2。");
         }
 
         private void OnEnable()
@@ -453,11 +479,27 @@ namespace Xianxia.Unity.T2
             _loaded = true;
             ApplyCameraFraming();
 
+            int renderers = CountMeshRenderersIn(_groveRoot);
+            if (_worldRoot != null)
+            {
+                renderers += CountMeshRenderersIn(_worldRoot);
+            }
+
             Debug.Log(string.Format(
-                "[2.5D] 竹林已生成：{0} 根（目标 {1}），几何来源 = {2}，深度轴 = {3}。根节点未挂世界生成清理标记。",
+                "[2.5D] 竹林已生成：{0} 根（目标 {1}），几何来源 = {2}，深度轴 = {3}，MeshRenderer 总数 = {4}。根节点未挂世界生成清理标记。",
                 _bamboos.Count, target,
-                bambooModelPrefab != null ? "bamboo_ink 模型" : "primitives 兜底",
-                _depthAxis));
+                (bambooModelPrefab != null && !forcePrimitiveBamboo) ? "bamboo_ink 模型" : "primitives 兜底",
+                _depthAxis, renderers));
+        }
+
+        private static int CountMeshRenderersIn(Transform root)
+        {
+            if (root == null)
+            {
+                return 0;
+            }
+            MeshRenderer[] mrs = root.GetComponentsInChildren<MeshRenderer>(true);
+            return mrs != null ? mrs.Length : 0;
         }
 
         /// <summary>
@@ -891,7 +933,7 @@ namespace Xianxia.Unity.T2
             root.transform.localScale = Vector3.one;
 
             Transform trunk = null;
-            if (bambooModelPrefab != null)
+            if (bambooModelPrefab != null && !forcePrimitiveBamboo)
             {
                 trunk = BuildTrunkFromModel(root.transform, height);
             }
@@ -934,6 +976,18 @@ namespace Xianxia.Unity.T2
             for (int i = 0; i < cols.Length; i++)
             {
                 cols[i].isTrigger = true;
+            }
+
+            // 强制模型自带材质也开 Instancing：否则 bamboo_ink 多子网格/多材质时
+            // 每根竹子会复制出几十个独立 MeshRenderer，draw call 直接爆（曾现 4402 Batches）。
+            // 这一步让「用模型」和「用 primitives」一样能塌成个位数 draw call。
+            MeshRenderer[] mrs = inst.GetComponentsInChildren<MeshRenderer>(true);
+            for (int i = 0; i < mrs.Length; i++)
+            {
+                if (mrs[i].sharedMaterial != null && !mrs[i].sharedMaterial.enableInstancing)
+                {
+                    mrs[i].sharedMaterial.enableInstancing = true;
+                }
             }
 
             return inst.transform;
@@ -1179,6 +1233,19 @@ namespace Xianxia.Unity.T2
                     SetColorIfHas(groundMaterial, "_Color", new Color(0.93f, 0.92f, 0.87f, 1.0f));
                 }
             }
+
+            // 强制 Inspector 拖进来的外部材质也开启 Instancing（用户拖的材质可能没勾选）。
+            ForceInstancing(trunkMaterial);
+            ForceInstancing(leafMaterial);
+            ForceInstancing(groundMaterial);
+        }
+
+        private static void ForceInstancing(Material mat)
+        {
+            if (mat != null && !mat.enableInstancing)
+            {
+                mat.enableInstancing = true;
+            }
         }
 
         /// <summary>
@@ -1404,7 +1471,8 @@ namespace Xianxia.Unity.T2
         /// </summary>
         private void EnsurePlayerBound()
         {
-            if (_player != null && _attack != null)
+            // 已绑定且引用有效时彻底跳过：不做 Time.deltaTime 减法、不进入重试计时。
+            if (_player != null && _attack != null && _playerController != null)
             {
                 return;
             }
