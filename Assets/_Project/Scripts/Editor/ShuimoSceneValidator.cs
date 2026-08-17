@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEditor;
 using UnityEditor.Rendering;
@@ -26,6 +27,7 @@ namespace Shuimo.EditorTools
         private const float WORLD_HEIGHT = 2560f;
         private const float Y_TOLERANCE = 0.5f;
         private const string INK_GROUND_SHADER = "Xianxia/Ink/InkGround";
+        private const string INK_GROUND_RICH_SHADER = "Xianxia/Ink/InkGroundRich";
 
         [MenuItem("Shuimo/Validate Scene", false, 2000)]
         public static void Validate()
@@ -152,6 +154,54 @@ namespace Shuimo.EditorTools
             Debug.Log("[Shuimo] 已生成 InkGround 地面：覆盖活动区 3840x2560，y=0，InkGround 材质，水平朝向(+Y)。");
             EditorUtility.DisplayDialog("Shuimo",
                 "已生成 InkGround 地面（覆盖 3840x2560，y=0，水平朝向）。\n如不想用可删掉该对象，手动按设计笔记做也行。", "OK");
+        }
+
+        [MenuItem("Shuimo/Scene/Create Ink Ground (Rich)", false, 2101)]
+        public static void CreateInkGroundRich()
+        {
+            // 增强水墨地表：宣纸底 + 淡墨晕染 + 毛笔笔触 + 细纸纹。
+            // 注意：Plane 默认已是水平(XZ 平面, 法线 +Y)，**不要**旋转 -90。
+            var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            go.name = "InkGroundRich";
+            go.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            go.transform.localScale = new Vector3(WORLD_WIDTH / 10f, 1f, WORLD_HEIGHT / 10f);
+
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = EnsureRichMaterial();
+
+            if (go.GetComponent<MeshCollider>() == null)
+                go.AddComponent<MeshCollider>();
+
+            Undo.RegisterCreatedObjectUndo(go, "Create Ink Ground (Rich)");
+            Debug.Log("[Shuimo] 已生成 InkGroundRich 地面（增强水墨地表，覆盖 3840x2560，y=0，水平朝向）。");
+            EditorUtility.DisplayDialog("Shuimo",
+                "已生成 InkGroundRich 地面（增强水墨笔触/晕染）。\n如不想用可删掉该对象，改回纯色 InkGround 也行。", "OK");
+        }
+
+        private static Material EnsureRichMaterial()
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:Material"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m != null && m.shader != null && m.shader.name.Contains("InkGroundRich"))
+                    return m;
+            }
+
+            var shader = Shader.Find(INK_GROUND_RICH_SHADER);
+            if (shader == null)
+            {
+                Debug.LogWarning($"[Shuimo] 找不到 {INK_GROUND_RICH_SHADER} shader，回退到 Standard。");
+                return new Material(Shader.Find("Standard"));
+            }
+
+            var mat = new Material(shader) { name = "MAT_InkGroundRich" };
+            const string dir = "Assets/_Project/Materials";
+            if (!AssetDatabase.IsValidFolder(dir))
+                AssetDatabase.CreateFolder("Assets/_Project", "Materials");
+            AssetDatabase.CreateAsset(mat, dir + "/MAT_InkGroundRich.mat");
+            AssetDatabase.SaveAssets();
+            return mat;
         }
 
         private static Material EnsureInkGroundMaterial()

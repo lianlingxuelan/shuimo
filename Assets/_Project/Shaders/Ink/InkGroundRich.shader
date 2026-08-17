@@ -1,0 +1,128 @@
+// 水墨地表（增强版）:宣纸底 + 淡墨晕染 + 毛笔笔触 + 细纸纹(Built-in RP, Unlit)
+// 与 InkGround.shader 同源，但更强调"水墨味"，用于正式美术地表。
+// 不修改原 InkGround，作为可切换的增强变体（用户已验收的纯色地面不受影响）。
+Shader "Xianxia/Ink/InkGroundRich"
+{
+    Properties
+    {
+        _PaperColor    ("宣纸色", Color) = (0.95, 0.94, 0.89, 1)
+        _InkColor      ("淡墨色", Color) = (0.80, 0.78, 0.72, 1)
+        _InkDeep       ("浓墨色(笔触)", Color) = (0.55, 0.53, 0.50, 1)
+        _BlotScale     ("墨晕粒度", Range(0.5, 20)) = 2.0
+        _BlotStrength  ("墨晕强度", Range(0, 0.6)) = 0.35
+        _StrokeAngle   ("笔触方向(度)", Range(0, 180)) = 35.0
+        _StrokeScale   ("笔触拉伸", Range(1, 12)) = 4.0
+        _StrokeStrength("笔触强度", Range(0, 0.4)) = 0.20
+        _FineScale     ("细纸纹粒度", Range(1, 160)) = 90.0
+        _FineStrength  ("细纸纹强度", Range(0, 0.3)) = 0.10
+        _TintColor     ("远景冷调", Color) = (0.90, 0.92, 0.96, 1)
+        _TintStrength  ("冷调强度", Range(0, 0.2)) = 0.06
+    }
+    SubShader
+    {
+        Tags { "RenderType"="Opaque" "Queue"="Geometry" }
+        LOD 100
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+
+            fixed4 _PaperColor;
+            fixed4 _InkColor;
+            fixed4 _InkDeep;
+            float _BlotScale;
+            float _BlotStrength;
+            float _StrokeAngle;
+            float _StrokeScale;
+            float _StrokeStrength;
+            float _FineScale;
+            float _FineStrength;
+            fixed4 _TintColor;
+            float _TintStrength;
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+            };
+
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                float3 wpos : TEXCOORD0;
+            };
+
+            v2f vert (appdata v)
+            {
+                v2f o;
+                float4 wp = mul(unity_ObjectToWorld, v.vertex);
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.wpos = wp.xyz;
+                return o;
+            }
+
+            float hash21(float2 p)
+            {
+                return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+            }
+
+            float vnoise(float2 p)
+            {
+                float2 i = floor(p);
+                float2 f = frac(p);
+                f = f * f * (3.0 - 2.0 * f);
+                float a = hash21(i);
+                float b = hash21(i + float2(1, 0));
+                float c = hash21(i + float2(0, 1));
+                float d = hash21(i + float2(1, 1));
+                return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+            }
+
+            // 多倍频叠加，模拟自然晕染层次
+            float fbm(float2 p)
+            {
+                float s = 0.0;
+                float a = 0.5;
+                for (int k = 0; k < 4; k++)
+                {
+                    s += a * vnoise(p);
+                    p *= 2.03;
+                    a *= 0.5;
+                }
+                return s;
+            }
+
+            fixed4 frag (v2f i) : SV_Target
+            {
+                float2 p = i.wpos.xz * 0.25;
+
+                // 大尺度淡墨晕染（多频）
+                float blot = fbm(p * _BlotScale);
+
+                // 毛笔笔触：沿方向拉伸的各向异性噪声
+                float ang = _StrokeAngle * 3.1415926 / 180.0;
+                float2 dir = float2(cos(ang), sin(ang));
+                float2 perp = float2(-sin(ang), cos(ang));
+                float along = dot(p, dir);
+                float across = dot(p, perp);
+                float2 sp = float2(along, across / _StrokeScale);
+                float stroke = vnoise(sp * 6.0);
+
+                // 细纸纹
+                float fine = vnoise(p * _FineScale * 0.1);
+
+                fixed3 col = _PaperColor.rgb;
+                col = lerp(col, _InkColor.rgb, blot * _BlotStrength);
+                col = lerp(col, _InkDeep.rgb, stroke * _StrokeStrength);
+                col = lerp(col, _InkColor.rgb * 0.92, fine * _FineStrength);
+                col = lerp(col, _TintColor.rgb, _TintStrength * fbm(p * 0.5));
+
+                return fixed4(col, 1.0);
+            }
+            ENDCG
+        }
+    }
+    FallBack Off
+}
