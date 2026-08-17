@@ -126,6 +126,10 @@ namespace Xianxia.Unity.T2
         [Tooltip("每根竹子的竹叶面片数上限（半透明叠加是 overdraw 主因，2.5D 俯视降到 2）")]
         public int leavesMax = 2;
 
+        [Tooltip("竹子自然倾斜角上限（度）。真实竹林不是垂直于地面，每根会随机向某个方向歪斜，避免像黑色柱子")]
+        [Range(0.0f, 60.0f)]
+        public float bambooLeanAngle = 16.0f;
+
         [Tooltip("确定性布局用的区域种子 id（走 ZoneSeed.CreateRng，复刻 WorldBuilder 的随机纪律）")]
         public string zoneSeedId = "zone_bamboo_2_5d";
 
@@ -406,7 +410,8 @@ namespace Xianxia.Unity.T2
             heightMin = 360.0f;
             heightMax = 520.0f;
             bambooMinDist = 85.0f;
-            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版默认值，已自动升级：bambooCount=13, worldBambooCount=22, worldFill=false, leavesMax=2, trunkRadius=9, height=360-520, bambooMinDist=85。");
+            bambooLeanAngle = 16.0f;
+            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版默认值，已自动升级：bambooCount=13, worldBambooCount=22, worldFill=false, leavesMax=2, trunkRadius=9, height=360-520, bambooMinDist=85, bambooLeanAngle=16。");
         }
 
         private void OnEnable()
@@ -938,35 +943,66 @@ namespace Xianxia.Unity.T2
             root.transform.localRotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
 
+            // 每根竹子有独立的生长方向：在全局深度轴基础上，随机向 XY 平面某个方向歪斜。
+            // 这样竹林不会像黑色柱子一样整齐戳向相机，更像自然倒伏。
+            Vector3 growDir = SampleGrowthDirection(rng);
+
             Transform trunk = null;
             if (bambooModelPrefab != null && !forcePrimitiveBamboo)
             {
-                trunk = BuildTrunkFromModel(root.transform, height);
+                trunk = BuildTrunkFromModel(root.transform, height, growDir);
             }
 
             if (trunk == null)
             {
-                trunk = BuildTrunkFromPrimitive(root.transform, height, rng);
-                BuildLeaves(trunk, height, rng);
+                trunk = BuildTrunkFromPrimitive(root.transform, height, rng, growDir);
+                BuildLeaves(trunk, height, rng, growDir);
             }
 
-            AddSoftCollider(root, height);
+            AddSoftCollider(root, height, growDir);
 
             BambooVfx vfx = root.AddComponent<BambooVfx>();
-            vfx.Configure(trunk, _depthAxis, height, trunkRadius, inkLeafPrefab, leafMaterial);
+            vfx.Configure(trunk, growDir, height, trunkRadius, inkLeafPrefab, leafMaterial);
             vfx.OnBroken += HandleBambooBroken;
             return vfx;
         }
 
+        /// <summary>
+        /// 采样单根竹子的生长方向：以 _depthAxis 为基准，随机向 XY 平面歪斜一定角度。
+        /// 倾斜上限由 bambooLeanAngle 控制，0 = 全部垂直于地面（旧版柱子感）。
+        /// </summary>
+        private Vector3 SampleGrowthDirection(PCG32 rng)
+        {
+            float maxRad = Mathf.Clamp(bambooLeanAngle, 0.0f, 60.0f) * Mathf.Deg2Rad;
+            if (maxRad < 0.001f)
+            {
+                return _depthAxis;
+            }
+
+            // 随机水平朝向（XY 平面内），决定竹子往哪个方位倒。
+            float yaw = rng.NextRange(0.0f, 360.0f) * Mathf.Deg2Rad;
+            Vector3 horizontal = new Vector3(Mathf.Cos(yaw), Mathf.Sin(yaw), 0.0f);
+
+            // 倾斜角度：随机 [0, maxRad]，绕垂直于 depthAxis 与 horizontal 的轴旋转。
+            float leanRad = rng.NextRange(0.0f, maxRad);
+            Vector3 axis = Vector3.Cross(_depthAxis, horizontal);
+            if (axis.sqrMagnitude < 1e-6f)
+            {
+                // 退化（理论上不会发生，因为 horizontal 在 XY 平面，depthAxis 沿 ±Z）
+                return _depthAxis;
+            }
+            return Quaternion.AngleAxis(leanRad * Mathf.Rad2Deg, axis.normalized) * _depthAxis;
+        }
+
         /// <summary>路线 A：实例化套好水墨材质的 bamboo_ink 模型，并缩放到目标高度。</summary>
-        private Transform BuildTrunkFromModel(Transform parent, float height)
+        private Transform BuildTrunkFromModel(Transform parent, float height, Vector3 growDir)
         {
             GameObject inst = Instantiate(bambooModelPrefab);
             inst.name = "Trunk_Model";
             inst.transform.SetParent(parent, false);
 
-            // 模型的「上」是它自己的 +Y，先转到深度轴（= 竹子生长方向）。
-            inst.transform.localRotation = Quaternion.FromToRotation(Vector3.up, _depthAxis);
+            // 模型的「上」是它自己的 +Y，先转到本根竹子的实际生长方向。
+            inst.transform.localRotation = Quaternion.FromToRotation(Vector3.up, growDir);
             inst.transform.localPosition = Vector3.zero;
             inst.transform.localScale = Vector3.one;
 
@@ -999,18 +1035,18 @@ namespace Xianxia.Unity.T2
             return inst.transform;
         }
 
-        /// <summary>路线 B 兜底：Cylinder 竹竿，沿深度轴生长。</summary>
-        private Transform BuildTrunkFromPrimitive(Transform parent, float height, PCG32 rng)
+        /// <summary>路线 B 兜底：Cylinder 竹竿，沿 growDir 生长。</summary>
+        private Transform BuildTrunkFromPrimitive(Transform parent, float height, PCG32 rng, Vector3 growDir)
         {
             GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             trunk.name = "Trunk";
             trunk.transform.SetParent(parent, false);
 
             // Unity Cylinder：局部 +Y 生长，原始高 2 单位、半径 0.5 单位（scale=1 时）。
-            trunk.transform.localRotation = Quaternion.FromToRotation(Vector3.up, _depthAxis);
+            trunk.transform.localRotation = Quaternion.FromToRotation(Vector3.up, growDir);
             trunk.transform.localScale = new Vector3(trunkRadius * 2.0f, height * 0.5f, trunkRadius * 2.0f);
-            // 竹根落在玩法平面，竹心沿深度轴推到半高处。
-            trunk.transform.localPosition = _depthAxis * (height * 0.5f);
+            // 竹根落在玩法平面，竹心沿生长方向推到半高处。
+            trunk.transform.localPosition = growDir * (height * 0.5f);
 
             // primitive 自带的 CapsuleCollider 转 Trigger：只作命中几何，不参与物理。
             Collider selfCol = trunk.GetComponent<Collider>();
@@ -1035,7 +1071,7 @@ namespace Xianxia.Unity.T2
                 node.name = string.Format("Node_{0}", i);
                 node.transform.SetParent(parent, false);
                 node.transform.localRotation = trunk.transform.localRotation;
-                node.transform.localPosition = _depthAxis * (height * t);
+                node.transform.localPosition = growDir * (height * t);
                 node.transform.localScale = new Vector3(
                     trunkRadius * 2.3f, height * 0.012f, trunkRadius * 2.3f);
 
@@ -1056,7 +1092,7 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>路线 B 兜底：3–5 片 Quad 竹叶，挂在竹竿上部，随机朝向。</summary>
-        private void BuildLeaves(Transform trunk, float height, PCG32 rng)
+        private void BuildLeaves(Transform trunk, float height, PCG32 rng, Vector3 growDir)
         {
             Transform parent = trunk.parent != null ? trunk.parent : trunk;
             int count = rng.NextRangeInt(Mathf.Max(1, leavesMin), Mathf.Max(leavesMin, leavesMax));
@@ -1075,10 +1111,10 @@ namespace Xianxia.Unity.T2
                 float len = rng.NextRange(trunkRadius * 4.0f, trunkRadius * 7.5f);
                 float wide = rng.NextRange(trunkRadius * 0.8f, trunkRadius * 1.6f);
 
-                // 先摆到深度轴对齐的朝向，再叠加随机偏转，让叶片自然散开。
-                Quaternion basis = Quaternion.FromToRotation(Vector3.up, _depthAxis);
+                // 先摆到本根竹子生长方向对齐的朝向，再叠加随机偏转，让叶片自然散开。
+                Quaternion basis = Quaternion.FromToRotation(Vector3.up, growDir);
                 leaf.transform.localRotation = basis * Quaternion.Euler(pitch, yaw, 0.0f);
-                leaf.transform.localPosition = _depthAxis * (height * t)
+                leaf.transform.localPosition = growDir * (height * t)
                     + leaf.transform.localRotation * new Vector3(len * 0.5f, 0.0f, 0.0f);
                 leaf.transform.localScale = new Vector3(len, wide, 1.0f);
 
@@ -1106,14 +1142,16 @@ namespace Xianxia.Unity.T2
         /// 一律 isTrigger —— 只作命中与软碰撞几何，不参与物理，
         /// 不会把走 Transform 移动的女主顶飞。
         /// </summary>
-        private void AddSoftCollider(GameObject root, float height)
+        private void AddSoftCollider(GameObject root, float height, Vector3 growDir)
         {
             CapsuleCollider cap = root.AddComponent<CapsuleCollider>();
             cap.isTrigger = true;
             cap.radius = trunkRadius;
             cap.height = height;
-            cap.direction = 2; // 2 = Z 轴，与深度轴一致
-            cap.center = _depthAxis * (height * 0.5f);
+            // CapsuleCollider 只能沿 X/Y/Z 轴，保持 Z 轴方向。倾斜角不大时（默认 16°）
+            // growDir 主要仍是 Z 分量，center 沿 growDir 即可接受。
+            cap.direction = 2; // 2 = Z 轴
+            cap.center = growDir * (height * 0.5f);
         }
 
         /// <summary>地面：大 Plane，法线朝相机侧，置于玩法平面之后。</summary>

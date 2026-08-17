@@ -175,6 +175,9 @@ namespace Xianxia.Unity.T2
 
         private bool _fxPaused;
 
+        // 砍竹音效：程序化合成（WoodSfx），无需外部 SFX 包。
+        private AudioSource _sfx;
+
         /// <summary>一个存活中的粒子实例及其剩余寿命。</summary>
         private struct FxInstance
         {
@@ -191,7 +194,7 @@ namespace Xianxia.Unity.T2
         /// 由 <see cref="BambooSceneContext"/> 在生成竹子时调用，注入几何信息与共享资源。
         /// </summary>
         /// <param name="trunk">竹竿 Transform（晃动/倾倒的作用对象）。</param>
-        /// <param name="depthAxis">深度轴（竹子生长方向，指向相机）。</param>
+        /// <param name="depthAxis">本根竹子的实际生长方向（由 BambooSceneContext 传入，可能是倾斜后的方向）。</param>
         /// <param name="height">竹子总高（世界单位）。</param>
         /// <param name="radius">竹竿半径（世界单位）。</param>
         /// <param name="fxPrefab">粒子 prefab，可为 null。</param>
@@ -290,6 +293,7 @@ namespace Xianxia.Unity.T2
             _shakeRemain = shakeDuration;
 
             SpawnFx(hitPoint, dir);
+            PlaySfx(WoodSfx.Tick, 0.5f);
 
             if (_accumDmg >= breakThreshold || _hits >= breakHitCount)
             {
@@ -460,6 +464,24 @@ namespace Xianxia.Unity.T2
         /// 纯表现，不通知任何战斗系统。
         /// </summary>
         /// <param name="dir">命中方向（XY），决定倒向。</param>
+        /// <summary>砍竹音效：程序化合成的竹裂/挥砍声（零外部资源）。</summary>
+        private void PlaySfx(AudioClip clip, float volume)
+        {
+            if (clip == null)
+            {
+                return;
+            }
+            if (_sfx == null)
+            {
+                _sfx = GetComponent<AudioSource>();
+            }
+            if (_sfx == null)
+            {
+                _sfx = gameObject.AddComponent<AudioSource>();
+            }
+            _sfx.PlayOneShot(clip, volume);
+        }
+
         private void Break(Vector2 dir)
         {
             if (_broken)
@@ -467,6 +489,7 @@ namespace Xianxia.Unity.T2
                 return;
             }
             _broken = true;
+            PlaySfx(WoodSfx.Chop, 1.0f);
             _shakeRemain = 0.0f;
             _regrowRemain = regrowSeconds;
 
