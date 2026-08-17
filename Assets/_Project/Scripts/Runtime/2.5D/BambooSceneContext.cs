@@ -1201,6 +1201,9 @@ namespace Xianxia.Unity.T2
                     SetFloatIfHas(trunkMaterial, "_StrokeStrength", 0.15f);
                     SetFloatIfHas(trunkMaterial, "_EdgeInk", 0.35f);
                     SetFloatIfHas(trunkMaterial, "_Roughness", 0.6f);
+                    SetFloatIfHas(trunkMaterial, "_NodeSpacing", 2.2f);
+                    SetFloatIfHas(trunkMaterial, "_NodeWidth", 0.12f);
+                    SetFloatIfHas(trunkMaterial, "_NodeInk", 0.45f);
                     SetColorIfHas(trunkMaterial, "_Color", new Color(0.11f, 0.17f, 0.10f, 1.0f));
                 }
             }
@@ -1215,6 +1218,7 @@ namespace Xianxia.Unity.T2
                     SetFloatIfHas(leafMaterial, "_EdgeFade", 0.55f);
                     SetFloatIfHas(leafMaterial, "_NoiseScale", 16.0f);
                     SetFloatIfHas(leafMaterial, "_NoiseStrength", 0.25f);
+                    SetFloatIfHas(leafMaterial, "_TipInk", 0.4f);
                     SetColorIfHas(leafMaterial, "_Color", new Color(0.15f, 0.22f, 0.13f, 1.0f));
                 }
             }

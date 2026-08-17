@@ -10,6 +10,7 @@ Shader "Xianxia/Ink/BambooLeaf"
         _EdgeFade  ("边缘晕染", Range(0, 1)) = 0.55
         _NoiseScale ("笔触粒度", Range(1, 40)) = 16.0
         _NoiseStrength ("笔触强度", Range(0, 0.5)) = 0.25
+        _TipInk     ("叶尖墨浓", Range(0, 1)) = 0.4
     }
     SubShader
     {
@@ -20,7 +21,8 @@ Shader "Xianxia/Ink/BambooLeaf"
         LOD 200
 
         CGPROGRAM
-        #pragma surface surf Lambert alpha:blend
+        #pragma surface surf Lambert alpha:blend instancing
+        #pragma multi_compile_instancing
         #pragma target 3.0
 
         sampler2D _MainTex;
@@ -29,6 +31,7 @@ Shader "Xianxia/Ink/BambooLeaf"
         float _EdgeFade;
         float _NoiseScale;
         float _NoiseStrength;
+        float _TipInk;
 
         struct Input
         {
@@ -55,12 +58,12 @@ Shader "Xianxia/Ink/BambooLeaf"
 
         void surf(Input IN, inout SurfaceOutput o)
         {
-            // 以叶片中心为原点:距中心越远 alpha 越低(边缘晕染)
-            float2 c = IN.uv_MainTex - 0.5;
-            float d = length(c) * 2.0;
-            // 叶片细长:沿长轴(uv.x)保留更多不透明,短轴(uv.y)更快淡开
-            float lenShape = saturate(1.0 - abs(c.x) * 0.35);
-            float alpha = (1.0 - smoothstep(0.2, 0.45 + _EdgeFade * 0.4, d)) * lenShape;
+            // 细长竹叶:沿长轴(x)拉长、短轴(y)收窄,叶尖(+x)收锐成尖
+            float2 c = IN.uv_MainTex - 0.5;        // -0.5..0.5
+            float along = saturate(c.x + 0.5);     // 0=叶基 1=叶尖
+            float halfW = (0.5 - abs(c.x)) * 0.45 * (1.0 - along * 0.82);
+            float dist = abs(c.y) / max(halfW, 1e-3);
+            float alpha = (1.0 - smoothstep(0.5, 0.5 + _EdgeFade * 0.5, dist));
 
             // 笔触噪声:叶面浓淡不均,像运笔
             float n = vnoise(IN.worldPos.xz * 0.5 * _NoiseScale);
@@ -69,7 +72,11 @@ Shader "Xianxia/Ink/BambooLeaf"
 
             // 叶脉:沿长轴中部一条稍暗的线
             float vein = saturate(1.0 - abs(c.y) * 2.5);
-            col = lerp(col, col * 0.68, vein * 0.3 * lenShape);
+            col = lerp(col, col * 0.68, vein * 0.3);
+
+            // 叶尖聚墨:叶尖(+x)收墨,似未干之笔锋
+            float tip = smoothstep(0.55, 1.0, along);
+            col = lerp(col, col * 0.55, tip * _TipInk);
 
             o.Albedo = col;
             o.Alpha = saturate(alpha) * _Alpha;
