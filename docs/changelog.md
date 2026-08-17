@@ -1696,3 +1696,31 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 3. 回归：移动（WASD）、砍竹、死亡/暂停冻结仍正常（护栏未失效）。
 4. 本环境无 Unity，编译/运行须用户本地验收。
 - **用户本地验收（一次性）**：`Shuimo/Scene/Force Recompile` → PlayMode 开 Stats，预期 **Batches ≤ 10 / SetPass ≤ 5**；Console 见「几何来源 = primitives 兜底」与升级日志（若场景是旧默认值）。
+
+### 阶段 67 · 竹林比例收细长 + 地面重墨水墨（2026-08-17）
+
+**用户反馈**：地面仍偏素白、竹林太黑且竹竿过粗像黑柱子；要求「先不管竹林黑不黑；把竹林大小调合适；地面重色优化成竹林同款水墨」。
+
+**已落地（单任务闭环）**
+1. **竹林比例收细长（`BambooSceneContext.cs`）**：
+   - 默认竹竿半径 `trunkRadius 22.0 → 9.0`；高度 `heightMin/Max 320-480 → 360-520`；最小间距 `bambooMinDist 110 → 85`。
+   - 竹节间距计算 `height/60 → height/55`，节数上限 `5 → 6`，避免半径变细后节环过疏。
+   - 竹叶相对竿身略放大（长 `3.5-6.5 → 4.0-7.5`、宽 `0.7-1.4 → 0.8-1.6`），防止梢秃。
+   - `UpgradeLegacyDefaults()` 增加 `trunkRadius >= 20.0f` 判定，旧场景 PlayMode 自动升级到细长默认值，无需用户手动 Reset 组件。
+2. **地面重墨同步三处**：
+   - `InkGroundRich.shader` 加深默认三色：宣纸底 `0.96→0.92`、淡墨 `0.70→0.42`、浓墨 `0.35→0.12`；世界采样缩放 `0.25→0.18` 形成更大墨斑；墨晕/笔触 smoothstep 阈值调锐；增加整体压暗项，避免宣纸底发飘。
+   - `MAT_InkGroundRich.mat` 同步更新参数，并开启 `m_EnableInstancingVariants`。
+   - `BambooSceneContext.EnsureMaterials` 运行时地面材质改用 `Xianxia/Ink/InkGroundRich`，并配合同款重墨参数。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile`。
+2. PlayMode 看场景：
+   - 竹竿明显变细、变高、更像竹；三根竹子不再像粗黑柱子。
+   - 地面出现大块浓淡水墨斑，不再像纯色宣纸；与竹林同款重墨风格。
+3. 开 Stats 确认 **Batches / SetPass 仍保持低位**（预期 ≤ 10）。
+4. Console 若出现 `UpgradeLegacyDefaults` 升级日志 = 旧场景已被自动修正。
+5. 本环境无 Unity，编译/运行须用户本地验收。
+
+---
+
+**落盘日期**：2026-08-17
