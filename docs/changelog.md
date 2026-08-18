@@ -1770,4 +1770,21 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-**落盘日期**：2026-08-17
+### 阶段 70 · 前端视角 Unity 上手导览（2026-08-18）
+
+**触发 / 背景**：用户表明有七年前端（React/CSS）经验，正在入门 Unity（约一个月期），倾向「先打基础、内容/物品/技能暂不定」，待自身具备改码能力后再推进系统层。用户确认由我编写一份「前端视角 Unity 上手导览」文档，陪其入门期对照学习。
+
+**已落地（单任务闭环，纯文档零编译风险）**
+- 新增 `docs/unity-frontend-onboarding.md`：以 React/CSS 经验为锚点，用对照表把 Unity 核心概念（Canvas / RectTransform / GridLayoutGroup / Prefab / ScriptableObject / 事件系统 / asmdef）逐一映射到前端概念；含 UGUI 做界面、C# 代码层、Shuimo 工程结构（真实路径）、调试心智、前三周学习路径、项目红线约定。
+- 结合本工程真实文件做对照：`Assets/_Project/Scripts/Runtime/CombatBridge.cs`、`PlayerController.cs`、`InventoryHud.cs`、`PlayerInventory.cs`；纯逻辑层 `Assets/Scripts/Core`、`Assets/Scripts/Systems`；女主 prefab `Assets/_Project/Prefabs/HeroineBone.prefab`；材质/着色器 `Assets/_Project/Materials/MAT_InkGroundRich.mat`、`Assets/_Project/Shaders/Ink/InkGroundRich.shader`；表现层 asmdef `Assets/_Project/Scripts/Runtime/Xianxia.Unity.T2.asmdef`。
+- **记忆滞后发现（同 P0-5/P0-6 旧快照模式）**：Runtime 下 `InventoryHud.cs` / `PlayerInventory.cs` 已存在，背包系统底层已有雏形（非「待深化空白」）。已如实写入导览并标注「物品字段未定，先读别深改」。
+
+**协作约定（本轮确认，已记 MEMORY）**
+- 基础期（现在 → ~1个月）：收敛稳定可运行工程 + 工程整洁 + 上手导览，不给内容系统（背包/物品/技能）做字段决策。
+- 内容期（~1个月后用户具改码能力）：再定物品/技能/数值、做完整背包等系统，彼时协作对等。
+
+**诚实边界**：本环境无 Unity，文档为纯文字导览不依赖编译，随时可看；文档中引用的工程路径均经 `ls`/搜索核实存在。
+
+---
+
+**落盘日期**：2026-08-18
