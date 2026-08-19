@@ -1787,4 +1787,28 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-**落盘日期**：2026-08-18
+### 阶段 71 · 场景氛围层：水墨天空 + 远山 + 雾（2026-08-19）
+
+**触发 / 背景**：用户表达做游戏场景的挫败（资产匮乏 + 不擅长搭建 + 自认无美术），明确「场景全权交给我负责」。主场景 `Assets/Scenes/SampleScene.unity` 经核查 RenderSettings 雾关闭（m_Fog:0）、无天空盒（m_SkyboxMaterial:{fileID:0}），即「白底 + 悬浮柱子」观感的直接根因。世界由 WorldBuilder/BambooSceneContext 运行时生成，故氛围层同样走运行时程序化注入。
+
+**已落地（单任务闭环，零侵入）**
+- 新增 `Assets/_Project/Scripts/Runtime/2.5D/AtmosphereLayer.cs`：`[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]` 自挂载，以「场景内存在 BambooSceneContext」作 guard，仅在我们的游戏场景注入；不修改任何已有脚本/场景文件/角色与竹子资产。全部参数化（天空色/远山层数/雾密度等），若用户在场景手动挂本组件则自挂载跳过。
+- 天空：大球内壁 `InkSky.shader`，基于视线仰角做垂直渐变，跟随相机始终包住视野。
+- 远山：多层 `InkMountain.shader` 半透明水墨剪影（下淡上浓），固定在竹林子区外围远处建立纵深，支持 fog。
+- 雾：`RenderSettings` ExponentialSquared，淡墨青，让远景柔和淡出。
+- 新增 `Assets/_Project/Shaders/Ink/InkSky.shader`、`Assets/_Project/Shaders/Ink/InkMountain.shader`（均 Unlit/Built-in，无外部资源依赖）。
+- **刻意不引入** `M_MoonFlowersSky` 等第三方包（避免外部引用/guid 风险），纯自写程序化，符合「复用不画、但不引入不明依赖」的稳妥路线。
+
+**红线合规**：不碰保护角色资产（女主骨骼 prefab/原图、程序化小怪）；竹子方向争议未决，本层独立于 BambooSceneContext，未改动竹子；未改任何已有 shader（雾对已有 Unlit 地面/竹子 shader 不强制生效，远山空间感由背景色 + 远山剪影建立，雾为锦上添花）。
+
+**提交**：父 91f3479 → fa08fb6，仅 3 个新文件，零源代码改动。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile` → PlayMode：画面从「白底悬浮」变为「有水墨天空背景 + 远处山影 + 远景淡出」的竹林场景。
+2. Console 应见 `AtmosphereLayer 已自动注入` 日志；Stats 的 Batches 仅因新增少量面片略增，仍低位。
+3. 远山位置/疏密/雾浓淡若想调：在场景手动挂一个 AtmosphereLayer 组件改 Inspector（mountainBaseZ / mountainLayers / fogDensity 等）。
+4. 本环境无 Unity，视觉效果以用户本地 PlayMode 为准；shader 编译若有问题 Console 会报，届时反馈我修。
+
+---
+
+**落盘日期**：2026-08-19
