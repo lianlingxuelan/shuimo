@@ -1811,4 +1811,37 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-**落盘日期**：2026-08-19
+### 阶段 72 · 竹林重做：沿世界 +Y 真实向上生长（2026-08-20）
+
+**用户指令**：「把竹林重新做吧」。此前阶段 68 仅加了「沿深度轴（指向相机）歪斜」，但根因未除——竹子仍沿深度轴生长，在 2.5D 视角下投影朝屏幕下方，呈「躺倒 / 不是正常长」的观感（用户原话「不是那种直长在上面的」「倒了之后才像正常生长」）。
+
+**根因（用相机参数算投影确认）**
+- 工程是「XY 玩法平面 + 倾斜正交相机」2.5D：世界 +Y 即屏幕「上」（与女主站立方向一致）。
+- 旧实现竹竿沿全局 `_depthAxis`（±Z，指向相机）生长；投影到屏幕「上」分量为 **-0.559（朝下）** → 竹子从地面往屏幕下方戳出，所以看起来像倒伏/躺平，断裂反倒像「正常长」。
+- 阶段 68 的 `bambooLeanAngle` 只是把「朝下的深度轴」再歪一点，没改生长轴本身，故无效。
+
+**已落地（单任务闭环）**
+1. **`BambooSceneContext.cs` · 生长轴改为世界 +Y**：
+   - 重写 `SampleGrowthDirection`：以 `Vector3.up`（屏幕「上」）为基准，随机向 XZ 水平方位歪斜 `[0, bambooLeanAngle]`，用 `Quaternion.AngleAxis` 得到每根竹子的独立 `growDir`（沿 +Y 带自然倾斜）。
+   - `BuildTrunkFromPrimitive / BuildTrunkFromModel / BuildLeaves / AddSoftCollider` 全部沿 `growDir` 排布；竹节/竹叶/碰撞体中心随之。
+   - `AddSoftCollider` 胶囊轴 `direction 2(Z) → 1(Y)`，与「竹子沿 +Y 生长」对齐。
+   - `MeasureLocalHeight` 改为沿 `growDir` 投影包围盒（模型路线缩放正确）；调用处补传 `growDir`。
+2. **竹竿材质调亮（缓解「太黑」）**：`_InkBottom/_InkMid/_InkTop/_Color` 整体提亮为更竹绿；`_EdgeInk 0.35→0.25`、`_NodeInk 0.45→0.38`、`_StrokeStrength 0.15→0.12`，避免一片死墨。
+3. **竹叶更显竹形**：`leavesMin/Max 3/2 → 4/6`（梢部成簇）；叶长 `4-7.5→3-6`、叶宽 `0.8-1.6→0.7-1.3` 收窄，更显细长。
+4. **`UpgradeLegacyDefaults`**：旧场景自动升级 `leavesMin=4, leavesMax=6`（原硬编码 2），与新默认一致。
+5. **`BambooVfx.cs`**：`_depthAxis` 字段语义注释明确为「单根竹子生长轴（现 +Y 带倾斜）」；断裂铰链/断口/叶子筛选/粒子飘落均沿 `growDir`（由 `Configure` 传入），逻辑无需改、自动正确。
+
+**红线合规**：未碰保护角色资产；地面/天空/远山氛围层未动；未引入第三方包；`forcePrimitiveBamboo=true` 默认走 primitives（已验证 GPU Instancing，Batches 仍低位）。
+
+**提交**：父 cb42ced → 本轮，仅 2 个 .cs 文件改动，零美术资源。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile` → PlayMode：竹子应**从地面朝屏幕上方立起**（像真实竹林），每根略向不同方位自然歪斜；不再「躺倒/朝下」。
+2. 竹竿明显更竹绿、不再死黑；梢部有 4–6 片细长叶成簇。
+3. 砍一根：断裂口在倾斜竹竿上正确生成、上半段倒向命中方向、重生沿 +Y 长回。
+4. 开 Stats 确认 **Batches / SetPass 仍保持低位**（instancing 不变）。
+5. 本环境无 Unity，编译/视觉以用户本地 PlayMode 为准；若 shader/朝向有偏差，截图反馈我修。
+
+---
+
+**落盘日期**：2026-08-20

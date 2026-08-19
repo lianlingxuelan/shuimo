@@ -126,6 +126,8 @@ namespace Xianxia.Unity.T2
         // =====================================================================
 
         private Transform _trunk;
+        // 本根竹子的「生长轴」：由 BambooSceneContext 传入，现在是世界 +Y（屏幕「上」）
+        // 带随机自然倾斜。铰链位置、断口高度、叶子筛选、粒子飘落全部沿这个轴。
         private Vector3 _depthAxis = new Vector3(0.0f, 0.0f, -1.0f);
         private float _height = 200.0f;
         private float _radius = 14.0f;
@@ -194,7 +196,7 @@ namespace Xianxia.Unity.T2
         /// 由 <see cref="BambooSceneContext"/> 在生成竹子时调用，注入几何信息与共享资源。
         /// </summary>
         /// <param name="trunk">竹竿 Transform（晃动/倾倒的作用对象）。</param>
-        /// <param name="depthAxis">本根竹子的实际生长方向（由 BambooSceneContext 传入，可能是倾斜后的方向）。</param>
+        /// <param name="depthAxis">本根竹子的实际生长方向（由 BambooSceneContext 传入，沿世界 +Y 带随机倾斜）。</param>
         /// <param name="height">竹子总高（世界单位）。</param>
         /// <param name="radius">竹竿半径（世界单位）。</param>
         /// <param name="fxPrefab">粒子 prefab，可为 null。</param>

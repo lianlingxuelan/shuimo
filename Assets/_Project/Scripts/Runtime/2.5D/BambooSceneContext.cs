@@ -120,11 +120,11 @@ namespace Xianxia.Unity.T2
         [Tooltip("竹子高度上限")]
         public float heightMax = 520.0f;
 
-        [Tooltip("每根竹子的竹叶面片数下限")]
-        public int leavesMin = 3;
+        [Tooltip("每根竹子的竹叶面片数下限（竹叶在梢部成簇，数量适中即可，半透明叠加是 overdraw 主因）")]
+        public int leavesMin = 4;
 
-        [Tooltip("每根竹子的竹叶面片数上限（半透明叠加是 overdraw 主因，2.5D 俯视降到 2）")]
-        public int leavesMax = 2;
+        [Tooltip("每根竹子的竹叶面片数上限（竹叶在梢部成簇，数量适中即可，半透明叠加是 overdraw 主因）")]
+        public int leavesMax = 6;
 
         [Tooltip("竹子自然倾斜角上限（度）。真实竹林不是垂直于地面，每根会随机向某个方向歪斜，避免像黑色柱子")]
         [Range(0.0f, 60.0f)]
@@ -405,13 +405,14 @@ namespace Xianxia.Unity.T2
             bambooCount = 13;
             worldBambooCount = 22;
             worldFill = false;
-            leavesMax = 2;
+            leavesMin = 4;
+            leavesMax = 6;
             trunkRadius = 9.0f;
             heightMin = 360.0f;
             heightMax = 520.0f;
             bambooMinDist = 85.0f;
             bambooLeanAngle = 16.0f;
-            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版默认值，已自动升级：bambooCount=13, worldBambooCount=22, worldFill=false, leavesMax=2, trunkRadius=9, height=360-520, bambooMinDist=85, bambooLeanAngle=16。");
+            Debug.Log("[2.5D][BambooSceneContext] 检测到旧版默认值，已自动升级：bambooCount=13, worldBambooCount=22, worldFill=false, leaves=4-6, trunkRadius=9, height=360-520, bambooMinDist=85, bambooLeanAngle=16。");
         }
 
         private void OnEnable()
@@ -943,8 +944,8 @@ namespace Xianxia.Unity.T2
             root.transform.localRotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
 
-            // 每根竹子有独立的生长方向：在全局深度轴基础上，随机向 XY 平面某个方向歪斜。
-            // 这样竹林不会像黑色柱子一样整齐戳向相机，更像自然倒伏。
+            // 每根竹子有独立的生长方向：沿世界 +Y（屏幕「上」）向上，再随机向某个水平
+            // 方位歪斜一点，模拟自然竹林，避免像笔直黑柱。
             Vector3 growDir = SampleGrowthDirection(rng);
 
             Transform trunk = null;
@@ -968,30 +969,31 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>
-        /// 采样单根竹子的生长方向：以 _depthAxis 为基准，随机向 XY 平面歪斜一定角度。
-        /// 倾斜上限由 bambooLeanAngle 控制，0 = 全部垂直于地面（旧版柱子感）。
+        /// 采样单根竹子的生长方向：真实竹子从地面沿世界 +Y（本工程玩法平面是 XY，
+        /// +Y 即屏幕「上」，与女主站立方向一致）向上生长，而不是沿深度轴戳向相机。
+        /// 每根再随机向某个水平方向歪斜一点，模拟自然竹林，避免像笔直黑柱。
+        /// 倾斜上限由 bambooLeanAngle 控制，0 = 全部笔直朝天。
         /// </summary>
         private Vector3 SampleGrowthDirection(PCG32 rng)
         {
             float maxRad = Mathf.Clamp(bambooLeanAngle, 0.0f, 60.0f) * Mathf.Deg2Rad;
             if (maxRad < 0.001f)
             {
-                return _depthAxis;
+                return Vector3.up;
             }
 
-            // 随机水平朝向（XY 平面内），决定竹子往哪个方位倒。
-            float yaw = rng.NextRange(0.0f, 360.0f) * Mathf.Deg2Rad;
-            Vector3 horizontal = new Vector3(Mathf.Cos(yaw), Mathf.Sin(yaw), 0.0f);
+            // 随机水平歪斜方向（XZ 平面内，垂直于「上」），决定竹子往哪个方位倾。
+            float theta = rng.NextRange(0.0f, Mathf.PI * 2.0f);
+            Vector3 leanDir = new Vector3(Mathf.Cos(theta), 0.0f, Mathf.Sin(theta));
 
-            // 倾斜角度：随机 [0, maxRad]，绕垂直于 depthAxis 与 horizontal 的轴旋转。
+            // 绕「上 × 歪斜方向」这根水平轴旋转，把 +Y 倾到 leanDir 一侧。
             float leanRad = rng.NextRange(0.0f, maxRad);
-            Vector3 axis = Vector3.Cross(_depthAxis, horizontal);
+            Vector3 axis = Vector3.Cross(Vector3.up, leanDir);
             if (axis.sqrMagnitude < 1e-6f)
             {
-                // 退化（理论上不会发生，因为 horizontal 在 XY 平面，depthAxis 沿 ±Z）
-                return _depthAxis;
+                axis = Vector3.right;
             }
-            return Quaternion.AngleAxis(leanRad * Mathf.Rad2Deg, axis.normalized) * _depthAxis;
+            return Quaternion.AngleAxis(leanRad * Mathf.Rad2Deg, axis.normalized) * Vector3.up;
         }
 
         /// <summary>路线 A：实例化套好水墨材质的 bamboo_ink 模型，并缩放到目标高度。</summary>
@@ -1006,7 +1008,7 @@ namespace Xianxia.Unity.T2
             inst.transform.localPosition = Vector3.zero;
             inst.transform.localScale = Vector3.one;
 
-            float modelHeight = MeasureLocalHeight(inst);
+            float modelHeight = MeasureLocalHeight(inst, growDir);
             if (modelHeight > 1e-4f)
             {
                 float scale = height / modelHeight;
@@ -1107,9 +1109,9 @@ namespace Xianxia.Unity.T2
                 float t = rng.NextRange(0.60f, 0.98f);
                 float yaw = rng.NextRange(0.0f, 360.0f);
                 float pitch = rng.NextRange(-35.0f, 25.0f);
-                // 半径变细后，叶片相对竿身略放大，避免竹梢太秃。
-                float len = rng.NextRange(trunkRadius * 4.0f, trunkRadius * 7.5f);
-                float wide = rng.NextRange(trunkRadius * 0.8f, trunkRadius * 1.6f);
+                // 半径变细后，叶片相对竿身略放大，避免竹梢太秃；整体略收窄更显竹叶细长。
+                float len = rng.NextRange(trunkRadius * 3.0f, trunkRadius * 6.0f);
+                float wide = rng.NextRange(trunkRadius * 0.7f, trunkRadius * 1.3f);
 
                 // 先摆到本根竹子生长方向对齐的朝向，再叠加随机偏转，让叶片自然散开。
                 Quaternion basis = Quaternion.FromToRotation(Vector3.up, growDir);
@@ -1148,9 +1150,8 @@ namespace Xianxia.Unity.T2
             cap.isTrigger = true;
             cap.radius = trunkRadius;
             cap.height = height;
-            // CapsuleCollider 只能沿 X/Y/Z 轴，保持 Z 轴方向。倾斜角不大时（默认 16°）
-            // growDir 主要仍是 Z 分量，center 沿 growDir 即可接受。
-            cap.direction = 2; // 2 = Z 轴
+            // 竹竿沿世界 +Y（屏幕「上」）生长，胶囊碰撞体轴对齐 +Y（1）。
+            cap.direction = 1; // 1 = Y 轴
             cap.center = growDir * (height * 0.5f);
         }
 
@@ -1235,22 +1236,22 @@ namespace Xianxia.Unity.T2
                 trunkMaterial = CreateRuntimeMaterial("Xianxia/Ink/BambooTrunk", "MAT_Ink_Trunk_Runtime");
                 if (trunkMaterial != null)
                 {
-                    SetColorIfHas(trunkMaterial, "_InkBottom", new Color(0.05f, 0.09f, 0.06f, 1.0f));
-                    SetColorIfHas(trunkMaterial, "_InkMid", new Color(0.11f, 0.17f, 0.10f, 1.0f));
-                    SetColorIfHas(trunkMaterial, "_InkTop", new Color(0.17f, 0.25f, 0.15f, 1.0f));
+                    SetColorIfHas(trunkMaterial, "_InkBottom", new Color(0.12f, 0.18f, 0.10f, 1.0f));
+                    SetColorIfHas(trunkMaterial, "_InkMid", new Color(0.20f, 0.29f, 0.15f, 1.0f));
+                    SetColorIfHas(trunkMaterial, "_InkTop", new Color(0.30f, 0.39f, 0.21f, 1.0f));
                     SetFloatIfHas(trunkMaterial, "_GradStart", 0.0f);
-                    // 竹高按本场景尺度（170–250 单位），渐变终点跟着放大才不会一片死墨。
+                    // 竹高按本场景尺度（360–520 单位），渐变终点跟着放大才不会一片死墨。
                     SetFloatIfHas(trunkMaterial, "_GradEnd", heightMax);
                     SetFloatIfHas(trunkMaterial, "_NoiseScale", 12.0f);
-                    SetFloatIfHas(trunkMaterial, "_NoiseStrength", 0.20f);
+                    SetFloatIfHas(trunkMaterial, "_NoiseStrength", 0.18f);
                     SetFloatIfHas(trunkMaterial, "_StrokeScale", 8.0f);
-                    SetFloatIfHas(trunkMaterial, "_StrokeStrength", 0.15f);
-                    SetFloatIfHas(trunkMaterial, "_EdgeInk", 0.35f);
+                    SetFloatIfHas(trunkMaterial, "_StrokeStrength", 0.12f);
+                    SetFloatIfHas(trunkMaterial, "_EdgeInk", 0.25f);
                     SetFloatIfHas(trunkMaterial, "_Roughness", 0.6f);
                     SetFloatIfHas(trunkMaterial, "_NodeSpacing", 2.2f);
                     SetFloatIfHas(trunkMaterial, "_NodeWidth", 0.12f);
-                    SetFloatIfHas(trunkMaterial, "_NodeInk", 0.45f);
-                    SetColorIfHas(trunkMaterial, "_Color", new Color(0.11f, 0.17f, 0.10f, 1.0f));
+                    SetFloatIfHas(trunkMaterial, "_NodeInk", 0.38f);
+                    SetColorIfHas(trunkMaterial, "_Color", new Color(0.22f, 0.31f, 0.15f, 1.0f));
                 }
             }
 
@@ -1634,8 +1635,8 @@ namespace Xianxia.Unity.T2
         // 工具
         // =====================================================================
 
-        /// <summary>量一个实例在其局部 up（已转到深度轴）方向上的包围盒长度。</summary>
-        private float MeasureLocalHeight(GameObject inst)
+        /// <summary>量一个实例在生长方向（已转到 growDir）上的包围盒长度。</summary>
+        private float MeasureLocalHeight(GameObject inst, Vector3 growDir)
         {
             Renderer[] rs = inst.GetComponentsInChildren<Renderer>(true);
             if (rs.Length == 0)
@@ -1649,8 +1650,10 @@ namespace Xianxia.Unity.T2
                 b.Encapsulate(rs[i].bounds);
             }
 
-            // 深度轴是 ±Z，因此取世界包围盒的 Z 跨度即可。
-            return Mathf.Abs(b.size.z) > 1e-4f ? Mathf.Abs(b.size.z) : Mathf.Max(b.size.x, b.size.y);
+            // 投影到生长轴方向上的跨度（现在生长轴是 +Y 附近，取沿该轴的投影最稳）。
+            Vector3 axis = growDir.sqrMagnitude > 1e-6f ? growDir.normalized : Vector3.up;
+            float proj = Mathf.Abs(Vector3.Dot(b.size, axis));
+            return proj > 1e-4f ? proj : Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
         }
 
         /// <summary>编辑器/运行时通用销毁。不使用任何战斗内核 API。</summary>
