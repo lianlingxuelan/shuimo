@@ -71,8 +71,39 @@ public class AtmosphereLayer : MonoBehaviour
         Debug.Log("[2.5D][AtmosphereLayer] 已自动注入场景氛围层（水墨天空 + 远山 + 雾）。");
     }
 
-    private void Build()
+#if UNITY_EDITOR
+    // 编辑器预览：不进 PlayMode 也能看水墨天空 + 远山 + 雾。
+    // 用法：先「Shuimo/2.5D/预览竹林(编辑器)」放置竹林，再点本菜单。
+    // 退出前点「清除水墨氛围预览」避免序列化进场景。
+    [UnityEditor.MenuItem("Shuimo/2.5D/预览水墨氛围(编辑器)")]
+    static void EditorPreviewMenu()
     {
+        if (Application.isPlaying) return;
+        if (Object.FindObjectOfType<BambooSceneContext>() == null)
+        {
+            UnityEditor.EditorUtility.DisplayDialog("水墨氛围", "请先「Shuimo/2.5D/预览竹林(编辑器)」放置竹林，再预览氛围。", "OK");
+            return;
+        }
+        if (Object.FindObjectOfType<AtmosphereLayer>() != null) return;
+        var go = new GameObject("AtmosphereLayer");
+        go.AddComponent<AtmosphereLayer>().Build();
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        Debug.Log("[2.5D][AtmosphereLayer] 编辑器预览已生成。退出前请「清除水墨氛围预览」。");
+    }
+
+    [UnityEditor.MenuItem("Shuimo/2.5D/清除水墨氛围预览")]
+    static void EditorClearMenu()
+    {
+        var a = Object.FindObjectOfType<AtmosphereLayer>();
+        if (a != null) Object.DestroyImmediate(a.gameObject);
+        RenderSettings.fog = false;
+        Debug.Log("[2.5D][AtmosphereLayer] 编辑器预览已清除，雾已关闭。");
+    }
+#endif
+
+    public void Build()
+    {
+        if (_built) return;
         _built = true;
 
         var root = new GameObject("AtmosphereRoot");

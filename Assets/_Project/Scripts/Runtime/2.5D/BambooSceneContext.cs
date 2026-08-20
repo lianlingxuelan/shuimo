@@ -450,6 +450,14 @@ namespace Xianxia.Unity.T2
                 Unload();
             }
 
+            // 幂等保护：编辑态预览后子物体可能被序列化进场景、域重载导致 _loaded 复位，
+            // 进入 Play 时再次 Load 会产生「双份竹林」。这里先把已存在的根清掉。
+            Transform existing = transform.Find(GroveRootName);
+            if (existing != null)
+            {
+                SafeDestroy(existing.gameObject);
+            }
+
             ResolveDepthAxis();
             EnsureMaterials();
 
@@ -1274,6 +1282,12 @@ namespace Xianxia.Unity.T2
             {
                 // 地面改用增强版水墨地表，与竹林同款重墨风格。
                 groundMaterial = CreateRuntimeMaterial("Xianxia/Ink/InkGroundRich", "MAT_Ink_Ground_Rich_Runtime");
+                // 增强版 Shader 不可用时退回已验证的 InkGround（Unlit，避免黑/纯色），
+                // 最后才退 Built-in Diffuse（见 CreateRuntimeMaterial 的兜底链）。
+                if (groundMaterial == null)
+                {
+                    groundMaterial = CreateRuntimeMaterial("Xianxia/Ink/InkGround", "MAT_Ink_Ground_Runtime");
+                }
                 if (groundMaterial != null)
                 {
                     SetColorIfHas(groundMaterial, "_PaperColor", new Color(0.92f, 0.90f, 0.84f, 1.0f));
@@ -1289,6 +1303,10 @@ namespace Xianxia.Unity.T2
                     SetColorIfHas(groundMaterial, "_TintColor", new Color(0.84f, 0.86f, 0.92f, 1.0f));
                     SetFloatIfHas(groundMaterial, "_TintStrength", 0.05f);
                     SetColorIfHas(groundMaterial, "_Color", new Color(0.90f, 0.88f, 0.82f, 1.0f));
+                }
+                else
+                {
+                    Debug.LogError("[2.5D] 地面材质创建失败，地面将保持默认纯色。请检查 Xianxia/Ink/* 系列 Shader 是否编译通过。");
                 }
             }
 
