@@ -11,6 +11,7 @@
 // 使用：本地 Shuimo/Scene/Force Recompile 后进入 PlayMode 即可看到效果。
 // 若想调参，可在场景里手动挂一个 AtmosphereLayer 组件，在 Inspector 改下方字段。
 using UnityEngine;
+using Xianxia.Unity.T2;
 
 [DisallowMultipleComponent]
 public class AtmosphereLayer : MonoBehaviour
