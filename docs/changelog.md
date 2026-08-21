@@ -1904,4 +1904,23 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 76 · 修复 EnemyNpcSpawner 重刷闸门 bug（2026-08-21）
+
+**任务**：修一处敌人撒点器的生命周期 bug（非场景、纯逻辑，不依赖视觉验证）。
+
+**根因**：`Update()` 用 `_spawned` 布尔当「仅撒一次」闸门；`OnDisable/OnDestroy` 调 `ClearSpawned()` 销毁全部敌人，但 `ClearSpawned()` **未复位 `_spawned = false`**。于是 spawner 被 disable 再 enable（暂停/分区切换/后续波次重刷）时，`OnEnable()` 见 `_spawned==true` 直接 return，`Update` 永不再撒点 → 敌人永久消失。
+
+**已落地**（`EnemyNpcSpawner.cs`）
+- `ClearSpawned()` 末尾新增 `_spawned = false;`：清空 → 重新激活能正确再来一轮。
+- 不影响 `R` 重载场景（整场景重建、字段默认 false）；只修正「同对象 disable/enable」与未来波次重刷路径。
+
+**提交**：本轮（父 `339a458`）。
+**红线合规**：仅纯逻辑复位，未碰内核、未碰保护资产、未引入依赖。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile` 确认编译通过（无新增命名空间，低风险）。
+2. 进 PlayMode 敌人正常生成；若你有 spawner disable→enable 或波次重刷逻辑，验证重刷后敌人重新出现。
+
+---
+
 **落盘日期**：2026-08-21
