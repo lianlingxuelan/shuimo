@@ -28,6 +28,7 @@ Shader "Xianxia/Ink/InkGroundRich"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_fog
             #include "UnityCG.cginc"
 
             fixed4 _PaperColor;
@@ -52,6 +53,7 @@ Shader "Xianxia/Ink/InkGroundRich"
             {
                 float4 pos : SV_POSITION;
                 float3 wpos : TEXCOORD0;
+                UNITY_FOG_COORDS(1)
             };
 
             v2f vert (appdata v)
@@ -60,6 +62,7 @@ Shader "Xianxia/Ink/InkGroundRich"
                 float4 wp = mul(unity_ObjectToWorld, v.vertex);
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.wpos = wp.xyz;
+                UNITY_TRANSFER_FOG(o, o.pos);
                 return o;
             }
 
@@ -127,7 +130,9 @@ Shader "Xianxia/Ink/InkGroundRich"
                 col = lerp(col, col * 0.92, 0.12);
                 col = lerp(col, _TintColor.rgb, _TintStrength * fbm(p * 0.4));
 
-                return fixed4(col, 1.0);
+                fixed4 final = fixed4(col, 1.0);
+                UNITY_APPLY_FOG(i.fogCoord, final);
+                return final;
             }
             ENDCG
         }

@@ -14,6 +14,7 @@ Shader "Xianxia/Ink/InkSky"
         Tags { "RenderType"="Background" "Queue"="Background" }
         ZWrite Off
         Cull Off
+        Fog { Mode Off }
         Pass
         {
             CGPROGRAM

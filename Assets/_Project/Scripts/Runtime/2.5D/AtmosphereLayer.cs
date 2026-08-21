@@ -1,4 +1,4 @@
-// 场景氛围层：在 SampleScene 运行时程序化注入水墨天空 + 远山剪影 + 雾，
+// 场景氛围层：在 SampleScene 运行时程序化注入水墨天空 + 远山剪影。
 // 解决「白底 + 悬浮柱子、不像场景」的问题。
 //
 // 设计约定（与项目红线一致）：
@@ -30,8 +30,11 @@ public class AtmosphereLayer : MonoBehaviour
     public float mountainWidth = 6000f;     // 山宽（覆盖视野）
 
     [Header("雾")]
+    [Tooltip("雾现在由 BambooSceneContext 统一管理；此处保留仅作向后兼容。")]
     public bool enableFog = true;
+    [Tooltip("已废弃：BambooSceneContext 使用 Linear 雾(start/end)。")]
     public float fogDensity = 0.0016f;
+    [Tooltip("已废弃：BambooSceneContext 使用 fogColor。")]
     public Color fogColor = new Color(0.84f, 0.87f, 0.89f, 1f);
 
     private static AtmosphereLayer s_instance;
@@ -68,7 +71,7 @@ public class AtmosphereLayer : MonoBehaviour
         if (Object.FindObjectOfType<BambooSceneContext>() == null) return;
         var go = new GameObject("AtmosphereLayer");
         s_instance = go.AddComponent<AtmosphereLayer>();
-        Debug.Log("[2.5D][AtmosphereLayer] 已自动注入场景氛围层（水墨天空 + 远山 + 雾）。");
+        Debug.Log("[2.5D][AtmosphereLayer] 已自动注入场景氛围层（水墨天空 + 远山）。雾由 BambooSceneContext 接管。");
     }
 
 #if UNITY_EDITOR
@@ -96,8 +99,8 @@ public class AtmosphereLayer : MonoBehaviour
     {
         var a = Object.FindObjectOfType<AtmosphereLayer>();
         if (a != null) Object.DestroyImmediate(a.gameObject);
-        RenderSettings.fog = false;
-        Debug.Log("[2.5D][AtmosphereLayer] 编辑器预览已清除，雾已关闭。");
+        // 雾由 BambooSceneContext 管理，通过「清除竹林预览」恢复。
+        Debug.Log("[2.5D][AtmosphereLayer] 编辑器预览已清除（天空/远山）。雾请通过「清除竹林预览」恢复。");
     }
 #endif
 
@@ -152,13 +155,7 @@ public class AtmosphereLayer : MonoBehaviour
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
 
-        // 3) 雾：让远景（尤其竹子边缘与远山）柔和淡出，强化空间纵深
-        if (enableFog)
-        {
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogDensity = fogDensity;
-            RenderSettings.fogColor = fogColor;
-        }
+        // 3) 雾：由 BambooSceneContext.ApplyFog() 统一管理，避免两处设置互相覆盖。
+        //    AtmosphereLayer 只负责天空 + 远山；若 BambooSceneContext 不存在，本层也不会被注入。
     }
 }

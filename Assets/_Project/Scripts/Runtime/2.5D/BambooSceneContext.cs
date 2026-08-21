@@ -227,11 +227,11 @@ namespace Xianxia.Unity.T2
         [Tooltip("雾色（宣纸白，与画布同色，远处淡出成水墨留白）")]
         public Color fogColor = new Color(0.95f, 0.94f, 0.89f, 1.0f);
 
-        [Tooltip("线性雾起点距离")]
-        public float fogStart = 400.0f;
+        [Tooltip("线性雾起点距离。相机距玩家约 900，起点设 600 让近处竹林保持清晰。")]
+        public float fogStart = 600.0f;
 
-        [Tooltip("线性雾终点距离")]
-        public float fogEnd = 2200.0f;
+        [Tooltip("线性雾终点距离。远山约 1600-2300，终点 2600 让远山成淡墨剪影。")]
+        public float fogEnd = 2600.0f;
 
         // =====================================================================
         // 运行时状态
