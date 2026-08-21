@@ -16,6 +16,7 @@
 
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Xianxia.Unity.T2;
 
 namespace Shuimo.EditorTools
