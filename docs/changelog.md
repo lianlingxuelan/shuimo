@@ -1923,4 +1923,22 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+### 阶段 77 · 生命周期闸门 bug 全量扫描（负结果，2026-08-21）
+
+**任务**：继阶段 76 修 `EnemyNpcSpawner` 后，全量扫描 Runtime 下所有「布尔闸门 + Clear/Unload/Reset」同类 bug（闸门旗标在 teardown 后未复位，导致 disable→enable / 重刷逻辑死掉）。
+
+**扫描对象与结论（均 Safe，无需改动）**
+1. `BambooSceneContext._loaded`：Unload() 已复位 `_loaded=false`（阶段 74/75 顺带确认）。
+2. `AtmosphereLayer._built`：Build 仅自 Awake / 编辑器菜单调用；GameObject 销毁即实例消亡，场景重载重建后 `_built` 默认 false；编辑器清除走 DestroyImmediate 销毁整个对象。无同实例重跑诉求。
+3. `HudBossBar / HudSkillBar / HudStatusIcons._built`：均「build once、同实例不销毁」，场景重载重建实例，`_built` 自然复位。
+4. `CombatBridge._ready`：持久管理器「装配完成」闸门；TeardownT3 / ResetProgression / TeardownBossFlow 是子系统拆装，不需整体重初始化，`_ready` 保持 true 正确。
+5. `HitEffects._prefabsResolved`：Resources 路径解析缓存一次，ClearAll() 只清活动实例、不使缓存失效，旗标保持 true 正确。
+
+**结论**：该类 bug 仅 `EnemyNpcSpawner` 一处（已阶段 76 修复）。无需额外代码改动，本阶段仅落档，避免后续重复扫描。
+
+**提交**：本轮（仅 changelog，父 `345160e`）。
+**用户本地验收**：无需；纯文档记录。
+
+---
+
 **落盘日期**：2026-08-21
