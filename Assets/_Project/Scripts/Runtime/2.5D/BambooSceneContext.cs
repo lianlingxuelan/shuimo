@@ -56,6 +56,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 using Xianxia.Combat;
 using Xianxia.Core;
 
@@ -367,6 +368,10 @@ namespace Xianxia.Unity.T2
 
         private Vector3 _depthAxis = new Vector3(0.0f, 0.0f, -1.0f);
 
+        // WorldBuilder 生成的占位 Tilemap（纯色宣纸底），水墨地面启用后需把它隐藏，
+        // 否则它会盖在 InkGroundRich Plane 上面，看起来仍是纯色地面。
+        private TilemapRenderer _worldTilemapRenderer;
+
         // 雾的原始设置，Unload 时原样还原（非侵入）
         private bool _fogSaved;
         private bool _prevFogEnabled;
@@ -474,6 +479,7 @@ namespace Xianxia.Unity.T2
             _groveRoot.localPosition = (Vector3)ResolveGroveCenter();
 
             BuildGround();
+            TakeOverWorldTilemap();   // 关闭 WorldBuilder 的纯色 Tilemap，避免盖住水墨地面
             ApplyFog();
 
             int target = Mathf.Clamp(bambooCount, MinBambooCount, MaxBambooCount);
@@ -571,6 +577,7 @@ namespace Xianxia.Unity.T2
                 _worldRoot = null;
             }
 
+            RestoreWorldTilemap();
             RestoreFog();
 
             for (int i = 0; i < _ownedMaterials.Count; i++)
@@ -1174,7 +1181,16 @@ namespace Xianxia.Unity.T2
             ground.transform.localRotation = Quaternion.FromToRotation(Vector3.up, _depthAxis);
             // 略微退到玩法平面之后，避免与 z=0 的女主精灵 z-fighting。
             ground.transform.localPosition = -_depthAxis * 2.0f;
-            float s = Mathf.Max(1.0f, groveHalfExtent * 2.0f) / 10.0f;
+
+            // 地面大小覆盖整个 WorldBuilder 世界（优先），避免竹林区域外露出相机底色。
+            // Plane 默认 10×10 单位，scale = 目标尺寸 / 10。取正方形以简化旋转后的覆盖。
+            float worldSize = groveHalfExtent * 2.0f;
+            if (WorldBuilder.Grid != null && WorldBuilder.Width > 0 && WorldBuilder.Height > 0)
+            {
+                worldSize = Mathf.Max(WorldBuilder.Width * WorldBuilder.TileUnit,
+                                      WorldBuilder.Height * WorldBuilder.TileUnit);
+            }
+            float s = Mathf.Max(1.0f, worldSize) / 10.0f;
             ground.transform.localScale = new Vector3(s, 1.0f, s);
 
             // 地面碰撞体没有用处，删掉以免干扰任何射线/物理查询。
@@ -1188,6 +1204,48 @@ namespace Xianxia.Unity.T2
             if (mr != null && groundMaterial != null)
             {
                 mr.sharedMaterial = groundMaterial;
+            }
+        }
+
+        /// <summary>
+        /// 关闭 WorldBuilder 生成的纯色 Terrain/Tilemap，避免它盖在 InkGroundRich 之上。
+        /// 
+        /// 为什么必须这样做：
+        ///   - WorldBuilder 把 TilemapRenderer.sortingOrder 设为 -100，默认在最底；
+        ///   - 但 Tilemap 的局部 Z 为 0，而 InkGroundRich Plane 被推到 -_depthAxis*2（z≈+2），
+        ///     在正交相机下 z 越小越靠近相机，于是 Tilemap 反而挡在水墨地面之前；
+        ///   - 两者都是宣纸白色，用户看到的是「纯色地面」。
+        /// 
+        /// 这里只关渲染器、不删对象，WorldBuilder.Grid 数据完整保留，玩法逻辑不受影响。
+        /// Unload 时恢复，保证按 R 重开 / 编辑器清理后状态干净。
+        /// </summary>
+        private void TakeOverWorldTilemap()
+        {
+            RestoreWorldTilemap();
+
+            GameObject worldRoot = GameObject.Find("Shumo_T2World");
+            if (worldRoot == null) return;
+
+            Transform terrain = worldRoot.transform.Find("Terrain");
+            if (terrain == null) return;
+
+            Transform tilemap = terrain.Find("Tilemap");
+            if (tilemap == null) return;
+
+            _worldTilemapRenderer = tilemap.GetComponent<TilemapRenderer>();
+            if (_worldTilemapRenderer != null)
+            {
+                _worldTilemapRenderer.enabled = false;
+                Debug.Log("[2.5D] 已隐藏 WorldBuilder 的纯色 Tilemap，改由 InkGroundRich 渲染水墨地面。");
+            }
+        }
+
+        private void RestoreWorldTilemap()
+        {
+            if (_worldTilemapRenderer != null)
+            {
+                _worldTilemapRenderer.enabled = true;
+                _worldTilemapRenderer = null;
             }
         }
 
