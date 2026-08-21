@@ -1844,4 +1844,64 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-**落盘日期**：2026-08-20
+### 阶段 73 · 场景可视化：编辑器预览 + 地面材质兜底（2026-08-21）
+
+**背景**：之前所有竹林/氛围都是「运行时（PlayMode）才生成」，用户在 Scene 视图里盲改、且 PlayMode 后地面仍是纯色，排查困难。
+
+**已落地**
+1. **编辑器预览菜单**（新增 `Assets/_Project/Scripts/Editor/2.5D/BambooEditorPreview.cs`，归属 `Xianxia.Unity.T2.Editor` asmdef）：
+   - `Shuimo / 2.5D / 预览竹林(编辑器)`：不进 PlayMode 即生成竹林 + 水墨地面 + 雾 + 氛围层。
+   - `Shuimo / 2.5D / 清除竹林预览`：清掉预览（Unload + 删氛围 + 关雾）。
+   - 注意：预览是临时性的，看完建议清除再保存，避免把运行时子物体序列化进场景。
+2. **地面材质兜底链**（`BambooSceneContext.EnsureMaterials`）：`InkGroundRich` → 已验证的 `InkGround`(Unlit) → 最后才 Built-in Diffuse。即使增强版 shader 不可用也不会是纯色；全失败时 `Debug.LogError` 明确提示。
+3. 编译修复：`BambooEditorPreview.cs` 先后补 `UnityEngine.SceneManagement` / `UnityEditor.SceneManagement` 两个 using（commit `23e4004` / `415e215`）。
+4. `AtmosphereLayer.Build()` 改 public + 编辑器预览菜单可手动注入氛围层。
+
+**提交**：`2560baa`（父 `db94785`）。
+
+---
+
+### 阶段 74 · 雾过浓 + WorldBuilder Tilemap 覆盖修复（2026-08-21）
+
+**用户现象**：进 PlayMode 整屏发白/奶色，地面看不到水墨。
+
+**根因① · 雾过浓**：`BambooSceneContext.ApplyFog()` 设的是较合理 Linear 雾（start=400/end=2200），但 `AtmosphereLayer.Build()` 随后覆写成 `ExponentialSquared` + `fogDensity=0.0016`；指数平方雾在距离 1000+ 处几乎全冲白，且 `InkSky` 天空球也没关雾被吞掉。
+**根因② · Tilemap 覆盖**：`WorldBuilder` 生成的 `Shumo_T2World/Terrain/Tilemap`（宣纸白、z=0）盖在 `BambooSceneContext` 的水墨地面 Plane（推到 z=+2）之前，两者同色 → 看起来纯色地面。
+
+**已落地**
+1. `AtmosphereLayer` **不再触碰雾**，雾由 `BambooSceneContext` 单一管理（避免互相覆盖）。
+2. `BambooSceneContext` 雾默认值改为 `Linear start=600 / end=2600`。
+3. `InkSky.shader` 加 `Fog { Mode Off }`；`InkGroundRich.shader` 加雾支持，地面/天空与场景雾自然融合。
+4. **`BambooSceneContext.TakeOverWorldTilemap()`**：Load 后按路径找到 `Shumo_T2World/Terrain/Tilemap`，仅禁用其 `TilemapRenderer`（不删对象，`WorldBuilder.Grid` 玩法数据完整保留）；`RestoreWorldTilemap()` 在 Unload/重开时恢复。
+5. **水墨地面 Plane 扩大到整张 `WorldBuilder` 世界**（原只覆盖竹林区 1400×1400，超出会露相机底色）。
+6. 新增 `using UnityEngine.Tilemaps;`。
+
+**提交**：`b4154bf`（雾，父 `415e215`）、`cbb453a`（Tilemap 覆盖 + 地面扩面，父 `b4154bf`）。
+**注**：地面覆盖问题用户决定自行人工排查验收，此修复已落在仓库待其本地确认。
+
+---
+
+### 阶段 75 · 竹林水墨石头点缀（2026-08-21）
+
+**任务**：给竹林加程序化点缀（纯装饰，不依赖内容/数值决策），复用现有 Ink 着色管线、不新增 Shader，降低本地编译风险。
+
+**已落地**（`BambooSceneContext.cs`）
+1. 新增字段：`rockMaterial` + `rockCount(=10)` / `rockMinScale(=36)` / `rockMaxScale(=110)`（Inspector 可调）。
+2. `EnsureMaterials`：石头材质留空时按 `InkGroundRich` 同款参数建深灰石色变体（宣纸白→深灰、墨色加深），并强制 Instancing。
+3. **`BuildDecorations()`**：沿竹林区（`groveHalfExtent`）确定性撒落石头。设计取舍：
+   - 用「平贴地面的小 Plane」而非 3D 球体 —— 避免球体半径穿透玩法平面（z=0 女主）造成错误遮挡，也省去新增 Shader。
+   - 石头平面比地面（z=-_depthAxis*2）更靠前一点（z=-_depthAxis*1.9），既可见、又不挡女主；随机旋转角度避免方石太规整。
+   - 确定性：独立随机流 `zoneSeedId + "_rock"`，与竹子布局互不串扰，同种子重放一致。
+   - 纯装饰：不进玩法/战斗、不干扰砍竹命中；Unload 随 `_groveRoot` 销毁。
+
+**提交**：本轮（父 `cbb453a`）。
+**红线合规**：未碰保护角色资产；未引入第三方包；纯逻辑+表现层改动，零美术资源。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile` → PlayMode：竹林区域内应散布若干深灰水墨石块（平贴地面、随机角度）。
+2. 调整 `rockCount / rockMinScale / rockMaxScale` Inspector 字段即可改数量与大小。
+3. 本环境无 Unity，编译/视觉以用户本地 PlayMode 为准；若石头材质 fallback 或朝向有偏差，截图反馈我修。
+
+---
+
+**落盘日期**：2026-08-21

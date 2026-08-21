@@ -214,6 +214,17 @@ namespace Xianxia.Unity.T2
         [Tooltip("地面材质。留空则运行时按 BambooInkImporter 同款参数建 Xianxia/Ink/InkGround 材质")]
         public Material groundMaterial;
 
+        [Tooltip("石头材质。留空则运行时按 InkGroundRich 同款参数建深灰水墨石材质")]
+        public Material rockMaterial;
+
+        [Header("点缀：水墨石（程序化平面石，复用 InkGroundRich 着色，纯装饰不进玩法）")]
+        [Tooltip("竹林区域撒落的石头数量（纯装饰）")]
+        public int rockCount = 10;
+        [Tooltip("石头最小边长（世界单位）")]
+        public float rockMinScale = 36f;
+        [Tooltip("石头最大边长（世界单位）")]
+        public float rockMaxScale = 110f;
+
         [Tooltip("砍竹粒子 prefab（BambooHitFx）。留空则 BambooVfx 走 Resources 兜底 / 运行时构造")]
         public GameObject inkLeafPrefab;
 
@@ -501,6 +512,8 @@ namespace Xianxia.Unity.T2
             {
                 BuildWorldField(rng);
             }
+
+            BuildDecorations();
 
             _loaded = true;
             ApplyCameraFraming();
@@ -1249,6 +1262,57 @@ namespace Xianxia.Unity.T2
             }
         }
 
+        /// <summary>
+        /// 点缀：沿竹林区域确定性撒落若干水墨石头（平贴 Plane + 深灰墨材质，复用 InkGroundRich 着色管线）。
+        ///
+        /// 设计取舍：
+        ///   - 用「平贴地面的小 Plane」而非 3D 球体 —— 避免球体半径穿透玩法平面（z=0 女主）造成错误遮挡，
+        ///     也避免新增 Shader（本环境无 Unity 无法编译验证，复用现有管线最稳）。
+        ///   - 石头平面比地面（z = -_depthAxis*2）更靠前一点（z = -_depthAxis*1.9），既可见、又不挡女主。
+        ///   - 纯装饰：不进玩法、不占战斗、不干扰砍竹命中；Unload 时随 _groveRoot 一并销毁。
+        ///   - 确定性：独立随机流（zoneSeedId + "_rock"），与竹子布局互不串扰，同种子重放一致。
+        /// </summary>
+        private void BuildDecorations()
+        {
+            if (rockCount <= 0 || rockMaterial == null)
+            {
+                return;
+            }
+
+            PCG32 rng = ZoneSeed.CreateRng(zoneSeedId + "_rock", false, 0);
+            float half = Mathf.Max(1.0f, groveHalfExtent);
+
+            for (int i = 0; i < rockCount; i++)
+            {
+                float x = rng.NextRange(-half, half);
+                float y = rng.NextRange(-half, half);
+                float size = rng.NextRange(rockMinScale, rockMaxScale);
+
+                GameObject rock = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                rock.name = "Rock_" + i;
+                rock.transform.SetParent(_groveRoot, false);
+                // 同地面：法线朝相机；略靠前于地面，避免被地面挡住。
+                rock.transform.localRotation = Quaternion.FromToRotation(Vector3.up, _depthAxis);
+                rock.transform.localPosition = new Vector3(x, y, -_depthAxis.z * 1.9f);
+                float s = Mathf.Max(0.1f, size) / 10.0f;   // Plane 默认 10×10
+                rock.transform.localScale = new Vector3(s, 1.0f, s);
+                // 随机转一个角度，避免方石太规整。
+                rock.transform.Rotate(0.0f, 0.0f, rng.NextRange(0.0f, 360.0f));
+
+                Collider col = rock.GetComponent<Collider>();
+                if (col != null)
+                {
+                    SafeDestroy(col);
+                }
+
+                MeshRenderer mr = rock.GetComponent<MeshRenderer>();
+                if (mr != null)
+                {
+                    mr.sharedMaterial = rockMaterial;
+                }
+            }
+        }
+
         /// <summary>接管场景雾（Built-in RP），先把原设置存下来供 Unload 还原。</summary>
         private void ApplyFog()
         {
@@ -1368,10 +1432,41 @@ namespace Xianxia.Unity.T2
                 }
             }
 
+            if (rockMaterial == null)
+            {
+                // 石头复用 InkGroundRich 的墨韵着色，但整体压成深灰石色，与地面（宣纸白）拉开对比。
+                rockMaterial = CreateRuntimeMaterial("Xianxia/Ink/InkGroundRich", "MAT_Ink_Rock_Runtime");
+                if (rockMaterial == null)
+                {
+                    rockMaterial = CreateRuntimeMaterial("Xianxia/Ink/InkGround", "MAT_Ink_Rock_Runtime");
+                }
+                if (rockMaterial != null)
+                {
+                    SetColorIfHas(rockMaterial, "_PaperColor", new Color(0.56f, 0.55f, 0.52f, 1.0f));
+                    SetColorIfHas(rockMaterial, "_InkColor", new Color(0.18f, 0.17f, 0.15f, 1.0f));
+                    SetColorIfHas(rockMaterial, "_InkDeep", new Color(0.05f, 0.05f, 0.04f, 1.0f));
+                    SetFloatIfHas(rockMaterial, "_BlotScale", 1.1f);
+                    SetFloatIfHas(rockMaterial, "_BlotStrength", 0.95f);
+                    SetFloatIfHas(rockMaterial, "_StrokeAngle", 18.0f);
+                    SetFloatIfHas(rockMaterial, "_StrokeScale", 1.6f);
+                    SetFloatIfHas(rockMaterial, "_StrokeStrength", 0.35f);
+                    SetFloatIfHas(rockMaterial, "_FineScale", 40.0f);
+                    SetFloatIfHas(rockMaterial, "_FineStrength", 0.28f);
+                    SetColorIfHas(rockMaterial, "_TintColor", new Color(0.62f, 0.64f, 0.66f, 1.0f));
+                    SetFloatIfHas(rockMaterial, "_TintStrength", 0.10f);
+                    SetColorIfHas(rockMaterial, "_Color", new Color(0.52f, 0.51f, 0.48f, 1.0f));
+                }
+                else
+                {
+                    Debug.LogError("[2.5D] 石头材质创建失败，将不生成石头点缀。请检查 Xianxia/Ink/* 系列 Shader 是否编译通过。");
+                }
+            }
+
             // 强制 Inspector 拖进来的外部材质也开启 Instancing（用户拖的材质可能没勾选）。
             ForceInstancing(trunkMaterial);
             ForceInstancing(leafMaterial);
             ForceInstancing(groundMaterial);
+            ForceInstancing(rockMaterial);
         }
 
         private static void ForceInstancing(Material mat)
