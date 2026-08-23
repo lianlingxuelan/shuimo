@@ -30,7 +30,7 @@ namespace Xianxia.Unity.T2
     /// <summary>战斗编排器。挂在 Combat 节点上，与 CombatController 同体。</summary>
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(-200)]
-    public sealed class CombatBridge : MonoBehaviour
+    public sealed class CombatBridge : MonoBehaviour, IDamageRequester
     {
         // ---------------------------------------------------------------------
         // 玩家数值（三处口径必须一致：这里 / CombatController.playerHpMax /
@@ -1017,6 +1017,27 @@ namespace Xianxia.Unity.T2
         public bool RequestDodge(Vector2 dir)
         {
             return RequestCast(IntentSlot.Dodge, dir);
+        }
+
+        /// <summary>
+        /// <see cref="IDamageRequester"/> 实现：把敌人的接触伤害请求投递进战斗内核。
+        /// 【红线】本方法绝不直接改 HP，只调 <see cref="Combatant.ApplyEnemyDamage"/>，
+        /// 由内核 WCore.DamageFilter（模型 B 减伤）统一结算 —— 推进权唯一。
+        /// 由 <see cref="EnemyPatrol"/> 在贴身攻击且冷却到点时经此抛出（表现与逻辑解耦）。
+        /// </summary>
+        /// <param name="rawDamage">原始伤害（未套减伤，真减伤在内核侧）。</param>
+        public void RequestContactDamage(float rawDamage)
+        {
+            if (controller == null || controller.Encounter == null)
+            {
+                return;
+            }
+            Combatant player = controller.Player;
+            if (player == null || !player.IsAlive)
+            {
+                return;
+            }
+            player.ApplyEnemyDamage(rawDamage);
         }
 
         // ---------------------------------------------------------------------

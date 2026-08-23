@@ -97,6 +97,9 @@ namespace Xianxia.Unity.T2
         [Tooltip("伤害请求出口（解耦接口）。由 CombatBridge 注入实现；为空则只播表现不掉血。")]
         public IDamageRequester damageRequester;
 
+        [Tooltip("是否允许本敌人经 damageRequester 真正造成玩家伤害。false = 永不掉血（NPC 用）。")]
+        public bool damageEnabled = true;
+
         [Header("确定性种子")]
         [Tooltip("巡逻随机种子（由 Spawner 按 区域+序号 给定，保证同关卡可复现）")]
         public uint seed;

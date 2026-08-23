@@ -1,25 +1,27 @@
 # 水墨风仙侠 RPG · 开发变更日志（Changelog）
 
-> **项目**：`shuimofeng`（水墨风 2D 开放世界动作仙侠 RPG）
-> **引擎**：Godot 4.7 原型（保留不废弃） + 新开独立 Unity 工程 `F:\AI-project\ancientGame\shuimofeng\shuimofeng`（Unity 2022.3.62f3c1，2D 模板）
-> **时间跨度**：2026-07-30 ～ 2026-08-08（持续更新）
-> **核心团队**：主理人 齐活林；产品经理 许清楚；架构师 高见远；工程 寇豆码；QA 严过关
+> **项目**：`shuimofeng`（水墨风 2D 开放世界动作仙侠 RPG）  
+> **引擎**：Godot 4.7 原型（保留不废弃） + 新开独立 Unity 工程 `F:\AI-project\ancientGame\shuimofeng\shuimofeng`（Unity 2022.3.62f3c1，2D 模板）  
+> **时间跨度**：2026-07-30 ～ 2026-08-08（持续更新）  
+> **核心团队**：主理人 齐活林；产品经理 许清楚；架构师 高见远；工程 寇豆码；QA 严过关  
 > **本文件性质**：跨阶段交付汇总。所有数据均来自 `.workbuddy/memory/` 工作日志与 `docs/`、`ancientGame/.../docs/` 设计文档逐行核实，非凭记忆。
+>
+>
 
 ---
 
 ## 1. 总览表（Overview）
 
-| # | 阶段 | 时间 | 关键交付 | 核心验证口径 | 状态 |
-|---|------|------|----------|--------------|------|
-| 0 | 原型 / Godot 段 | 07-30 ～ 08-02 | Web 可玩原型（`src/explore/`）+ Godot 4.7 真客户端（`godot/`） | `tsc --noEmit` 0 报错；Godot headless **0 ERROR / 0 SCRIPT ERROR** | ✅ 完成 |
-| 1 | Unity 重构蓝图 + 决策 | 08-03 | `docs/unity-rebuild-blueprint.md`（1106 行）+ 工程骨架 | — | ✅ 决策定稿 |
-| 2 | **T0 地基**（引擎无关 Core 层） | 08-04 | PCG32 / WCore / Difficulty / ZoneData / ZoneSeed / ZoneLoader + `wcore_selfcheck.py` | **Python 对拍 57/57 PASS** | ✅ 完成 |
-| 3 | 工程脚手架 + asmdef 分层 | 08-04 ～ 08-05 | 5 个核心 asmdef 分层 + T2 运行时盒 `Xianxia.Unity.T2` | Unity 打开 **0 错误 0 警告** | ✅ 完成 |
-| 4 | **T1 战斗逻辑内核** | 08-04 | 10 个纯 C# 内核 + 3 个 Unity 薄壳 + 对拍护栏 | **对拍 63/63 → U1 修复后 64/64 PASS** | ✅ 完成 |
-| 5 | **T2 可玩垂直切片** | 08-02 ～ 08-05 | 实时可玩切片（移动/相机/世界/战斗/HUD）+ U1 平衡修复 | U1 后 `t1_selfcheck.py` **64/64**；NUnit 88 PASS | ✅ 完成 |
-| 6 | **T3 P0 战斗系统深化** | 08-02 晚 ～ 08-07 | 技能/状态/闪避/双池 + 确定性护栏 + 注释 | **`t3_selfcheck.py` 9/9 + `t1_selfcheck.py` 64/64** | ✅ 完成 |
-| 7 | **局循环 P0（Run Loop）** | 08-07 ～ 08-08 | K/L 修复 + 功能闭环清单 + P0-3 胜负状态机 + P0-2 死亡/胜利面板 + P0-4 按 R 重开 | 用户 PlayMode 103 测试全绿；护栏 **9/9 + 64/64**；QA 两轮均判 NoOne | 🟡 代码完成，**待用户本地 PlayMode 验收** |
+| # | 阶段                     | 时间              | 关键交付                                                                                 | 核心验证口径                                                          | 状态                            |
+| - | ---------------------- | --------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------- |
+| 0 | 原型 / Godot 段           | 07-30 ～ 08-02   | Web 可玩原型（`src/explore/`）+ Godot 4.7 真客户端（`godot/`）                                   | `tsc --noEmit` 0 报错；Godot headless **0 ERROR / 0 SCRIPT ERROR** | ✅ 完成                          |
+| 1 | Unity 重构蓝图 + 决策        | 08-03           | `docs/unity-rebuild-blueprint.md`（1106 行）+ 工程骨架                                      | —                                                               | ✅ 决策定稿                        |
+| 2 | **T0 地基**（引擎无关 Core 层） | 08-04           | PCG32 / WCore / Difficulty / ZoneData / ZoneSeed / ZoneLoader + `wcore_selfcheck.py` | **Python 对拍 57/57 PASS**                                        | ✅ 完成                          |
+| 3 | 工程脚手架 + asmdef 分层      | 08-04 ～ 08-05   | 5 个核心 asmdef 分层 + T2 运行时盒 `Xianxia.Unity.T2`                                         | Unity 打开 **0 错误 0 警告**                                          | ✅ 完成                          |
+| 4 | **T1 战斗逻辑内核**          | 08-04           | 10 个纯 C# 内核 + 3 个 Unity 薄壳 + 对拍护栏                                                    | **对拍 63/63 → U1 修复后 64/64 PASS**                                | ✅ 完成                          |
+| 5 | **T2 可玩垂直切片**          | 08-02 ～ 08-05   | 实时可玩切片（移动/相机/世界/战斗/HUD）+ U1 平衡修复                                                     | U1 后 `t1_selfcheck.py` **64/64**；NUnit 88 PASS                  | ✅ 完成                          |
+| 6 | **T3 P0 战斗系统深化**       | 08-02 晚 ～ 08-07 | 技能/状态/闪避/双池 + 确定性护栏 + 注释                                                             | **`t3_selfcheck.py` 9/9 + `t1_selfcheck.py` 64/64**             | ✅ 完成                          |
+| 7 | **局循环 P0（Run Loop）**   | 08-07 ～ 08-08   | K/L 修复 + 功能闭环清单 + P0-3 胜负状态机 + P0-2 死亡/胜利面板 + P0-4 按 R 重开                            | 用户 PlayMode 103 测试全绿；护栏 **9/9 + 64/64**；QA 两轮均判 NoOne           | 🟡 代码完成，**待用户本地 PlayMode 验收** |
 
 > 关键常量（全阶段共享、不可改）：`PlayerHpMax = 260` / `d_eff = 4.0`（玩家血 260/65）/ 围攻倍率 **2.5294x**（= 4.300 / 1.700）/ W-CORE 闸门 0.6s 每源 + 0.2167s 全局 / 内核固定步长 `1/60`。
 
@@ -32,6 +34,7 @@
 **目标**：先把玩法、系统、方向「打量」清楚，用可玩载体验证手感与数据模型，再决定落地引擎。
 
 **Web 原型（Vite + TS + Canvas2D，`src/explore/`）**
+
 - 开放世界最小集：GameClock 昼夜 / WeatherSystem 天气 / FogOfWar 迷雾（对齐 `systems-deepdive-open-world.md`）。
 - 经济循环最小集：Inventory + Wallet 多币种（灵石/铜币/贡献）+ Shop + HarvestNode + 任务主线。
 - A1–A5 全量可玩：装备对比升阶 / NPC 交互 / 秘境 / 仙侣+法宝 / 多类型任务；后续补按钮化 UI（角色/技能/法宝/仙侣/地图 5 面板 + 9 按钮栏 + 等级境界突破）。
@@ -39,6 +42,7 @@
 - 全链路经 `tsc --noEmit` 0 报错、dev server HTTP 200 验证。
 
 **Godot 4.7 真客户端（`godot/`，最终目标 = Steam 上架）**
+
 - Phase0 自含工程（打开即跑，贴图运行时生成）；headless 实跑 **0 ERROR / 0 SCRIPT ERROR**。
 - 像素风瓦片（水/岩石逻辑像素手绘 + 多变体 + 1px 边缘过渡消除网格线）、草地连续大图（LINEAR）/ 瓦片层 NEAREST 采样分离。
 - 立绘加载根治：`Image.load()` + `ProjectSettings.globalize_path()` 集中加载（`preload_textures()`），五张立绘 5/5 成功。
@@ -107,15 +111,18 @@
 **背景**：T3 P0 交付后，战斗本身已可玩，但用户首次进 PlayMode 实测暴露一个 MVP 级硬伤——**玩家血空后 Unity 层零响应**（还能 WASD 跑、只能 Alt+F4 退出）。PM 逐文件核查证实：全仓 grep `gameover / respawn / victory / defeat` **零命中**。
 
 **7.1 K/L 技能无响应 Bug（虚惊一场，修复有效）**
+
 - 用户初报「K/L/右键放不出技能」，工程师定位并修复；用户随后**自行澄清并推翻**："K L 键好像有的，那些按键都挺正常的，确实是正常的。"
 - 结论：K/L 修复**成功**。同批实测确认闪避（Shift/Space）手感在线、WASD 正常、**Test Runner 103 测试全绿**。
 
 **7.2 PM《功能闭环缺口清单》（`docs/feature-closure-plan.md`，335 行）**
+
 - P0 六项：P0-1 战斗 loop 真跑通（部分）/ P0-2 死亡→结束（**无**）/ P0-3 胜负判定（**无**）/ P0-4 重开重试（**无**）/ P0-5 主菜单暂停退出（**无**）/ P0-6 操作引导（**无**）。另 P1 七项、P2 六项、Steam 附加 4 项。
 - 其他缺口：全仓 **0 AudioSource**（无声）、**0 PlayerPrefs**（无存档）；`BossController` 三相位纯逻辑写完但 Unity 未接线；`Assets/images/` 8 张 AI 图无 `.meta`、是立绘非精灵帧（只能当参考）。
 - **头号卡点 = 验证断链（结构性）**：19 项缺口本环境能自验仅 3 项（16%），84% 卡 Unity 验证链。据此确立**小批次交付策略**：改一个验一个，避免未验证改动累积复利风险。
 
 **7.3 P0-3 胜负状态机（纯逻辑层，可 NUnit 自证）**
+
 - 新增 `RunPhase.cs`（`enum RunPhase{Playing,Won,Lost}` + `RunPhaseTracker`）、`Encounter.cs` 4 处纯增量插入（`StepFixed` 末尾调 `RunState.Evaluate`）、`RunPhaseTests.cs`（NUnit 14 条）。零新增 asmdef、零 `UnityEngine`。
 - **核心设计 = 只观察不干预**：状态机只读 `Player.IsAlive` + 敌人存活数，**绝不**暂停/清场/短路 `StepFixed`（RP-14 锁死：判负后 StepCount 照常 +10）；`PhaseChanged` 事件一局至多触发一次（幂等闸门）；**Lost 优先于 Won**（同归于尽算输）。「弹界面/暂停」明确留给 Unity 层。
 - QA 判 **NoOne**，并**自行修复 1 处假绿**：RP-14 原断言只查计数器（真插 `if(IsRunOver) return` 仍会绿），补「判负后尸体仍被收走」的副作用断言，才真守住红线。
@@ -123,20 +130,23 @@
 - F-1 记入 P1 待办：多波次场景会被永久锁 `Won`（现状全仓仅单波次，安全）。
 
 **7.4 P0-2 死亡/胜利面板 + P0-4 按 R 重开（Unity 表现层）**
+
 - 新增 `Assets/_Project/Scripts/Runtime/GameOverHud.cs`：运行时动态造 `GameOverCanvas`（ScreenSpaceOverlay，`sortingOrder=200`，CanvasScaler 1920×1080 / match 0.5，GraphicRaycaster）+ Legacy Text 大字（72px 白色居中）+ 小字「按 R 重新开始」（28px）；`Show(RunPhase)`：Lost → 「你 倒 下 了」，Won → 「胜 利」。**零 TMP、零外部美术资源**（守红线 9）。
 - 改 `CombatBridge.cs`：`Start()` 末尾（`_ready = true` 之后）建 HUD 并订阅 `Encounter.RunState.PhaseChanged`；`OnRunPhaseChanged` 中 `Playing` 直接 return → `controller.Scheduler.Paused = true` → `Show(phase)`；`OnDestroy` 退订；`Update()` 中 `IsRunOver && GetKeyDown(R)` → `SceneManager.LoadScene(当前 buildIndex)`。新增 `IsRunOver` 只读转发属性。
 - 改 `PlayerController.cs`：`ResolveBridge()`（抄 `SkillController` 写法，含 `UNITY_2023_1_OR_NEWER` 条件编译）+ `Update()` 开头 `if (b != null && b.IsRunOver) return;` 冻结移动。
 - **暂停入口选型**：走内核既有 `CombatScheduler.Paused`（`Tick()` 内首行拦截），而非 `Time.timeScale=0`——不污染全局时间、不破坏内核推进权唯一（红线 3）。
 - **重开策略**：重载当前场景 = 100% 干净重置（新 `Encounter` + 新 `RunPhaseTracker`，`OnDestroy` 退订旧订阅无泄漏），不做易漏的手工状态回滚。
 - **护栏全绿**（主理人亲自复跑）：`t3_selfcheck.py` **9/9** + `t1_selfcheck.py` **64/64**，数值指纹 4.300 / 1.700 / 2.5294x 未动。
-- **QA 判 NoOne**，逐条对 RunPhase 契约成立（只观察不干预 / 幂等 / Lost 优先 / 订阅时机安全 / 暂停真生效 / 重开无泄漏 / 层级方向正确）；补测试套件 `Assets/_Project/Scripts/Runtime/Tests/`：`P0_2_GameOverHudTests.cs`（EditMode 8 条 GOH-01~08）、`P0_2_P0_4_PlayModeTests.cs`（PlayMode 6 条 P2-01~03 + P4-01~02，**用户需先填 `GameplaySceneName`**）、`Xianxia.Unity.T2.Tests.asmdef`。
+- **QA 判 NoOne**，逐条对 RunPhase 契约成立（只观察不干预 / 幂等 / Lost 优先 / 订阅时机安全 / 暂停真生效 / 重开无泄漏 / 层级方向正确）；补测试套件 `Assets/_Project/Scripts/Runtime/Tests/`：`P0_2_GameOverHudTests.cs`（EditMode 8 条 GOH-01~~08）、`P0_2_P0_4_PlayModeTests.cs`（PlayMode 6 条 P2-01~~03 + P4-01~02，**用户需先填 `GameplaySceneName`**）、`Xianxia.Unity.T2.Tests.asmdef`。
 - **待用户本地验证**：PlayMode 送死 → 弹「你倒下了」+ WASD 冻结 → 按 R 满血重开；清场 → 弹「胜利」；Test Runner 跑 EditMode 8 + PlayMode 6。
 
 **7.5 协作流程教训（写入惯例）**
+
 1. **派工后必须 grep 核实落盘**，不轻信"完成"通知：本轮一名工程师 11 秒报完成但零文件落盘（判明为 prompt 传输故障，agent 收到空 assignment），处置 = 重建团队 + 用消息通道把完整规格重发兜底。
 2. **两套脚本根别搞混**：一名 QA 只扫 `Assets/Scripts/`（纯逻辑区）就断言「代码不存在」，而实现在 `Assets/_Project/Scripts/Runtime/`（表现层），造成误报 blocker。搜不到先换根，再下结论。
 
 **7.6 P0-2/P0-4 重开 BugFix：按 R 后玩家看不见 / 地图变了（08-08）**
+
 - **现象**：用户实测按 R 重开后——玩家蓝色方块（Player）看不见、但技能照常能放、地图/世界与首局不同。
 - **根因**：`Bootstrap.EnsureWorldAtRuntime` 用 `[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]`，该回调**仅在第一次场景加载后触发一次**；后续 `SceneManager.LoadScene`（按 R 重开）不再触发 → 新场景直接加载磁盘上编辑期残留的旧世界。那些旧对象的运行时 Sprite/Texture 是动态 new 出来的、无法随 `.unity` 序列化，**加载后 SpriteRenderer.sprite 全成 null** → Player 看不见；而旧世界与首局运行时生成的世界本就不是同一份 → 地图变了。能放技能是因为编辑期残存的 Combat 对象带了 CombatBridge/CombatController，Awake 重新装配了内核。
 - **修复**（BugFix 团队 `software-bugfix-restart-world`）：`Bootstrap.cs` 新增 `using UnityEngine.SceneManagement;` + 私有静态旗标 `_firstSceneLoaded`；`EnsureWorldAtRuntime` 保留 `Register()` 并订阅 `SceneManager.sceneLoaded += OnSceneLoaded`，首次走 `_firstSceneLoaded` 兜底 `BuildWorldIfNeeded()`；抽出 `BuildWorldIfNeeded()`（`IsWorldLive()` 为 false 才 `ShuimoSceneBuilder.BuildAll()`），并新增 `OnSceneLoaded(Scene, LoadSceneMode)` 接管**每次**场景加载后（含按 R 重开）的重建。旗标保证首次与重开路径任一条只 Build 一次、绝不重复也不漏。
@@ -165,6 +175,7 @@
 ## 4. 路线图（Roadmap）
 
 **已交付（截至 2026-08-08）**
+
 - ✅ 原型 / Godot 段（Web 可玩验证 + Godot 4.7 真客户端）
 - ✅ Unity 重构蓝图与工程决策
 - ✅ T0 地基（57/57 对拍）
@@ -178,6 +189,7 @@
 **关键路径（蓝图 §0）**：T0 → T1-C1（W-CORE 测试台）→ T1 → T2 → T3；T3 UI 从 T1 中期起可并行。
 
 **待办 / 下一步**
+
 1. **T3 P1（战斗厚度）**：普攻连招 3 段 / 敌人 AI 扩至七态（ALERT/SURROUND/FLEE/ENRAGE，`alertConfirmDelay=0`）/ BOSS 接线 + 狂暴计时 / 锁定索敌 Lock-on / Debuff 补全至 9 种 + 控制免疫窗 / 连击增伤 / 受击反应四级 / 敌人技能化。多数列 P1 且**引入硬控/敌人技能化须重跑 U1 平衡回归**。
 2. **T3 P2（增强包）**：战力评估 `power_score` / 完美闪避 / 格挡·完美格挡 / 蓄力重击 / 暴击 + hitstop / PlayMode 战斗冒烟自动化。
 3. **T4 养成线（尚未立项）**：等级 / 境界 / 属性点 / 装备与词条 / 技能树 / 掉落与背包 / 多区域内容量。境界压制、五行克制、斩杀线等**伤害乘区**必须随养成线一起做（会改写 U1 口径，现在做 = 没有地基砌墙）。仇恨表 HateTable 等仙侣/召唤物出现再做。
@@ -192,21 +204,25 @@
 **触发**：用户 Play 实测——按 R 重开后（Bootstrap 修复已让地图正常重建）玩家蓝色方块仍「看不见」。
 
 **诊断（主理人 + 工程师 + QA 三方复核）**
+
 - 排除所有主动隐藏路径：`PlayerController` 不碰 `SpriteRenderer`；`BuildCombat`/`CombatBridge.Configure` 只存引用；`VfxStatus` 只给宿主加叠加层子物体、不禁用/改写玩家本体渲染器。
 - 渲染层级正确：地形 `sortingOrder=-100`、玩家 `sortingOrder=10` → 玩家必画在地形之上；精灵由 `SpriteFactory.SolidRect` 生成且有效（`NewTexture` RGBA32/Bilinear/Clamp 正常）；玩家 `z=0` 与可见地形同平面。
 - R 重开路径精灵有效：`SpriteFactory.Clear()`（L132）在 `BuildPlayer`（L151）之前执行，重建出全新 Sprite，无旧引用残留。
 - **根因 = 比例/可见性缺陷**：`PlayerBodySize=24`（24×24 世界单位）vs 相机正交半高 `CameraOrthoSize=352`（整屏可见 ≈704 单位 ≈22 格）→ 玩家仅约 3% 小蓝点淹没在地形里。该问题从首帧即存在，与 R 重开无关。
 
 **修复（最小变更，仅 `WorldBuilder.cs`）**
+
 - L74：`PlayerBodySize` 24 → **40**（≈1.25 格，屏上 ≈6% / ~61px@1080p）。
 - L552–554：朝向指示条由硬编码 `14×5` 改按身体比例生成 `facingW = Mathf.RoundToInt(PlayerBodySize * 0.6f)`（=24）、高 7；与 `PlayerController.UpdateFacingMarker` 同用 `0.62f` 外移系数，几何自洽。
 
 **验证口径**
+
 - 工程师改动主理人亲自 grep 核实落盘（L74 / L552–554）。
 - QA 静态复核路由 **NoOne**：逻辑正确、引用完整（全目录 6 处 `PlayerBodySize` 无残留硬编码 24）、`BuildScene` 顺序未变、无新依赖、无回归风险。
 - **本环境无 Unity/dotnet，无法编译或运行任何测试，需用户在 Unity 编辑器 Play 验证。**
 
 **⚠️ 用户验证注意（QA 红线，必读）**
+
 1. **必须完整重进 Play 或 Clean And Rebuild**：`SolidRect` 缓存 key 为 `"rect_player"`、**不含尺寸**。若仅热重载而未走 L132 `SpriteFactory.Clear()`，会命中旧 24×24 缓存 → 修复「看似无效」。
 2. **根因完整性存疑**：原 24 单位 ≈37px@1080p，偏小但非物理不可见。若 Play 后玩家**仍完全不可见**，说明另有渲染层根因（非比例），需二次排查——优先看 **Camera culling mask / Sprite 材质**，届时回工程师走第二论。
 
@@ -220,26 +236,28 @@
 
 **范围**：按 `feature-closure-plan.md` §3「清单 B」推进 **阶段 A**——调亮 3 张水墨参考样品 + 输出《精灵帧规划文档》。不含任何代码改动、不触发 AI 出图（省 credits）。
 
-**关键发现（反直觉）**：实测 3 张原图都是**亮宣纸底**（mean 171~197 / median 204~240），不是暗底。全局 gamma 提亮会把留白拍成死白，正确做法是 **shadow-weighted lift（仅抬暗部、纸白不动）**。最终参数 gamma=1.30 / shadow_focus=2.0 / contrast=1.16（端点保护，不钳位）。
+**关键发现（反直觉）**：实测 3 张原图都是**亮宣纸底**（mean 171~~197 / median 204~~240），不是暗底。全局 gamma 提亮会把留白拍成死白，正确做法是 **shadow-weighted lift（仅抬暗部、纸白不动）**。最终参数 gamma=1.30 / shadow_focus=2.0 / contrast=1.16（端点保护，不钳位）。
 
 **产出（均主理人亲自上盘核实落盘）**
+
 - `Assets/images/samples_brightened/` 下 3 张 `{原名}_brightened.png`（女侠立绘 / 妖魔小怪 / 山水场景）。
 - `tools/brighten_samples.py`（Pillow，纯暗部加权提亮，可复跑）。
 - `docs/art-sprite-plan.md`（294 行，8 章节，覆盖 heroine / enemies / tiles / vfx / ui 五类精灵帧规格 + 阶段 A–D 路线 + R1~R3 风险）。
 
 **亮度量化（主理人自跑 Pillow 统计，非依赖 agent 回传）**
 
-| 图 | 原 mean | 调 mean | 原 p05 | 调 p05 | 原白% | 调白% | 结论 |
-|---|---|---|---|---|---|---|---|
-| 女侠立绘 | 171.1 | 178.0 | 39.0 | 46.0 | 0.025 | 0.000 | ✅ PASS |
-| 妖魔小怪 | 189.4 | 194.5 | 7.0 | 11.0 | 0.274 | 0.000 | ✅ PASS |
-| 山水场景 | 197.3 | 200.8 | 23.0 | 30.0 | 0.751 | 0.000 | ✅ PASS |
+| 图    | 原 mean | 调 mean | 原 p05 | 调 p05 | 原白%   | 调白%   | 结论     |
+| ---- | ------ | ------ | ----- | ----- | ----- | ----- | ------ |
+| 女侠立绘 | 171.1  | 178.0  | 39.0  | 46.0  | 0.025 | 0.000 | ✅ PASS |
+| 妖魔小怪 | 189.4  | 194.5  | 7.0   | 11.0  | 0.274 | 0.000 | ✅ PASS |
+| 山水场景 | 197.3  | 200.8  | 23.0  | 30.0  | 0.751 | 0.000 | ✅ PASS |
 
 > 暗部 p05 抬升、纯白占比不升反降（无过曝），验证 shadow-lift 正确。
 
 **质量关卡**：工程师（software-engineer）+ QA（software-qa-engineer）两个子 agent 均撞 `Max turns (20/15) exceeded` 上限未回传结论；但产物已主理人亲自 grep/读图/跑统计三重核实，**路由 NoOne**（无源码改动、无回归、文档完整）。调试废稿 `tools/_compare_sheet.png` 已清。
 
 **待用户拍板 / 后续（阶段 B–D）**
+
 1. 阶段 B：按文档 §4① 生成女主 `idle`+`attack` 验证样品（需 ImageGen，~290 credits 估算见文档 R2），用户目检风格通过后放批量。
 2. 文档 3 处「与简报差异」待产品/设计确认：①敌人路径 `characters/enemies/` vs `enemies/`；②女主动作命名 `attack` vs `attack1/attack2/skill`；③瓦片 `ground2` vs `path`（建议按文档）。
 3. 阶段 D 改造 `SpriteFactory` 时**缓存 key 必须含 w×h×color**（复用本工程既有热重载坑教训）。
@@ -263,6 +281,7 @@
 5. **边缘发虚风险**：idle 半成品中半透明像素占 48.4%，游戏内可能显"雾"，需用户目检定。
 
 **产出（主理人亲自核实落盘）**
+
 - `Assets/images/characters/heroine/heroine_idle_sample.png`（48×64 RGBA）
 - `Assets/images/characters/heroine/heroine_attack_sample.png`（96×64 RGBA）
 - `Assets/images/characters/heroine/_preview_heroine_sample.png`（1248×576 放大预览图）
@@ -270,6 +289,7 @@
 - `Assets/images/_raw_gen/` 下 2 张原图（调试用，可删）
 
 **待用户决策**
+
 - **选项 A：继续批量**（接受当前"立绘缩精灵"的风格，后续所有角色/敌人都用同套路出，再统一扣底缩放）。
 - **选项 B：改出图策略**（调整提示词为更强势的俯视精灵约束，如"top-down view / game sprite / no face detail / small on canvas"，或先生成概念三视图再人工精灵化）。
 - **选项 C：退回阶段 A 不走 B**（用现有调亮样品做立绘/对话场景，战斗层继续用方块占位，等美术外包/人工重绘）。
@@ -286,11 +306,11 @@
 
 **实验设计（三变体提示词核心差异）**
 
-| 变体 | 视角约束关键词 | 设计意图 |
-|------|---------------|---------|
-| V1 | `bird's eye view, top-down, looking straight down, overhead, NOT a portrait` | 最强俯视指令，否定立绘先验 |
-| V2 | `45 degree high angle overhead, slightly above looking down, 3/4 view` | 退一步要 45° 高角，贴近游戏惯例 |
-| V3 | `minimal ink silhouette game sprite, top-down, small on canvas` | 剪影化，压细节只留可辨轮廓 |
+| 变体 | 视角约束关键词                                                                      | 设计意图               |
+| -- | ---------------------------------------------------------------------------- | ------------------ |
+| V1 | `bird's eye view, top-down, looking straight down, overhead, NOT a portrait` | 最强俯视指令，否定立绘先验      |
+| V2 | `45 degree high angle overhead, slightly above looking down, 3/4 view`       | 退一步要 45° 高角，贴近游戏惯例 |
+| V3 | `minimal ink silhouette game sprite, top-down, small on canvas`              | 剪影化，压细节只留可辨轮廓      |
 
 **关键结论（主理人亲自上盘 + Pillow 客观测量）**
 
@@ -337,11 +357,11 @@
 
 **关键结论（主理人独立上盘 Pillow 复核，数据逐像素重算）**
 
-| 帧 | 尺寸 | 模式 | 可见占比 | bbox | bbox 占画幅比 |
-|----|------|------|---------|------|-------------|
-| idle | 48×64 | RGBA | **27.25%** | (0,1,47,61) | 95.31% |
-| walk_down | 48×64 | RGBA | **35.81%** | (10,0,37,63) | 58.33% |
-| attack | 96×64 | RGBA | **18.36%** | (19,0,61,55) | 39.19% |
+| 帧         | 尺寸    | 模式   | 可见占比       | bbox         | bbox 占画幅比 |
+| --------- | ----- | ---- | ---------- | ------------ | --------- |
+| idle      | 48×64 | RGBA | **27.25%** | (0,1,47,61)  | 95.31%    |
+| walk_down | 48×64 | RGBA | **35.81%** | (10,0,37,63) | 58.33%    |
+| attack    | 96×64 | RGBA | **18.36%** | (19,0,61,55) | 39.19%    |
 
 - 三张可见占比全部落在 **15%–45% 目标窗口** → 3/4 视角 + 占比约束生效（对比阶段 B2 V1 仅 8.43% 不可辨）。
 - attack 因画布宽 96（idle 两倍），同站姿人物横向留白多致「可见像素占比」18.36%；但其 bbox 占画幅比 39.19%、墨密度 46.8%，人物本身仍按 ~30% 渲染，宽画布只是分母变大。
@@ -378,16 +398,16 @@
 
 **主理人独立复核（逐像素重算，不采信 IS_PASS）**
 
-| Pose | 帧数 | 尺寸 | 可见占比范围 | 达标 |
-|------|------|------|-------------|------|
-| idle | 4 | 48×64 | 20.7%–27.2% | ✅ |
-| walk_down | 6 | 48×64 | 21.5%–28.6% | ✅ |
-| walk_up | 6 | 48×64 | 28.0%–29.4% | ✅ |
-| walk_side | 6 | 48×64 | 23.3%–25.1% | ✅ |
-| attack | 6 | 96×64 | 11.2%–11.7% | ⚠几何（bboxfill 18.7–23.6%） |
-| hurt | 2 | 48×64 | 12.0%–13.0% | ✅ |
-| dodge | 4 | 48×64 | 12.5%–13.7% | ✅ |
-| death | 5 | 64×64 | 14.0%–26.8% | ✅ |
+| Pose      | 帧数 | 尺寸    | 可见占比范围      | 达标                       |
+| --------- | -- | ----- | ----------- | ------------------------ |
+| idle      | 4  | 48×64 | 20.7%–27.2% | ✅                        |
+| walk_down | 6  | 48×64 | 21.5%–28.6% | ✅                        |
+| walk_up   | 6  | 48×64 | 28.0%–29.4% | ✅                        |
+| walk_side | 6  | 48×64 | 23.3%–25.1% | ✅                        |
+| attack    | 6  | 96×64 | 11.2%–11.7% | ⚠几何（bboxfill 18.7–23.6%） |
+| hurt      | 2  | 48×64 | 12.0%–13.0% | ✅                        |
+| dodge     | 4  | 48×64 | 12.5%–13.7% | ✅                        |
+| death     | 5  | 64×64 | 14.0%–26.8% | ✅                        |
 
 - **39/39 帧尺寸精确达标 + RGBA**；可见占比全部落在可接受窗口（attack 因 96 宽画布几何分母大一倍，可见像素占比 11% 但 bbox fill 18.7–23.6% 正常，与阶段 C attack 参考同量级，判定 ACCEPT）。
 - **背景零残留**：全帧 bgPoll（全透明像素带背景色比例）= 0.0–0.3%；半透明边缘像素 semiAvgRGB 均为墨色（如 (37,36,36)），**无白边光晕**。
@@ -439,11 +459,11 @@ public void SetMenuPaused(bool paused) { _menuPaused = paused; ApplyPauseState()
 
 ### 新增文件（3，均 `Assets/_Project/Scripts/Runtime/`，命名空间 `Xianxia.Unity.T2`）
 
-| 文件 | 字节 | sortingOrder | 内容 |
-|------|------|-------------|------|
-| `MainMenuHud.cs` | 13617 | 300 | 标题「幽篁竹海」+ 开始游戏 / 退出游戏；Enter/Space 键盘兜底 |
-| `PauseMenuHud.cs` | 10780 | 250 | 「已暂停」+ 继续 / 重新开始 / 返回主菜单 / 退出游戏 |
-| `ControlsGuideHud.cs` | 10910 | 220 | 开局一屏按键说明（任意键关）+ 底部常驻小抄 |
+| 文件                    | 字节    | sortingOrder | 内容                                     |
+| --------------------- | ----- | ------------ | -------------------------------------- |
+| `MainMenuHud.cs`      | 13617 | 300          | 标题「幽篁竹海」+ 开始游戏 / 退出游戏；Enter/Space 键盘兜底 |
+| `PauseMenuHud.cs`     | 10780 | 250          | 「已暂停」+ 继续 / 重新开始 / 返回主菜单 / 退出游戏        |
+| `ControlsGuideHud.cs` | 10910 | 220          | 开局一屏按键说明（任意键关）+ 底部常驻小抄                 |
 
 层级契约：主菜单 300 > 暂停 250 > 引导 220 > GameOverHud 200 > Hud 100。
 
@@ -475,13 +495,13 @@ I-1 终局优先 / I-2 ESC 不越界 / I-3 旗标一次性 / I-4 P0-2·P0-4 不�
 
 ### 质量关卡（主理人亲自复跑，不采信 agent 回传）
 
-| 检查 | 结果 |
-|------|------|
-| `t3_selfcheck.py` | **9/9 PASS**，红线干净（14 个纯逻辑文件零 UnityEngine） |
-| `t1_selfcheck.py` | **64/64 PASS**，围攻/单挑倍率 **2.5294x** 数值指纹未动 |
-| 跨文件类型解析（T3-T05-D1/D2） | **全部可解析**，类型宇宙由 66 → **70 个 .cs**（含本轮 4 个新文件），无未解析类型引用 |
-| `Scheduler.Paused =` 全仓写入点 | **唯一 1 处**（CombatBridge L1042） |
-| 「技能三」残留 | 源码零残留，仅存于断言其不存在的测试用例 |
+| 检查                         | 结果                                                     |
+| -------------------------- | ------------------------------------------------------ |
+| `t3_selfcheck.py`          | **9/9 PASS**，红线干净（14 个纯逻辑文件零 UnityEngine）              |
+| `t1_selfcheck.py`          | **64/64 PASS**，围攻/单挑倍率 **2.5294x** 数值指纹未动              |
+| 跨文件类型解析（T3-T05-D1/D2）      | **全部可解析**，类型宇宙由 66 → **70 个 .cs**（含本轮 4 个新文件），无未解析类型引用 |
+| `Scheduler.Paused =` 全仓写入点 | **唯一 1 处**（CombatBridge L1042）                         |
+| 「技能三」残留                    | 源码零残留，仅存于断言其不存在的测试用例                                   |
 
 > 跨文件类型解析这一项是本轮**最强的静态信号**：它以全 Assets 树为宇宙做类型/成员解析，新增的三个 HUD 与测试文件全部纳入且无未解析引用，等于机器校验了"没有臆造 API"。但它**不等于编译通过**（不校验重载匹配、可访问性、泛型约束）。
 
@@ -525,17 +545,17 @@ I-1 终局优先 / I-2 ESC 不越界 / I-3 旗标一次性 / I-4 P0-2·P0-4 不�
 
 等级上限 **10**；`HpMax = 260 + 26×(L-1)`；`AtkBonus = +1×(L-1)`（**加法，非乘法**）；1 级加成恒为 **0.0f**。升级 `Hp += ΔHpMax`（**不回满**，缺口恒定：260/260→286/286，100/260→126/286）。**局内成长、重开清零**（不做存档，P2-4 未立项）。满级累计经验 790，约 20 杀到 5 级（对齐内核实测 巫蛊6/剑修7/血煞8）。
 
-| 等级 | 1 | 2 | 3 | 5 | 10 |
-|---|---|---|---|---|---|
+| 等级  | 1   | 2   | 3   | 5   | 10  |
+| --- | --- | --- | --- | --- | --- |
 | 血上限 | 260 | 286 | 312 | 364 | 494 |
-| raw | 12 | 13 | 14 | 16 | 21 |
+| raw | 12  | 13  | 14  | 16  | 21  |
 
 ### 🚨 本轮最大发现：反调靶子回写导致「玩家白升级」（Q-1）
 
 PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
-`CombatBridge.ApplyPlayerDamageModel()`（该方法会**反复刷新**）原本写的是
-`Encounter.Bridge.PlayerHpMax = p.HpMax > 0.0f ? p.HpMax : PlayerHpMax;`
+`CombatBridge.ApplyPlayerDamageModel()`（该方法会**反复刷新**）原本写的是  
+`Encounter.Bridge.PlayerHpMax = p.HpMax > 0.0f ? p.HpMax : PlayerHpMax;`  
 —— 把玩家**实时**血上限回写进 `DifficultyBridge.PlayerHpMax`，而后者正是模型 B 的 **d_eff 靶子分子**（`d_eff = PlayerHpMax / 65`）。
 
 后果链：升级 → HpMax 涨 → d_eff 分子涨 → 怪伤害同步上调 → **玩家变强的部分被系统原样抵消，白升 9 级**，且 `d_eff` 从冻结值 4.0 漂移。
@@ -560,14 +580,14 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ### 质量关卡（主理人亲自复跑，不采信 agent 回传）
 
-| 检查 | 结果 |
-|------|------|
-| `t3_selfcheck.py` | **9/9 PASS**（33 文件；15 个纯逻辑文件零 UnityEngine；类型宇宙 76 个 .cs 全部可解析） |
-| `t1_selfcheck.py` | **64/64 PASS**，围攻 4.300 / 单挑 1.700 → **倍率 2.5294x 未动** |
-| `Bridge.PlayerHpMax =` 全仓赋值点 | 仅 **2 处**（`CombatBridge.cs:444` 常量 + `CombatController.cs:134` 构建期一次性） |
-| 纯逻辑层红线 | `Progression.cs` 的 UnityEngine 命中 **2 处均在注释禁令里**，真 using 仅 `System`/`System.Collections.Generic` |
-| 注释订正后可执行代码零改动 | `CombatBridge.cs:531/532` 两行原样保留、顺序未变 |
-| AC 覆盖率（QA 结论） | **39/39 有归属无真空**；其中 AC-39（存量 88 条 NUnit）本环境无法执行，需用户/CI 补跑 |
+| 检查                           | 结果                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `t3_selfcheck.py`            | **9/9 PASS**（33 文件；15 个纯逻辑文件零 UnityEngine；类型宇宙 76 个 .cs 全部可解析）                                   |
+| `t1_selfcheck.py`            | **64/64 PASS**，围攻 4.300 / 单挑 1.700 → **倍率 2.5294x 未动**                                           |
+| `Bridge.PlayerHpMax =` 全仓赋值点 | 仅 **2 处**（`CombatBridge.cs:444` 常量 + `CombatController.cs:134` 构建期一次性）                           |
+| 纯逻辑层红线                       | `Progression.cs` 的 UnityEngine 命中 **2 处均在注释禁令里**，真 using 仅 `System`/`System.Collections.Generic` |
+| 注释订正后可执行代码零改动                | `CombatBridge.cs:531/532` 两行原样保留、顺序未变                                                            |
+| AC 覆盖率（QA 结论）                | **39/39 有归属无真空**；其中 AC-39（存量 88 条 NUnit）本环境无法执行，需用户/CI 补跑                                        |
 
 ### 文件清单
 
@@ -590,13 +610,13 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ## 阶段 17 · BugFix：Test Runner 7 红复修 + 占位符清理（2026-08-09）
 
-- **触发**：用户实测 Unity Test Runner 报 **192 通过 / 7 失败**（`P0_2_P0_4`：P2_01~03 + P4_01~02；`P0_5_MenuHudTests`：MENU09；`P1_6_ProgressionIntegrationTests`：PI11）。用户授权"随便改一个都行，随你便，不用请求我"——涵盖占位符（`TODO(用户): 改成真实战斗场景名`）清理。
+- **触发**：用户实测 Unity Test Runner 报 **192 通过 / 7 失败**（`P0_2_P0_4`：P2_01~~03 + P4_01~~02；`P0_5_MenuHudTests`：MENU09；`P1_6_ProgressionIntegrationTests`：PI11）。用户授权"随便改一个都行，随你便，不用请求我"——涵盖占位符（`TODO(用户): 改成真实战斗场景名`）清理。
 - **工作流**：BugFix 快捷路径。本会话**仍有** TeamCreate/SendMessage → 正常建队 `software-bugfix-p1-6-reds`（工程师 寇豆码 + QA 严过关）→ 主理人质量关卡 + MENU09 假绿拍板。
 
 ### 根因逐条
 
 1. **MENU09 红 = 纯测试隔离污染（非生产 bug）**：`MainMenuHud.SkipOnNextLoad` 是 static（跨场景/跨夹具存活）。上游 PlayMode 套件置 true 后若 TearDown 未干净复位，本 EditMode 夹具读到的初值即 true。
-2. **P2_01~03 / P4_01~02 红 = QA 抓到 2 个真 bug**：
+2. **P2_01~~03 / P4_01~~02 红 = QA 抓到 2 个真 bug**：
    - ① 帧等待（`yield return null ×2`）≠ 内核步进。`CombatScheduler.Tick`（CombatScheduler.cs:80-88）是固定步长累加器，快机器上 2 帧 < 16.67ms 可能跑 0 逻辑步 → Phase 仍 Playing → 偶发红（快机更易触发）。
    - ② `WaitForEnemies` 不消费帧直接返回 → "清场"发生在 `RunPhase._armed`（RunPhase.cs:207-210）武装之前 → Won 永不触发。
 3. **PI11 红 = 仍待本地定位**：本环境无 Unity，无法取 Console 报错。已给 PI11 注入诊断（读 `actualTarget` 并格式化消息，如"读到 494 = ApplyPlayerDamageModel 回写了实时血上限"），等用户重跑回传。
@@ -614,11 +634,11 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ### 质量关卡（主理人亲自复跑，不采信 agent 回传）
 
-| 检查 | 结果 |
-|------|------|
-| `t3_selfcheck.py` | **9/9 PASS** |
-| `t1_selfcheck.py` | **64/64 PASS**，围攻/单挑倍率 **2.5294x** 未动 |
-| `TODO(用户)` 残留 | 3 个测试文件 grep **零命中** |
+| 检查                   | 结果                                                               |
+| -------------------- | ---------------------------------------------------------------- |
+| `t3_selfcheck.py`    | **9/9 PASS**                                                     |
+| `t1_selfcheck.py`    | **64/64 PASS**，围攻/单挑倍率 **2.5294x** 未动                            |
+| `TODO(用户)` 残留        | 3 个测试文件 grep **零命中**                                             |
 | `SkipOnNextLoad` 复位点 | PlayMode 双套件 `[TearDown/UnityTearDown]` + P1_6 `[TearDown]` 三处兜底 |
 
 **诚实边界**：本环境无 Unity / 无 dotnet，**全部改动未经编译、未跑过 Unity 测试**。PI11 / P0_2 PlayMode 的红线根因仍需用户本地 Console 输出精修。
@@ -658,6 +678,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 ### 文件清单
 
 **新增（表现层 + 测试 + 文档）**
+
 - `Assets/Scripts/Systems/Combat/Unity/FeedbackClock.cs`（全局表现层时钟，三层时钟分离核心）
 - `Assets/_Project/Scripts/Runtime/HitFeedbackConfig.cs`（常量表 + 复位钩子，24557 B）
 - `Assets/_Project/Scripts/Runtime/HitFeedbackDirector.cs`（反馈总调度，46014 B）
@@ -668,21 +689,22 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - `docs/unity-p1-2-hitfeedback-prd.md` + `docs/unity-p1-2-hitfeedback-architecture.md` + `docs/hitfeedback-class-diagram.mermaid` + `docs/hitfeedback-sequence-diagram.mermaid` + `docs/p1-2-qa-report.md`
 
 **修改（9 个生产文件）**
+
 - `CombatEventsUnity.cs`（`PopupText`→`HitFeedback`）、`CombatView.cs`（钉位/归位 + 三参 `PlayHitFlash` 重载）、`CombatEventsT3Unity.cs`（删 :148 重复 `PlayHitFlash`）、`CameraFollow.cs`（`_center`/`BaseCenter`/`ClampPoint`）、`CombatBridge.cs`（`SetupHitFeedback`/`TeardownHitFeedback`，:521/522 接线、:549/550 拆线对称）、`WorldBuilder.cs`、`VfxSlash.cs`、`VfxSkill.cs`、`HeroineAnimator.cs`（后三者 `Time.deltaTime`→`FeedbackClock.Delta`）
 
 ### 质量关卡（主理人亲自复跑，不采信 agent 回传）
 
-| 检查 | 结果 |
-|------|------|
-| `t3_selfcheck.py` | **9/9 PASS**（83 个 .cs → 类型 146 / 命名空间 17，全可解析，零未解析引用） |
-| `t1_selfcheck.py` | **64/64 PASS**，围攻/单挑倍率 **2.5294x** 未动 |
-| `Scheduler.Paused` 唯一写入点 | `CombatBridge.cs:1425` 一处实际写入（其余为注释） |
-| 飘字引用 `HudSkillBar` 常量 | `DamagePopupLayer.cs:776` 引用 `BottomMargin + CellSize`，未硬写 |
-| 接线 `+=` / `-=` 对称 | `CombatBridge.cs` :521/522 接、:549/550 拆，对称 |
-| `PlayerHitFlash` 无 transform 写入 | 全文件仅 `SpriteRenderer.color`（:28 注释约束） |
-| P1-01 守卫 | `HitFeedbackDirector.cs:336` / `:397` `if (!isActiveAndEnabled)` 属实 |
-| P1-02 复位钩子 | `HitFeedbackConfig.cs:109-110` `ResetStatics()` + `RuntimeInitializeOnLoadMethod` 属实 |
-| `_stopRemain` 递减仍为真实时间 | `HitFeedbackDirector.cs:620` `_stopRemain -= Time.deltaTime`（非 `FeedbackClock.Delta`，无死锁） |
+| 检查                              | 结果                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `t3_selfcheck.py`               | **9/9 PASS**（83 个 .cs → 类型 146 / 命名空间 17，全可解析，零未解析引用）                                     |
+| `t1_selfcheck.py`               | **64/64 PASS**，围攻/单挑倍率 **2.5294x** 未动                                                     |
+| `Scheduler.Paused` 唯一写入点        | `CombatBridge.cs:1425` 一处实际写入（其余为注释）                                                      |
+| 飘字引用 `HudSkillBar` 常量           | `DamagePopupLayer.cs:776` 引用 `BottomMargin + CellSize`，未硬写                                |
+| 接线 `+=` / `-=` 对称               | `CombatBridge.cs` :521/522 接、:549/550 拆，对称                                                |
+| `PlayerHitFlash` 无 transform 写入 | 全文件仅 `SpriteRenderer.color`（:28 注释约束）                                                     |
+| P1-01 守卫                        | `HitFeedbackDirector.cs:336` / `:397` `if (!isActiveAndEnabled)` 属实                       |
+| P1-02 复位钩子                      | `HitFeedbackConfig.cs:109-110` `ResetStatics()` + `RuntimeInitializeOnLoadMethod` 属实      |
+| `_stopRemain` 递减仍为真实时间          | `HitFeedbackDirector.cs:620` `_stopRemain -= Time.deltaTime`（非 `FeedbackClock.Delta`，无死锁） |
 
 **诚实边界**：本环境无 Unity / 无 dotnet，**全部改动未经编译、未跑过 Unity 测试**。t3/t1 的跨文件类型解析是最强静态信号（机器校验"没臆造 API"），但**不等于编译通过**。
 
@@ -692,19 +714,22 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ### 阶段 19 · PI11 EditMode LoadScene 根治 + 既有 P1-2 受击反馈系统复验确认（08-09 晚间）
 
-**背景**：飘字/受击反馈系统已在**阶段 18（P1-2 标准 SOP 全栈）**落地（文件、设计裁定、43 用例测试见该阶段）。本轮回应用户实测反馈推进两件事：① 用户实测 Test Runner **193/6**，PI11 的 Console 报错明确为 `InvalidOperationException`（EditMode 下调 `SceneManager.LoadScene`，须 `EditorSceneManager.OpenScene`）；② 用户授权「先把操作屏补上，最起码能看到伤害」——飘字系统虽已在盘，但需确认可验收。
+**背景**：飘字/受击反馈系统已在**阶段 18（P1-2 标准 SOP 全栈）**&#x843D;地（文件、设计裁定、43 用例测试见该阶段）。本轮回应用户实测反馈推进两件事：① 用户实测 Test Runner **193/6**，PI11 的 Console 报错明确为 `InvalidOperationException`（EditMode 下调 `SceneManager.LoadScene`，须 `EditorSceneManager.OpenScene`）；② 用户授权「先把操作屏补上，最起码能看到伤害」——飘字系统虽已在盘，但需确认可验收。
 
 **工作流**：⚡ 快速模式（团队 `software-combat-hud-damage-numbers-f1a6`）。首派工程师遇网络 502 失败，崩溃前已把 PI11 修成完整 `Application.isPlaying` 分支；二次重派工程师复核确认飘字系统 + PI11 均已就绪，仅做全量接线一致性审查（IS_PASS: YES，0 文件改动、纯验证）。
 
 **PI11 根治（本轮唯一新增实质改动）**
+
 - 文件 `Assets/_Project/Scripts/Runtime/Tests/P1_6_ProgressionIntegrationTests.cs`：`LoadGameplayScene` 按 `Application.isPlaying` 分支——PlayMode→`SceneManager.LoadScene`(L459)；EditMode→`#if UNITY_EDITOR`→`EditorSceneManager.OpenScene`(L482) + 手动驱动 `Awake→ApplyPlayerDamageModel→SetupT3→SetupProgression` 最小生命周期链；`#else`→`LoadScene`(L499)。
 - 无残留裸 `LoadScene` 落在 EditMode 可达路径；原 `260` 三处断言 + `Player.HpMax==494` + `Level==10` 全保留。手动链四 `SendMessage` 目标（`Awake`/`SetupT3`/`SetupProgression`/`ApplyPlayerDamageModel`）全真实存在，保真度好。
 
 **既有 P1-2 系统复验（无新代码，确认可验收）**
+
 - 飘字/受击反馈全量文件（`DamagePopupLayer` / `HitFeedbackDirector` / `HitFeedbackConfig` / `PlayerHitFlash` / `CombatBridge.SetupHitFeedback`）经二次工程师 + QA 严过关独立复核。
 - QA 路由 **NoOne（通过）**：`t3_selfcheck.py` **9/9**、`t1_selfcheck.py` **64/64**（围攻倍率 **2.5294x** 未动）；跨文件符号静态断链独立核实 **126 处运行时 + 132 处测试零断链**，程序集引用 T2→Unity 单向合法；逻辑抽查（环形池恒返回合法槽位、单一分档、对称接线、守卫顺序）全过。新增 `tools/qa_p12_linkcheck.py` / `tools/qa_p12_balance.py` 补 t3 D2/B 覆盖不到的 T2 树盲区。
 
 **遗留（非阻断）**
+
 - A 极低：`DamagePopupLayer.cs` 双 `<summary>` 叠加（CS1571 警告级，无 .rsp 不阻断）。
 - B 极低：`P1_6...Tests.cs:486` 裸 `FindObjectOfType<CombatBridge>()` 未加 `#if UNITY_2023_1_OR_NEWER` 守卫（CS0618 告警级）。
 - C 中·存量：`P0_2_P0_4_PlayModeTests.cs` L73/L377 仍是裸 `SceneManager.LoadScene` 无 `isPlaying` 守卫，与 PI11 bug 同类——建议独立跟进，不塞本批次。
@@ -731,6 +756,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **修复（仅 1 个文件、最小改动）**：`DamagePopupLayer.cs` `TryPlace`（L710-719）：将"投影失败→静默丢弃"改为"降级到画布中心落点（`ApplyBounds(center,0)`）+ `return true`"。真实战斗投影成功路径完全保留、手感零变化；仅 EditMode 测试 / 进场头一两帧相机未就绪时落入降级分支——"命中必有回应"优先于"精确位置"。
 
 **QA 严过关 · 路由 NoOne（通过）**：
+
 - 护栏全绿：t3 **9/9**、t1 **64/64**，围攻倍率 **2.5294x** 未动。
 - 静态断链零问题：含 `out baseLocal` 的 CS0165 专项论证（fallback 分支不引用 baseLocal，两侧均干净）；`ApplyBounds`/`Rect.center`/守卫顺序全合法。
 - **逻辑对拍模型** `tools/qa_popup_fallback_model.py`：**34/34 PASS**——把 `Push/FindMergeTarget/AcquireSlotIndex/ApplyBounds/Recycle/ClearAll` 译成 Python，用测试文件的原始调用序列 + 逐字期望值驱动，证明"投影不可用⇒走降级⇒断言满足"，且真机路径（投影走通）行为逐位一致。
@@ -739,6 +765,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **★ 重要澄清（避免误判）**：任务书把 `Frozen_StaysReleased_WhenDisabledDirectorStillReceivesEvent`（P1-01）列为"预期红"。但磁盘里 `HitFeedbackDirector.cs:336/397` 的 `isActiveAndEnabled` 守卫**早已在第 3 轮落地**，该用例现在**应转绿**，类型 B 实际为空集。→ 测试文件头 `P1_2_HitFeedbackTests.cs:9-12` 的"有 1 条预期失败"注释**已过期**，会误导下一个人把绿色当异常（R4，建议顺手清，本轮未动文件）。
 
 **遗留（非阻断）**：
+
 - R3（真机 UX 取舍）：进场头一两帧若 `Camera.main` 未装配，旧行为静默丢弃、新行为在画布正中弹"未挂靠敌人"的飘字；本地跑时留意首帧有无中心飘字。
 - R4：过期文件头注释（见上），建议下轮顺手清。
 - 存量 `P0_2_P0_4_PlayModeTests.cs` L73/L377 仍裸 `SceneManager.LoadScene` 无 isPlaying 守卫（与 PI11 同类 bug），仍建议独立跟进。
@@ -752,12 +779,14 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 用户授权"1、2、3 全做、自主排优先级"，三项均为 ⚡ 快速模式/BugFix 路径（团队 `software-combat-fx-framework`）。
 
 **① P0_2_P0_4 剩余 5 条 PlayMode 红（双根因 + asmdef 迁移）**
+
 - 根因 A：本套件所在 `Xianxia.Unity.T2.Tests` asmdef `includePlatforms:["Editor"]` → 5 条用例实际以 EditMode 跑，首句 `SceneManager.LoadScene` 抛 `InvalidOperationException` → 必红。修复：`LoadGameplayScene` 首句加 `if (!Application.isPlaying) { Assert.Ignore(...); yield break; }`（置于 `SkipOnNextLoad=true` 赋值之前，防 static 逃逸污染 MENU09）。
 - 根因 B：P0-6 开局引导面板冻结调度器（无输入源永不关 → 内核恒冻结）。修复：新增 `BeginCombat(CombatBridge)` helper（L190-212），`guide.HidePanel()` 走弱化真人路径 → `SetMenuPaused(false)`，找不到时降级 `bridge.SetMenuPaused(false)`；P2_01/02/03、P4_01/02 共 6 处接入。
 - **asmdef 迁移（关键落地）**：`P0_2_P0_4_PlayModeTests.cs` + `.meta` 迁至 `Assets/_Project/Scripts/Runtime/Tests/PlayMode/`，新建 `Xianxia.Unity.T2.PlayModeTests.asmdef`（无 includePlatforms 限制）→ 5 条从"EditMode 下 Ignore"变为"PlayMode 下真执行"。移动前已确认全树对该类的引用均为注释文本，无代码级断链。
 - 诚实边界：EditMode 下已验证红→Ignore；PlayMode 下真绿需用户本地跑（本环境无 Unity）。
 
 **② 美术特效框架 Round 2（第五路粒子通道，4 缺陷修复）**
+
 - 上一轮交付的第五路 `HitEffects` 被 QA 抓到 4 缺陷，本轮工程师修复 + QA 双轮验证（Round 2 路由 **NoOne**）。
 - BUG-1（P0，CS1513）：`HitFeedbackDirector.cs` 末尾缺 `}` → 补，括号 82/82 全平。
 - BUG-2/3（P0，CS0266）：`HitFeedbackConfig` 的 `HitFxCapacity/Min/Max` 从 `const float` 改 `const int`（24/1/128），`HitEffects` 的 `_capacity`/`Mathf.Clamp` 类型匹配。
@@ -766,6 +795,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - 遗留（非阻塞）：无 Unity 环境 CS 编译确认留本地；HitEffects 无 EditMode 单测（第五路粒子本地 PlayMode 目视补测）；qa_p12_balance.py 的 FILES 未含 HitEffects.cs（建议后续纳入）。
 
 **③ 像素动画连贯性（代码层无解，资源主因）**
+
 - 全量排查 `HeroineAnimator`/`HeroineFrames`/`SpriteFactory` 动画链路：驱动链静态分析无 bug（边沿检测、优先级裁决、取模、顿帧闸门均正确）。
 - **根因 = 精灵内容**（主理人已逐张视觉核验）：`walk_side/walk_up` 各 6 帧"站桩换皮"（帧间仅微差、无迈步）→ "一拐一拐"主因；`walk_down` 第 4 帧身体明显下沉 → "站起来趴下"主因；`attack` 6 帧 96×64 只画了剑、左半身体空白 → 攻击时角色隐身；`dodge` 4 帧角色偏小偏上沿、与 FootPivot 不对齐 → 闪避纵向漂移。`idle/hurt/death` 确认 OK。
 - 代码次级隐患（朝向判定无 hysteresis 导致对角线抖动复位帧）评估为边际收益 + 用户最低优先级 → 主动不动。
@@ -835,11 +865,11 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 **(B) QA 严过关 · BossPending 无 Unity 自证护栏**
 
-| 文件 | 行数 | 作用 |
-|---|---|---|
-| `Assets/Scripts/Systems/Combat/Tests/bosspending_selfcheck.py` | 1022 | 主护栏 **53/53 PASS**（A 穷举+fuzz / B 定点场景 / C 布防边界 / D 源码静态锚点） |
-| `Assets/Scripts/Systems/Combat/Tests/bosspending_guard_mutation_test.py` | 565 | 变异测试 **26/26 PASS**，捕获率 **18/18**（源码 11/11 + 模型 7/7）+ 1 条登记在案盲区 M-B8 |
-| `docs/p2-1-bosspending-qa-report.md` | 349 | 覆盖矩阵（用例 ↔ 不变量 ↔ 源码锚点）+ 诚实边界 |
+| 文件                                                                       | 行数   | 作用                                                                   |
+| ------------------------------------------------------------------------ | ---- | -------------------------------------------------------------------- |
+| `Assets/Scripts/Systems/Combat/Tests/bosspending_selfcheck.py`           | 1022 | 主护栏 **53/53 PASS**（A 穷举+fuzz / B 定点场景 / C 布防边界 / D 源码静态锚点）           |
+| `Assets/Scripts/Systems/Combat/Tests/bosspending_guard_mutation_test.py` | 565  | 变异测试 **26/26 PASS**，捕获率 **18/18**（源码 11/11 + 模型 7/7）+ 1 条登记在案盲区 M-B8 |
+| `docs/p2-1-bosspending-qa-report.md`                                     | 349  | 覆盖矩阵（用例 ↔ 不变量 ↔ 源码锚点）+ 诚实边界                                          |
 
 - 护栏分两类：**行为对拍**（Python 复刻 `BossPending` + `RunPhase.Evaluate` 语义，穷举/随机序列断言不变量）+ **源码静态锚点**（直接解析 `Encounter.cs`/`RunPhase.cs` 文本，钉住 `PendingAwareEnemyCount` 表达式、`Evaluate(Encounter)` 传参、`Clear()` 内两行顺序、`StepFixed` 内 `TickBossPending` 的夹心位置、Idle 的 else 确为**归零**而非跳过）。后者比行为模型更能防未来手滑。
 - **★ 变异测试抓到 QA 自己写的护栏漏洞**（本轮最有说服力的一幕）：首轮 M-B3（把"失败优先"改成"胜利优先"）**没被捕获**。根因——原 `BP-B2` 用例自带 BOSS 债，有债时 `PendingAware = 0+1 = 1`，判胜分支 `count <= 0` 本就不成立，**债自己把判胜分支挡死了**，对调 ④⑤ 结果照样 Lost，用例依旧全绿。判别性用例必须**无债**。已拆为 `BP-B2a`（无债同归于尽，钉失败优先）/ `BP-B2b`（有债，验 I-2 不挡判负）后捕获。这是测试代码缺陷而非生产代码缺陷，QA 自行修复，**未碰任何 C#**。
@@ -847,18 +877,17 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 **★ 主理人裁定（3 条，回应 QA 提交的待决事项）**
 
-| # | 议题 | 裁定 | 理由 |
-|---|---|---|---|
-| D-1 | R-4 硬超时（12s）强制销债后 `_armed` 早被债点亮 → 下一步直接 Won，**玩家没打到 BOSS 却弹胜利结算** | **接受现状，本轮不改代码**；登记为待办，要求 R-4 触发路径留可观测诊断痕迹 | 这是「宁可没 BOSS 也绝不软锁」的既定取舍。软锁（这一局永远赢不了）远比误判胜利严重。且本轮原则是不叠加未验证的 Unity 改动 |
-| D-2 | 是否让内核护栏伸手进 `_Project/Scripts/Runtime/` 去钉 I-3（`Add(boss)` 先于 `ClearBossPending`）的行序 | **不要，维持边界** | 2.5D 路线会**重写整个表现层**。内核护栏一旦引用表现层文件，重写时 t1/t3/bosspending 三套会集体变红，届时无法区分"内核坏了"与"表现层换了"——护栏就此失去信号价值。I-3 由 Unity 侧 `P2_1_BossWiringTests.cs` 负责 |
-| D-3 | 文档统一按 4 条不变量表述 | **采纳，已执行** | 已改 `bosspending_selfcheck.py` 的 D9 检查**由钉 3 条收紧为钉 4 条**（L930-935）+ 文件头描述。改后复跑仍 53/53，非误报 |
+| #   | 议题                                                                                  | 裁定                                        | 理由                                                                                                                                          |
+| --- | ----------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-1 | R-4 硬超时（12s）强制销债后 `_armed` 早被债点亮 → 下一步直接 Won，**玩家没打到 BOSS 却弹胜利结算**                  | **接受现状，本轮不改代码**；登记为待办，要求 R-4 触发路径留可观测诊断痕迹 | 这是「宁可没 BOSS 也绝不软锁」的既定取舍。软锁（这一局永远赢不了）远比误判胜利严重。且本轮原则是不叠加未验证的 Unity 改动                                                                         |
+| D-2 | 是否让内核护栏伸手进 `_Project/Scripts/Runtime/` 去钉 I-3（`Add(boss)` 先于 `ClearBossPending`）的行序 | **不要，维持边界**                               | 2.5D 路线会**重写整个表现层**。内核护栏一旦引用表现层文件，重写时 t1/t3/bosspending 三套会集体变红，届时无法区分"内核坏了"与"表现层换了"——护栏就此失去信号价值。I-3 由 Unity 侧 `P2_1_BossWiringTests.cs` 负责 |
+| D-3 | 文档统一按 4 条不变量表述                                                                      | **采纳，已执行**                                | 已改 `bosspending_selfcheck.py` 的 D9 检查**由钉 3 条收紧为钉 4 条**（L930-935）+ 文件头描述。改后复跑仍 53/53，非误报                                                    |
 
 **(C) changelog 阶段编号雷（第 10 轮埋下，本轮排除）**
 
 - 第 10 轮记「main 已用阶段 23，本回合记为阶段 24 以免合并冲突」——**只对了一半**：它没发现 `feature/2.5d` 自己**也已有**一个 `### 阶段 23 · P2-1「BOSS 战接线」（08-09 夜）`。合并后会**同时存在两个「阶段 23」**，且 git 报 `rc=0` 无冲突标记——**这是本次合并唯一"工具报绿、结果是错的"地方**，比真冲突更阴。
 - **主理人裁定**：阶段号一律按**落盘时序**递增（changelog 自阶段 1 起的一贯口径），不按"第几轮产出"算。终态为 22 → 23(P2-1 接线, 08-09 夜) → 24(P1-3 音效, 08-10，**合并时把 main 侧 23 改为 24**，main 侧唯一需改的数字) → 25(第 10 轮) → 26(本轮)。
 - 本轮已在 feature 侧执行：原 `## 阶段 24` → `### 阶段 25`（编号让位 + `##`→`###` 层级统一）；第 10 轮那条误导性提示**已就地划删除线并注明作废**。此裁定已覆盖架构师初版建议并固化进 `docs/branch-merge-plan.md §6.3`（含差异对照表与理由）。
-
 - **护栏（主理人亲自复跑，独立确认）**：`t1` **64/64**，围攻/单挑倍率 **2.5294x 未漂**（端到端围攻 4.300 / 单挑 1.700）；`t3` **9/9**（90 个 .cs → 类型宇宙 155 / 命名空间 17，全部可解析）；新增 `bosspending_selfcheck` **53/53**、`bosspending_guard_mutation_test` **26/26**。`Encounter.cs`/`RunPhase.cs` 的 **SHA-256 跑前跑后逐字节一致**（证明变异测试确实只在临时副本上操作、未写回原文件）。
 - **C# 生产代码本轮零改动**：`git status` 的 modified 列表与派工前完全一致，新增内容全部是 `.py` 与 `.md`。
 - **⚠️ 护栏脚本不入库（既有约定，本轮实测确认）**：`.gitignore:44` 的 `Assets/Scripts/**/Tests/*.py` 排除了该目录下全部 Python，`git ls-files "*.py"` 返回**空**——即 `t1_selfcheck.py` / `t3_selfcheck.py` / 本轮新增的 `bosspending_selfcheck.py` / `bosspending_guard_mutation_test.py` **全部只存在于本地工作树，clone 或换机即丢**。这是用户此前主动瘦身时定的约定（护栏脚本不推送），本轮**未擅自更改**。但需知晓其代价：护栏是本项目在无 Unity 环境下唯一的硬凭据，一旦丢失将无法复现任何"双绿"结论。**建议用户拍板**是否为 `*_selfcheck.py` / `*_mutation_test.py` 开白名单例外（`!Assets/Scripts/**/Tests/*_selfcheck.py`）。注意口径目前并不统一：`main` 分支的 `Assets/_Project/audio_syntax_check.py` 因路径不匹配该规则而**是入库的**。
@@ -1045,28 +1074,28 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ### 阶段 37 · 地图升级选项A：多区域 + 敌人巡逻 + 竹剑切割特效（feature/2.5d，2026-08-14）
 
-- **触发 / 选题**：用户决定把「绑骨」步骤**暂时跳过**（不熟悉操作 + 图易变形），先做选项 A 地图升级。
-  架构上 `CharacterView.ResolveOn` 在「无 `HAS_2D_BONE_PACKAGE` 或角色无 `SpriteSkin`」时自动回落 `SpriteCharacterView`，
-  跳过绑骨不影响工程编译/运行。选项 A = 多区域 / 竹林分层 / 敌人 AI 巡逻 / 竹剑切割特效。
+- **触发 / 选题**：用户决定把「绑骨」步骤**暂时跳过**（不熟悉操作 + 图易变形），先做选项 A 地图升级。  
+  架构上 `CharacterView.ResolveOn` 在「无 `HAS_2D_BONE_PACKAGE` 或角色无 `SpriteSkin`」时自动回落 `SpriteCharacterView`，  
+  跳过绑骨不影响工程编译/运行。选项 A = 多区域 / 竹林分层 / 敌人 AI 巡逻 / 竹剑切割特效。  
   本轮补齐后三块（多区域用「空间分区」而非重引入 Unity Tilemap，成本更低、与现有程序化 primitive 一致）。
 - **交付（3 文件改动 + 1 文档，纯运行时逻辑，零美术依赖，不依赖绑骨）**：
-  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/EnemyPatrol.cs`：圆形区域内随机游走巡逻 AI，驱动 `CharacterView` 的
+  - 新增 `Assets/_Project/Scripts/Runtime/2.5D/EnemyPatrol.cs`：圆形区域内随机游走巡逻 AI，驱动 `CharacterView` 的  
     Walk/Idle 与朝向翻转，xorshift32 确定性轨迹，由 Spawner 用 `FeedbackClock.Delta` 驱动（顿帧同步冻结）。
   - 改造 `Assets/_Project/Scripts/Runtime/2.5D/EnemyNpcSpawner.cs`：
     - `EnemyNpcSpawnConfig` 新增 `SpawnRegion` 类 + `regions` 列表（center/radius/enemyCount/npcCount）。
-    - `SpawnAll` 双路径：regions 非空 → 按区域独立种子圆内撒点 + 每敌人挂 `EnemyPatrol`（巡逻圈 = 区域）；
+    - `SpawnAll` 双路径：regions 非空 → 按区域独立种子圆内撒点 + 每敌人挂 `EnemyPatrol`（巡逻圈 = 区域）；  
       为空 → 退回原整体方形域（向后兼容）。
     - NPC 也挂极慢巡逻（moveSpeed=28），不进 harvest 集。
-  - 改造 `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`：砍竹挥砍边沿（`attackEdge && !blocked`）
+  - 改造 `Assets/_Project/Scripts/Runtime/2.5D/BambooSceneContext.cs`：砍竹挥砍边沿（`attackEdge && !blocked`）  
     新增 `VfxSlash.Play(player.position, facing, harvestRadius, harvestArcDeg)`，月牙剑气 + 竹屑叠加呈现切割感。
   - 新增 `docs/map-upgrade-roundA-design.md`：方案 / 红线 / 本地验收清单 / 后续。
-- **红线**：同轮次 B/C——不写 `Time.timeScale`/`FeedbackClock.Frozen`、不进战斗内核、巡逻不读 `Time.deltaTime`
+- **红线**：同轮次 B/C——不写 `Time.timeScale`/`FeedbackClock.Frozen`、不进战斗内核、巡逻不读 `Time.deltaTime`  
   （时钟来自调用方传入的 `FeedbackClock.Delta`）。
-- **诚实边界**：本环境无 Unity/dotnet，三文件**未经编译**；逻辑基于既有 API（`CharacterView.PlayState/SetFacing`、
+- **诚实边界**：本环境无 Unity/dotnet，三文件**未经编译**；逻辑基于既有 API（`CharacterView.PlayState/SetFacing`、  
   `VfxSlash.Play`、`FeedbackClock.Delta`、`ZoneSeed.CreateRng`）静态推导。放行以用户本地 Console 0 error + PlayMode 验收为准。
-- **遗留给用户**：① 编译 0 error；② PlayMode 看敌人/NPC 在区域内巡逻；③ 填 `regions` 看多区域 clustered 分布；
+- **遗留给用户**：① 编译 0 error；② PlayMode 看敌人/NPC 在区域内巡逻；③ 填 `regions` 看多区域 clustered 分布；  
   ④ 挥砍看月牙剑气 + 竹断；⑤ 深度遮挡正确。
-- **后续未做**：真 Tilemap 引入、区域过渡加载、NPC 交互、敌人战斗 AI（仇恨/追击）、绑骨回归
+- **后续未做**：真 Tilemap 引入、区域过渡加载、NPC 交互、敌人战斗 AI（仇恨/追击）、绑骨回归  
   （本增量兼容，挂 `SpriteSkin` + 符号即可切骨骼视图）。
 
 ---
@@ -1083,8 +1112,8 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **静态核验**：主理人随后用本地包缓存逐处核验：
   - `com.unity.2d.animation@9.2.0/Runtime/SpriteSkinUtility.cs:77` 确认 `CreateBoneHierarchy` 签名与反射调用一致；
   - 同包 `SpriteSkin.cs:720` 确认 `sprite.GetBones()` API 存在；
-  - meta 中根骨名为 `hip`，与 Assembler 默认 idle 曲线绑定路径一致。
-  结论：代码结构合理，未跑 Unity，不能 100% 保证，但风险点均对得上。
+  - meta 中根骨名为 `hip`，与 Assembler 默认 idle 曲线绑定路径一致。  
+    结论：代码结构合理，未跑 Unity，不能 100% 保证，但风险点均对得上。
 - **提交**：用户拍板「主理人 review 后提交、绑骨归用户自己搞」。主理人纳入脚本+报告+骨骼 meta+场景/导入设置+指引更新（排除 Unity 自动重生成的 `*.csproj`），commit `5ff7df7` 已推送（远端同步，packed-refs 旧疾照例手动修正本地分支与远程跟踪引用，消除此前 `ahead 13` 假象）。
 - **当前双线状态**：① 选项 A 地图升级（多区域/巡逻/剑气）已完成待用户本地验收；② 绑骨由用户自持，Assembler 待用户点菜单/重开工程自动建 Prefab 后跑自检应全 PASS。
 - **红线**：本次仅纳入既有资产 + 档案，未新增运行时改动。
@@ -1094,9 +1123,9 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 ### 阶段 39 · 修复 `Shuimo` 菜单消失：Editor asmdef 补引 2D Animation Runtime（feature/2.5d，2026-08-14）
 
 - **触发 / 选题**：用户打开 Unity 后发现顶部菜单没有 `Shuimo`，截图确认菜单消失。
-- **根因**：`Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs` 在 `#if HAS_2D_BONE_PACKAGE` 块中直接使用了
-  `UnityEngine.U2D.Animation` 命名空间下的 `SpriteSkin` / `SpriteSkinUtility`，这些类型属于 `Unity.2D.Animation.Runtime`
-  运行时程序集；而 `Xianxia.Unity.T2.Editor.asmdef` 只引用了 `Unity.2D.Animation.Editor`，**未引用 `Unity.2D.Animation.Runtime`**。
+- **根因**：`Assets/_Project/Scripts/Editor/2.5D/HeroineBoneAssembler.cs` 在 `#if HAS_2D_BONE_PACKAGE` 块中直接使用了  
+  `UnityEngine.U2D.Animation` 命名空间下的 `SpriteSkin` / `SpriteSkinUtility`，这些类型属于 `Unity.2D.Animation.Runtime`  
+  运行时程序集；而 `Xianxia.Unity.T2.Editor.asmdef` 只引用了 `Unity.2D.Animation.Editor`，**未引用 `Unity.2D.Animation.Runtime`**。  
   asmdef 引用不传递，导致 Editor 程序集编译失败，编辑器脚本（含所有 `[MenuItem("Shuimo/...")]`）无法加载，菜单消失。
 - **修复（1 文件，2 处改动）**：`Assets/_Project/Scripts/Editor/Xianxia.Unity.T2.Editor.asmdef`
   - `references` 列表末尾追加 `"Unity.2D.Animation.Runtime"`。
@@ -1130,15 +1159,15 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ### 阶段 41 · 骨骼绑定自检器误报修复（feature/2.5d，2026-08-14）
 
-- **触发**：用户按阶段 40 修复后，`Shuimo → 2.5D → 运行 骨骼绑定自检` 能正常执行，但报告为
+- **触发**：用户按阶段 40 修复后，`Shuimo → 2.5D → 运行 骨骼绑定自检` 能正常执行，但报告为  
   `PASS 4 / WARN 1 / FAIL 1`：
   - #4 WARN：预制体含 SpriteSkin，但"运行时未识别 SpriteSkin 类型"。
   - #6 FAIL：UnityBoneCharacterView clip 字段已填，但"运行时未识别 UnityBoneCharacterView 类型"。
-- **根因**：`BoneSetupSelfTest.cs` 的 `FindType(string typeName)` 只向各程序集传入**短名**查询；
+- **根因**：`BoneSetupSelfTest.cs` 的 `FindType(string typeName)` 只向各程序集传入**短名**查询；  
   `Assembly.GetType(name)` 默认不会跨命名空间匹配，导致：
   - `SpriteSkin` 真实全名 `UnityEngine.U2D.Animation.SpriteSkin` 查不到；
-  - `UnityBoneCharacterView` 真实全名 `Xianxia.Unity.T2.UnityBoneCharacterView` 查不到。
-  因此自检器把真实存在但跨命名空间的类型误报为"未识别"。
+  - `UnityBoneCharacterView` 真实全名 `Xianxia.Unity.T2.UnityBoneCharacterView` 查不到。  
+    因此自检器把真实存在但跨命名空间的类型误报为"未识别"。
 - **修复（1 文件，2 处改动）**：`Assets/_Project/Scripts/Editor/BoneSetupSelfTest.cs`
   - `CheckSpriteSkin`：`FindType("UnityEngine.U2D.Animation.SpriteSkin")`。
   - `CheckBoneViewClips`：`FindType("Xianxia.Unity.T2.UnityBoneCharacterView")`。
@@ -1466,30 +1495,32 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ## 附录 A · 关键指标速查（全阶段核实）
 
-| 指标 | 值 | 来源 |
-|------|-----|------|
-| T0 Python 对拍 | **57/57 PASS** | 08-04 日志（主理人复跑） |
-| T1 对拍（收口 → 终值） | **63/63 → 64/64**（U1 后 +T1-13e） | 08-04 / 08-02 日志 |
-| T2 后 `t1_selfcheck.py` | **64/64**（U1 修复后） | 08-05 日志 |
-| T2 Unity NUnit | **88 PASS** | 08-02 日志 |
-| T3 P0 `t3_selfcheck.py` | **9/9 PASS**（覆盖 31 个 T3 .cs） | 08-02 日志 |
-| T3 P0 后 `t1_selfcheck.py` | **64/64** | 08-02 日志 |
-| U1 平衡口径 | `PlayerHpMax=260` / `d_eff=4.0`（=260/65） | U1 修复记录 §9.3 |
-| 围攻/单挑倍率 | **2.5294x**（4.300 / 1.700，偏差 0.0006） | T0/T1/T2/T3 多轮复跑一致 |
-| asmdef 分层 | 核心 **5** + T2 新增 `Xianxia.Unity.T2` = 实际 **6** | MEMORY.md（08-05）/ t2-architecture.md |
-| 工程编译状态 | **0 错误 0 警告** | 08-05 用户截图确认 |
+| 指标                        | 值                                              | 来源                                   |
+| ------------------------- | ---------------------------------------------- | ------------------------------------ |
+| T0 Python 对拍              | **57/57 PASS**                                 | 08-04 日志（主理人复跑）                      |
+| T1 对拍（收口 → 终值）            | **63/63 → 64/64**（U1 后 +T1-13e）                | 08-04 / 08-02 日志                     |
+| T2 后 `t1_selfcheck.py`    | **64/64**（U1 修复后）                              | 08-05 日志                             |
+| T2 Unity NUnit            | **88 PASS**                                    | 08-02 日志                             |
+| T3 P0 `t3_selfcheck.py`   | **9/9 PASS**（覆盖 31 个 T3 .cs）                   | 08-02 日志                             |
+| T3 P0 后 `t1_selfcheck.py` | **64/64**                                      | 08-02 日志                             |
+| U1 平衡口径                   | `PlayerHpMax=260` / `d_eff=4.0`（=260/65）       | U1 修复记录 §9.3                         |
+| 围攻/单挑倍率                   | **2.5294x**（4.300 / 1.700，偏差 0.0006）           | T0/T1/T2/T3 多轮复跑一致                   |
+| asmdef 分层                 | 核心 **5** + T2 新增 `Xianxia.Unity.T2` = 实际 **6** | MEMORY.md（08-05）/ t2-architecture.md |
+| 工程编译状态                    | **0 错误 0 警告**                                  | 08-05 用户截图确认                         |
 
 ## 阶段 62 · 2.5D 竹林性能优化（FPS 低根因 + 渲染减负）
 
 **现象**：PlayMode 下帧率明显偏低。
 
 **根因定位（代码层，非逻辑 bug）**：
-- 竹林 = 玩家身边 26 根 + 全图铺满 180 根 ≈ **206 根竹子**；每根由多 primitive 拼成（1 竹竿 + 2~5 竹节环 + 3~5 竹叶 Quad ≈ 6~11 个独立 MeshRenderer）。
+
+- 竹林 = 玩家身边 26 根 + 全图铺满 180 根 ≈ **206 根竹子**；每根由多 primitive 拼成（1 竹竿 + 2~~5 竹节环 + 3~~5 竹叶 Quad ≈ 6~11 个独立 MeshRenderer）。
 - 无任何合批/实例化 → **约 1600+ 独立 Draw Call**；竹叶为半透明材质 → 约 800 张透明 Quad 造成 **overdraw**。
 - 场景全部灯光 `m_CastShadows: 0`，阴影已全关，非元凶；`FindObjectOfType` 均已节流，非元凶。
 - 主因：Draw Call 数量级 + 透明 overdraw，编辑器 PlayMode 比真机更慢。
 
 **已修（纯渲染，零玩法/红线风险）**：
+
 1. `CreateRuntimeMaterial` 创建竹竿/竹叶/竹节共享材质时设 `mat.enableInstancing = true`：同网格实例（内置 primitive 共享 mesh）塌成 1 个 Draw Call，整体 1600+ → 个位数量级；断裂/重生铰链旋转照常（实例化只改绘制方式）。Shader 不支持时 Unity 自动忽略，无副作用。
 2. `ApplyDepthSort` 加移动守卫：玩家未移动（ΔY/Z < 0.01）时跳过整轮重排，省掉每帧对全部竹子的 transform.z 写入与临时 Vector3 分配。
 
@@ -1515,23 +1546,24 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 **导入清单（Assets/ 下新增，时间戳 19:xx）**
 
-| 包 | 内容 | 画风契合 | 判定 |
-|---|---|---|---|
-| Xiaoyi_Traditional_Music_Pack | 3 首传统国风 BGM（岁华流年/月明悠悠/暖雪融春） | ✅ 仙侠 | **BGM 已够** |
-| Free Fantasy Music Pack | 10 首幻想 BGM | ⚠️ 西幻 | BGM 备选 |
-| Music Loops Mini Set | ~40 首循环乐（战斗/休闲/史诗） | ⚠️ 西幻 | BGM 备选 |
-| VVayToyek/中式玄幻剑合集包1 | 4 把国风剑 FBX（桃木/窥月/阳魂/阴魄）+贴图 | ✅ 仙侠 | **武器已够** |
-| Char_Feng | 1 个带骨骼动画的角色（Idle/Walk/Dance/Boxing/Death…）+ Animator | ⚠️ 偏写实 | **敌人/伙伴原型已够（1 个）** |
-| ISEffect + Luffy_Effect | 箭矢/剑气拖尾特效（多色 2D/3D prefab） | ⚠️ 抽象能量 | **VFX 可挪用（非莲花/法阵）** |
-| CottonFibreEffect | 线状/毛发 shader | ⚠️ niche | 低优先 |
-| M_MoonFlowersSky | 月下花海天空盒 + 灯光集 | ⚠️ 偏梦幻 | 夜景候选 |
-| Layer Lab | 2D 图标包 + 面板脚本 | ⚠️ UI | HUD 图标候选 |
-| A_piece_of_nature | 写实 3D 自然（chest/松/石/草 + 场景） | ❌ 不符 | **用户已说不适合，留作参考不接入** |
-| TerrainSampleAssets | Unity 地形样例（草/蕨/灌木 + ShaderGraph） | ❌ 不符 | 不接入（2.5D 不用地形） |
-| M_ComicsSkybox | 漫画风天空盒 | ❌ 不符 | 不接入 |
-| HDRPDefaultResources / UniversalRenderPipelineGlobalSettings | 渲染管线默认资源（导入时自动附带） | – | 工程用 BiRP（m_CustomRenderPipeline=0），属冗余，不动 |
+| 包                                                            | 内容                                                   | 画风契合     | 判定                                        |
+| ------------------------------------------------------------ | ---------------------------------------------------- | -------- | ----------------------------------------- |
+| Xiaoyi_Traditional_Music_Pack                                | 3 首传统国风 BGM（岁华流年/月明悠悠/暖雪融春）                          | ✅ 仙侠     | **BGM 已够**                                |
+| Free Fantasy Music Pack                                      | 10 首幻想 BGM                                           | ⚠️ 西幻    | BGM 备选                                    |
+| Music Loops Mini Set                                         | ~40 首循环乐（战斗/休闲/史诗）                                   | ⚠️ 西幻    | BGM 备选                                    |
+| VVayToyek/中式玄幻剑合集包1                                          | 4 把国风剑 FBX（桃木/窥月/阳魂/阴魄）+贴图                           | ✅ 仙侠     | **武器已够**                                  |
+| Char_Feng                                                    | 1 个带骨骼动画的角色（Idle/Walk/Dance/Boxing/Death…）+ Animator | ⚠️ 偏写实   | **敌人/伙伴原型已够（1 个）**                        |
+| ISEffect + Luffy_Effect                                      | 箭矢/剑气拖尾特效（多色 2D/3D prefab）                           | ⚠️ 抽象能量  | **VFX 可挪用（非莲花/法阵）**                       |
+| CottonFibreEffect                                            | 线状/毛发 shader                                         | ⚠️ niche | 低优先                                       |
+| M_MoonFlowersSky                                             | 月下花海天空盒 + 灯光集                                        | ⚠️ 偏梦幻   | 夜景候选                                      |
+| Layer Lab                                                    | 2D 图标包 + 面板脚本                                        | ⚠️ UI    | HUD 图标候选                                  |
+| A_piece_of_nature                                            | 写实 3D 自然（chest/松/石/草 + 场景）                           | ❌ 不符     | **用户已说不适合，留作参考不接入**                       |
+| TerrainSampleAssets                                          | Unity 地形样例（草/蕨/灌木 + ShaderGraph）                     | ❌ 不符     | 不接入（2.5D 不用地形）                            |
+| M_ComicsSkybox                                               | 漫画风天空盒                                               | ❌ 不符     | 不接入                                       |
+| HDRPDefaultResources / UniversalRenderPipelineGlobalSettings | 渲染管线默认资源（导入时自动附带）                                    | –        | 工程用 BiRP（m_CustomRenderPipeline=0），属冗余，不动 |
 
 **需求覆盖结论（主理人拍板）**
+
 - ✅ **BGM**：国风三曲完美贴合，西幻两包作战斗备选 → **足够**。
 - ✅ **武器**：VVayToyek 四把国风剑 → **足够**（可当女主/敌人武器或陈列）。
 - ✅ **敌人/伙伴**：Char_Feng 一个带全套动画的模型 → **够起步**（多敌人类型靠复用/换色）。
@@ -1539,6 +1571,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - ❌ **砍竹音效（SFX）**：**所有包都是 BGM/循环乐，零音效**。这正是此前"音效没听到"的根因。
 
 **已做（本轮落地，纯代码、零新资源依赖）**
+
 1. `Audio/WoodSfx.cs`：运行时 PCM 合成竹裂声（脆裂噪声爆发 + 低频闷响 = Chop；轻挥命中 = Tick），懒加载缓存、全场景共享。
 2. `Audio/AmbientMusic.cs` + `AmbientMusicBootstrap`：把 Xiaoyi 三曲**拷贝**到 `Assets/_Project/Resources/Audio/BGM/`（原文件不动），`[RuntimeInitializeOnLoadMethod]` 自举常驻宿主，顺序循环播放国风 BGM，无需改任何场景/手工拖引用。
 3. `BambooVfx.cs`：受击播 Tick、断裂播 Chop（每根竹子懒挂 AudioSource）。**砍竹"有声"缺口闭环**，不再需要再买 SFX 包。
@@ -1550,6 +1583,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **目标（用户 19:44 点将）**：把已导入的 Char_Feng（敌人候选）与 VVayToyek 四把国风剑接进玩法。**红线**：全部新增、绝不删改既有角色（女主骨骼、原图、boss/witch/elder/musician 占位）。
 
 **方案（规避本环境无 Unity 的盲调风险）**
+
 - 新增 `Editor/StoreAssetImporter.cs`（`Shuimo/Store/Generate Prefabs` 菜单）：把裸 FBX 转成带材质/动画控制器的 prefab 并落 `Resources/{Enemies,Weapons}/`，运行时按固定路径 Load，零运行时 Editor 依赖。
   - `Resources/Enemies/FengEnemy.prefab`：Feng.fbx + Feng.controller + 贴图材质，自动缩放到 ~220 单位。
   - `Resources/Weapons/{Taomu,Kuiyue,Yanghun,Yinpo}Sword.prefab`：四把剑 + 贴图材质，缩放到 ~200 单位。
@@ -1557,11 +1591,13 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **武器（①）**：新增 `PlayerWeaponRig.cs`——**不做**精灵骨骼子物体（2.5 倍缩放会放大 3D 剑、排序/坐标轴易翻车），而是把剑作为**场景根下的独立世界物体**跟随玩家，按 `LastFacing` 旋转；`holdDistance/holdHeight/extraRotDeg` 三个 Inspector 旋钮可调。挂到 `WorldBuilder.BuildPlayer`。资源缺失时自动禁用，画面与改动前完全一致。
 
 **验收/风险**
+
 - 用户需先点一次 `Shuimo/Store/Generate Prefabs` 生成 prefab，再 Force Recompile。
 - 剑的握持位置/角度需用户肉眼微调（本环境无法校验），调三个旋钮即可，无需改代码。
 - 本环境无 Unity，编译须用户本地确认。
 
 **阶段 64-1 · 40 米大刀修正（2026-08-16 夜，用户截图反馈后）**
+
 - 问题：用户 PlayMode 截图显示 VVayToyek 剑挂上了，但尺寸巨大、横在身前，戏称"40 米大刀"。
 - 根因：`StoreAssetImporter` 剑目标长度 200 单位 ≈ 角色身高，且 `PlayerWeaponRig` 默认 `holdDistance=95`、`extraRotDeg=-35` 把剑平举在身前远处，故显得又大又横。
 - 修正：
@@ -1570,6 +1606,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - 既有角色、骨骼 prefab、4 类小怪占位、已生成的剑 prefab（需重新 Generate Prefabs 才会生效新缩放）均不动。
 
 **待接入（下轮点将）**
+
 - ✅ VVayToyek 剑 / Char_Feng 已在阶段 64 接入（候选级）。
 - ISEffect/Luffy 箭矢拖尾 → 水剑挥斩/法术弹道 VFX（莲花/法阵母题仍需自绘）。
 - M_MoonFlowersSky → 夜景天空盒候选；Layer Lab → HUD/菜单图标。
@@ -1582,10 +1619,12 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户反馈**：① 按空格没闪避效果；② 仍非常卡；③ 怀疑竹林放多了。
 
 **竹林降密度（确定修复）**
+
 - `BambooSceneContext` 默认 `worldBambooCount 180→90`、`leavesMax 5→3`。
 - 根因：阶段 62 的 GPU Instancing 已把 draw call 从 ~1600 塌到个位数，但 **180 根 × 每根 5 叶半透明 quad ≈ 900 张透明面片**造成 **overdraw（fillrate 瓶颈）**——Instancing 只降 draw call 不降 overdraw，相机拉近（orthographicSize 240、玩家 2.5 倍）后更重；同时 180 个 `BambooVfx` 每帧 `Update` 是 CPU 常驻开销。降数量直接同时降 overdraw 与 CPU。
 
 **闪避无反应排查（代码层逐行确认链路完全通）**
+
 - `ConfigureT3` 整个工程**仅定义、零调用** → `baselineMode` 恒为字段默认 `false` → T3 未被 Teardown；`SetupT3()` 在 `CombatBridge.Start` 首波后调用且 `controller.Encounter` 已就绪（CombatController.Awake 里 BuildEncounter）→ `_t3Enabled=true`。
 - `dodge_roll` 在 `SkillConfig.BuildDefaultTable` 注册（`AssignSlot(IntentSlot.Dodge, "dodge_roll")` + `Action=Dodge`），技能表完整。
 - `DodgeController` 由 `WorldBuilder`(628) 与 `EnsurePlayerT3Controllers`(939) 双处**幂等补挂**；空格在 `InputBindingProfile.dodgeKeys={LeftShift,RightShift,Space}`。
@@ -1594,6 +1633,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **结论**：闪避链路代码层 100% 通，"无效果"只可能是**运行时表现层**（dodge 帧动画/特效缺失、或 130 单位位移在竹林俯视下被感知掩盖）。本环境无 Unity，无法自验。
 
 **新增一次性诊断日志**
+
 - `DodgeController.verboseLog`（Inspector 可调，默认开）：门控挡住时打印**一次**确切门控项（`b==null / !IsReady / BaselineMode / !T3Enabled / IsGameplayBlocked`）；空格按下打印意图写入（DodgeRequestCount++）；内核开始闪避打印 DodgeStartCount++。
 - 用户本地 `Force Recompile` 后 PlayMode 按一次空格：Console 即可定位——
   - `DodgeRequestCount` 涨 → 输入 OK；
@@ -1603,6 +1643,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户本地验收**：① 竹林明显变稀、FPS 提升；② 按空格看 Console 日志定位闪避（若日志显示 DodgeStartCount 涨但视觉无翻滚=动画/特效缺失，回告主理人补表现层）。
 
 ### 阶段 64-3：卡顿真凶定位（Instancing 从未生效）+ 竹林再砍 50%
+
 - **根因纠正（阶段 62 误判）**：此前阶段 62「GPU Instancing 优化」仅设 `mat.enableInstancing=true` 且材质共享，但自绘 `Xianxia/Ink/*` 两个 surface shader 的 `#pragma surface` **未加 `instancing` 关键字** → 自定义 surface shader 默认不支持实例化 → Instancing 实际从未生效。每根竹子的 trunk/node/leaf/ground 全是独立 draw call，45 根 ≈ 400+ 批次，砍数量仅治标。
 - **修复（根治）**：`BambooTrunk.shader` 的 `#pragma surface surf Lambert vertex:vert addshadow instancing`、`BambooLeaf.shader` 的 `#pragma surface surf Lambert alpha:blend instancing`。共享同材质实例的同网格竹子真正塌成个位数 draw call（不透明 + 半透明叶各 1 批次）。vert/surf 仅用内置变换与 worldPos，加 instancing 安全。
 - **按用户要求再砍 50% 竹林**：`worldBambooCount 90→45`、`leavesMax 3→2`（overdraw 进一步降）。
@@ -1612,6 +1653,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode 开 Stats 面板，看 **Batches / SetPass calls** 是否从数百塌到个位数；FPS 应明显回升。仍卡则发 Stats 数字（FPS/Batches/Tris/Verts）回告，主理人据此判断 fillrate 层并下刀（简化 Shader 或改 alpha-cutout）。
 
 ### 阶段 64-4：Stats 仍 14894 Batches —— surface shader 缺 `multi_compile_instancing` + 远处铺满层黑洞
+
 - **用户反馈**：按 64-3 修复后 PlayMode 仍卡，Stats 显示 **Batches 14894 / SetPass 14891 / Tri 324.5k / Verts 562.7k / FPS 5.0**。该数值远超竹子几何量（核心 13 + 远景 22 根），说明 Instancing 仍未真正生效，且存在额外 draw call 黑洞。
 - **根因 1（shader 变体缺失）**：64-3 仅给 surface shader 加了 `instancing` 关键字，但 Unity 自定义 surface shader 还需要 `#pragma multi_compile_instancing` 才会生成实例化变体。缺此指令时 `mat.enableInstancing=true` 仍不生效。
   - 修复：`BambooTrunk.shader` / `BambooLeaf.shader` 在 `#pragma surface ... instancing` 下各加一行 `#pragma multi_compile_instancing`。
@@ -1628,12 +1670,14 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
   4. 如果数字还是过万，截图 Console 里 `[2.5D] 竹林已生成：... MeshRenderer 总数 = X` 那行发我，我据此判断黑洞在哪。
 
 ### 阶段 64-5：场景组件旧默认值自动升级
+
 - **用户反馈**：截图显示 Stats 已正常（`Batches: 1 / SetPass calls: 2`），但 Inspector 中 `BambooGrove` 的 `BambooSceneContext` 仍显示旧值（`Bamboo Count=28`、`World Bamboo Count=180`、`World Fill=true`、`Leaves Max=5`）。用户确认"我没动哈"——即未手动修改 Inspector，这些值是旧场景对象的序列化默认值。
 - **根因**：Unity 脚本字段默认值修改后，已存在场景组件实例不会自动刷新；PlayMode 仍使用场景序列化值，除非用户 Reset 组件或重新拖放。此前 Stats 偶尔正常，是因为代码里 `EnsureMaterials` 的强制 `enableInstancing` 与 shader 变体已生效，但竹子数量仍由旧 Inspector 值决定，性能余量不稳固。
 - **修复**：`BambooSceneContext.Awake()` 增加 `UpgradeLegacyDefaults()`，检测到旧默认组合（`bambooCount==28 && worldBambooCount==180 && worldFill==true && leavesMax==5`）时，一次性自动覆盖为性能默认值（`13/22/false/2`），并在 Console 打印日志。非旧默认值不会触发，避免误伤用户 intentional 配置。
 - **用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode → Console 应出现升级日志；Inspector 旧值可保留（编辑态不显示运行时的覆盖），但 Stats 应稳定在低 Batches。
 
 ### 阶段 64-6：Batches 反弹到 4402 —— bamboo_ink 模型多子网格/多材质黑洞
+
 - **用户反馈**：截图显示 Stats 反弹到 **Batches 4402 / SetPass 4401 / Tris 111.5k / Verts 194.1k / FPS 19.5**；Inspector 中 `Bamboo Count=13`、`World Bamboo Count=22`、`World Fill=false`，但 `Leaves Max=5`，且 `Bamboo Model Prefab=bamboo_ink`。
 - **根因**：35 根 primitive 竹子不可能产生 4400+ Batches。用户将 `bamboo_ink.fbx` 模型拖入 `Bamboo Model Prefab`，该模型为二进制 FBX，本地无法解析子网格数，但 Stats 铁证其包含**大量子网格/多种材质**；每根竹子 `Instantiate(bamboo_ink)` 都会复制出对应数量的 MeshRenderer，且模型自带材质未针对 Instancing 优化，draw call 直接爆炸。
 - **修复**：
@@ -1643,6 +1687,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 - **用户本地验收**：`Shuimo/Scene/Force Recompile` → PlayMode → Console 应显示「几何来源 = primitives 兜底」；Stats 预期 **Batches ≤ 10 / SetPass ≤ 5**。
 
 ### 阶段 64-7：性能修复一次性收口（停止来回试，交付可一次验收的成品）
+
 - **背景**：64-1~64-6 期间主理人采用"改一点→让用户验一点"的迭代，用户明确反馈**不希望边做边聊、来回让你测**，要求**一个任务彻底做完再聊下一个**。本阶段把性能问题收口为一份自洽、稳健、可一次验收的解决方案，不再分多轮。
 - **最终落地的完整方案（互相兜底，不依赖你 Inspector 怎么设）**：
   1. **根因修复（shader）**：`BambooTrunk`/`BambooLeaf` 的 `#pragma surface` 已加 `instancing` 且追加 `#pragma multi_compile_instancing` —— 自定义 surface shader 必须两者齐备才生成实例化变体。这是 14894→个位数 Batches 的根本修复。
@@ -1658,10 +1703,12 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户反馈**：Batches 已降至约 22（64-7 收口见效，GPU/draw call 已非瓶颈），但 **FPS 仅 ~100**，而此前"像素地图"能跑 **600 FPS**。用户原话："batches 下来了，但是之前的像素地图都要 600 的帧数，这个才多少元素就 100 帧数了，你在检查检查"。
 
 **根因判断（代码层 + Stats 指标）**
+
 - Batches ≈ 22 → GPU 提交与 draw call 开销极低，GPU 不是瓶颈。
 - FPS 卡在 ~100 且元素极少 → 最可能是 **VSync 锁到显示器刷新率**（用户显示器约 100Hz），GPU 空闲也最多 100 FPS；次要可能是 **CPU main 线程冗余调用**。
 
 **已落地（一次性收口，单任务闭环模式）**
+
 1. 新增 `Assets/_Project/Scripts/Runtime/Performance/FrameRateUnlocker.cs`：一键关闭 VSync + `Application.targetFrameRate = -1`，让 CPU/GPU 全速跑，排除限帧干扰。提供 `Shuimo/Performance/Unlock Frame Rate` / `Lock Frame Rate` / `Log Frame Rate State` 三个菜单项；也可代码调用 `FrameRateUnlocker.Unlock()` / `Lock()`。
 2. 新增 `Assets/_Project/Scripts/Runtime/Performance/FpsCounter.cs`：屏幕实时显示 `FPS / 帧时间(ms) / VSync 状态 / targetFrameRate`，仅 Editor/Development Build 绘制（`OnGUI`）。提供 `Shuimo/Performance/Create FPS Counter` 菜单快速挂到场景。用途：解锁后若 FPS 跃升到数百→证实瓶颈是 VSync；若仍低→看 Stats 的 `CPU main` / `Gfx.WaitForPresentOnGfxThread` 判断真实热点。
 3. 编辑 `PlayerController.cs`：新增 `_isRootConfirmed` 字段。玩家已为场景根节点时，跳过每帧 `transform.SetParent(null, true)` 的冗余 native 调用（即使 parent 已为 null，该调用仍触发引擎层开销）。确认无父节点后置位，不再重复解绑。
@@ -1669,6 +1716,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 5. 删除缺陷版 `PerformanceDiagnostics.cs`：原方案用 `mb.SendMessage("Update")` 测时会**重入调用 Update 造成双重执行/递归放大开销**，属设计缺陷，已删除（盘上仅剩 `.meta`）。改用 FpsCounter（只读显示）+ FrameRateUnlocker（解锁测试）组合，避免侵入被测对象。
 
 **用户本地验收（一次性）**
+
 1. 菜单 `Shuimo/Performance/Unlock Frame Rate`（关 VSync）。
 2. 菜单 `Shuimo/Performance/Create FPS Counter` 挂到场景。
 3. PlayMode 看 FpsCounter：
@@ -1681,20 +1729,24 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户反馈**：空格闪避有特效（翻滚/无敌帧表现），但人物实际没跟着位移，是"原地闪一下"。
 
 **根因（执行顺序竞态，非逻辑错误）**
+
 - `PlayerController` 为 `[DefaultExecutionOrder(-100)]`，`DodgeController` 为 `[DefaultExecutionOrder(-90)]`。Unity 执行顺序：序号越小越先跑，故 **PlayerController.Update(-100) 早于 DodgeController.Update(-90)**。
 - 每帧时序：① `PlayerController.Update` 先跑，`_posAfterUpdate = transform.position`（此刻尚无闪避位移），且 `Move()` 因 `ExternalVelocity.HasValue` 早退；② `DodgeController.Update` 随后调 `MoveExternal` 真正把玩家挪走；③ `PlayerController.LateUpdate` 比对 `now - _posAfterUpdate` 差值 > 0.01 → **误判为外力回拽，把闪避位移回退**。
 - 闪避"状态"（无敌帧/特效）由 `DriveFromKernel` 读取内核 action 后驱动，与位移无关，故特效照常播放、人物却每帧被拉回 → 完美对应"原地闪一下"。
 
 **修复（外科手术式，单任务闭环）**
+
 - `PlayerController.MoveExternal()` 在 `ApplyDisplacement` 之后补一行 `_posAfterUpdate = transform.position;`：外部位移（翻滚）发生在 Update 阶段、LateUpdate 之前，把快照抬高到外部位移之后，LateUpdate 护栏即正确放行合法位移。
 - 父物体拖拽护栏（P0-2 的真·外力）仍照常拦截：若真有外部在 Update 之后改写坐标，`now != 快照` 依旧触发回退。
 - 已核实 `MoveExternal` 全工程仅 DodgeController 一处调用，修复覆盖唯一外部移动源，不影响其他系统。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile` → PlayMode。
 2. 按空格闪避：人物应朝输入/朝向方向实打实翻滚出去（约 130 单位、0.25s），同时有无敌帧表现；不再"原地闪一下"。
 3. 回归：移动（WASD）、砍竹、死亡/暂停冻结仍正常（护栏未失效）。
 4. 本环境无 Unity，编译/运行须用户本地验收。
+
 - **用户本地验收（一次性）**：`Shuimo/Scene/Force Recompile` → PlayMode 开 Stats，预期 **Batches ≤ 10 / SetPass ≤ 5**；Console 见「几何来源 = primitives 兜底」与升级日志（若场景是旧默认值）。
 
 ### 阶段 67 · 竹林比例收细长 + 地面重墨水墨（2026-08-17）
@@ -1702,6 +1754,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户反馈**：地面仍偏素白、竹林太黑且竹竿过粗像黑柱子；要求「先不管竹林黑不黑；把竹林大小调合适；地面重色优化成竹林同款水墨」。
 
 **已落地（单任务闭环）**
+
 1. **竹林比例收细长（`BambooSceneContext.cs`）**：
    - 默认竹竿半径 `trunkRadius 22.0 → 9.0`；高度 `heightMin/Max 320-480 → 360-520`；最小间距 `bambooMinDist 110 → 85`。
    - 竹节间距计算 `height/60 → height/55`，节数上限 `5 → 6`，避免半径变细后节环过疏。
@@ -1713,6 +1766,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
    - `BambooSceneContext.EnsureMaterials` 运行时地面材质改用 `Xianxia/Ink/InkGroundRich`，并配合同款重墨参数。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile`。
 2. PlayMode 看场景：
    - 竹竿明显变细、变高、更像竹；三根竹子不再像粗黑柱子。
@@ -1726,9 +1780,11 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户反馈**：当前视角下竹子像黑色柱子、不像正常生长；「竹子倒了之后，才像是我们正常生长的一个状态」。
 
 **根因判断**
+
 - 程序生成的 Cylinder 竹竿严格沿全局 `_depthAxis`（±Z，指向相机）戳出，每根竹子方向完全一致，在 2.5D 视角下呈现为整齐排列的黑色竖条，缺乏真实竹林的自然歪斜与倒伏。
 
 **已落地（单任务闭环）**
+
 1. **`BambooSceneContext.cs`**：
    - 新增 `bambooLeanAngle`（默认 `16°`，范围 0-60°），控制单根竹子最大自然倾斜角。
    - 新增 `SampleGrowthDirection(PCG32 rng)`：以 `_depthAxis` 为基准，随机向 XY 平面某个方位歪斜 `[0, bambooLeanAngle]`，用 `Quaternion.AngleAxis` 精确旋转得到每根竹子的独立生长方向 `growDir`。
@@ -1739,6 +1795,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
    - 断裂铰链位置、断口以上叶片筛选、粒子 up 轴、重生生长动画均沿用该方向，保证倾斜竹子的砍倒/重生仍正确。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile`。
 2. PlayMode 看场景：
    - 每根竹子向不同方向略有歪斜，竹林更像自然生长，不再像整齐黑柱子。
@@ -1755,11 +1812,13 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **触发 / 背景**：用户睡前授权「能进行其他任务且不需要监督，可以先搞别的」，竹子暂不重做。在「不碰竹子/美术/平衡、不污染源代码待验收状态、本环境无 Unity 编译」约束下，选择最高价值且零风险的自主产出：为明早的 Force Recompile 验收窗口做编译一致性自检，并修正会误导后续决策的过时记忆/路线图标记。
 
 **编译一致性自检（只读，零代码改动）**
+
 - 核对阶段 68 接口自洽：`BambooSceneContext.cs:965` `vfx.Configure(trunk, growDir, height, trunkRadius, inkLeafPrefab, leafMaterial)` 与 `BambooVfx.cs:202` `Configure(Transform trunk, Vector3 depthAxis, float height, float radius, GameObject fxPrefab, Material leafMaterial)` 签名精确匹配；`SampleGrowthDirection(rng)` 返回的 `growDir` 正确传入 `BuildTrunkFromModel/BuildTrunkFromPrimitive/BuildLeaves/AddSoftCollider`，且 `BambooVfx._depthAxis` 语义 = 单根实际生长方向，断口/粒子/重生均沿之。无悬空类型/字段。
 - 核对阶段 67 自洽：`InkGroundRich.shader` 与 `MAT_InkGroundRich.mat` 字段在阶段 67 提交时已同步（shader 配套 `.meta` 同入库，材质 GUID 引用一致）。
 - **结论**：最近两轮（67 地面重墨 / 68 竹子倾斜）代码接口自洽，用户明早 Force Recompile 不会因这两轮红屏。
 
 **记忆与路线图校准（纯文档）**
+
 - 修正 working memory（MEMORY.md 第 16 行）：删除「P0-5/P0-6 未做」过时标记，更正为已实现（阶段 14 已接线，changelog 第 1263 行已纠正旧快照）。
 - 修正 changelog 路线图（第 176 行）：P0-5/P0-6 的 ⏳ 标记更正为 ✅（P0 全六项代码完成，待本地 PlayMode 验收）。
 - 修正附录 B 落盘模板（第 1508 行）：最近更新 2026-08-16 → 2026-08-17，阶段 64-7 → 阶段 69。
@@ -1775,11 +1834,13 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **触发 / 背景**：用户表明有七年前端（React/CSS）经验，正在入门 Unity（约一个月期），倾向「先打基础、内容/物品/技能暂不定」，待自身具备改码能力后再推进系统层。用户确认由我编写一份「前端视角 Unity 上手导览」文档，陪其入门期对照学习。
 
 **已落地（单任务闭环，纯文档零编译风险）**
+
 - 新增 `docs/unity-frontend-onboarding.md`：以 React/CSS 经验为锚点，用对照表把 Unity 核心概念（Canvas / RectTransform / GridLayoutGroup / Prefab / ScriptableObject / 事件系统 / asmdef）逐一映射到前端概念；含 UGUI 做界面、C# 代码层、Shuimo 工程结构（真实路径）、调试心智、前三周学习路径、项目红线约定。
 - 结合本工程真实文件做对照：`Assets/_Project/Scripts/Runtime/CombatBridge.cs`、`PlayerController.cs`、`InventoryHud.cs`、`PlayerInventory.cs`；纯逻辑层 `Assets/Scripts/Core`、`Assets/Scripts/Systems`；女主 prefab `Assets/_Project/Prefabs/HeroineBone.prefab`；材质/着色器 `Assets/_Project/Materials/MAT_InkGroundRich.mat`、`Assets/_Project/Shaders/Ink/InkGroundRich.shader`；表现层 asmdef `Assets/_Project/Scripts/Runtime/Xianxia.Unity.T2.asmdef`。
 - **记忆滞后发现（同 P0-5/P0-6 旧快照模式）**：Runtime 下 `InventoryHud.cs` / `PlayerInventory.cs` 已存在，背包系统底层已有雏形（非「待深化空白」）。已如实写入导览并标注「物品字段未定，先读别深改」。
 
 **协作约定（本轮确认，已记 MEMORY）**
+
 - 基础期（现在 → ~1个月）：收敛稳定可运行工程 + 工程整洁 + 上手导览，不给内容系统（背包/物品/技能）做字段决策。
 - 内容期（~1个月后用户具改码能力）：再定物品/技能/数值、做完整背包等系统，彼时协作对等。
 
@@ -1792,6 +1853,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **触发 / 背景**：用户表达做游戏场景的挫败（资产匮乏 + 不擅长搭建 + 自认无美术），明确「场景全权交给我负责」。主场景 `Assets/Scenes/SampleScene.unity` 经核查 RenderSettings 雾关闭（m_Fog:0）、无天空盒（m_SkyboxMaterial:{fileID:0}），即「白底 + 悬浮柱子」观感的直接根因。世界由 WorldBuilder/BambooSceneContext 运行时生成，故氛围层同样走运行时程序化注入。
 
 **已落地（单任务闭环，零侵入）**
+
 - 新增 `Assets/_Project/Scripts/Runtime/2.5D/AtmosphereLayer.cs`：`[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]` 自挂载，以「场景内存在 BambooSceneContext」作 guard，仅在我们的游戏场景注入；不修改任何已有脚本/场景文件/角色与竹子资产。全部参数化（天空色/远山层数/雾密度等），若用户在场景手动挂本组件则自挂载跳过。
 - 天空：大球内壁 `InkSky.shader`，基于视线仰角做垂直渐变，跟随相机始终包住视野。
 - 远山：多层 `InkMountain.shader` 半透明水墨剪影（下淡上浓），固定在竹林子区外围远处建立纵深，支持 fog。
@@ -1804,6 +1866,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **提交**：父 91f3479 → fa08fb6，仅 3 个新文件，零源代码改动。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile` → PlayMode：画面从「白底悬浮」变为「有水墨天空背景 + 远处山影 + 远景淡出」的竹林场景。
 2. Console 应见 `AtmosphereLayer 已自动注入` 日志；Stats 的 Batches 仅因新增少量面片略增，仍低位。
 3. 远山位置/疏密/雾浓淡若想调：在场景手动挂一个 AtmosphereLayer 组件改 Inspector（mountainBaseZ / mountainLayers / fogDensity 等）。
@@ -1816,11 +1879,13 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **用户指令**：「把竹林重新做吧」。此前阶段 68 仅加了「沿深度轴（指向相机）歪斜」，但根因未除——竹子仍沿深度轴生长，在 2.5D 视角下投影朝屏幕下方，呈「躺倒 / 不是正常长」的观感（用户原话「不是那种直长在上面的」「倒了之后才像正常生长」）。
 
 **根因（用相机参数算投影确认）**
+
 - 工程是「XY 玩法平面 + 倾斜正交相机」2.5D：世界 +Y 即屏幕「上」（与女主站立方向一致）。
 - 旧实现竹竿沿全局 `_depthAxis`（±Z，指向相机）生长；投影到屏幕「上」分量为 **-0.559（朝下）** → 竹子从地面往屏幕下方戳出，所以看起来像倒伏/躺平，断裂反倒像「正常长」。
 - 阶段 68 的 `bambooLeanAngle` 只是把「朝下的深度轴」再歪一点，没改生长轴本身，故无效。
 
 **已落地（单任务闭环）**
+
 1. **`BambooSceneContext.cs` · 生长轴改为世界 +Y**：
    - 重写 `SampleGrowthDirection`：以 `Vector3.up`（屏幕「上」）为基准，随机向 XZ 水平方位歪斜 `[0, bambooLeanAngle]`，用 `Quaternion.AngleAxis` 得到每根竹子的独立 `growDir`（沿 +Y 带自然倾斜）。
    - `BuildTrunkFromPrimitive / BuildTrunkFromModel / BuildLeaves / AddSoftCollider` 全部沿 `growDir` 排布；竹节/竹叶/碰撞体中心随之。
@@ -1836,6 +1901,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **提交**：父 cb42ced → 本轮，仅 2 个 .cs 文件改动，零美术资源。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile` → PlayMode：竹子应**从地面朝屏幕上方立起**（像真实竹林），每根略向不同方位自然歪斜；不再「躺倒/朝下」。
 2. 竹竿明显更竹绿、不再死黑；梢部有 4–6 片细长叶成簇。
 3. 砍一根：断裂口在倾斜竹竿上正确生成、上半段倒向命中方向、重生沿 +Y 长回。
@@ -1849,6 +1915,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **背景**：之前所有竹林/氛围都是「运行时（PlayMode）才生成」，用户在 Scene 视图里盲改、且 PlayMode 后地面仍是纯色，排查困难。
 
 **已落地**
+
 1. **编辑器预览菜单**（新增 `Assets/_Project/Scripts/Editor/2.5D/BambooEditorPreview.cs`，归属 `Xianxia.Unity.T2.Editor` asmdef）：
    - `Shuimo / 2.5D / 预览竹林(编辑器)`：不进 PlayMode 即生成竹林 + 水墨地面 + 雾 + 氛围层。
    - `Shuimo / 2.5D / 清除竹林预览`：清掉预览（Unload + 删氛围 + 关雾）。
@@ -1865,10 +1932,11 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 **用户现象**：进 PlayMode 整屏发白/奶色，地面看不到水墨。
 
-**根因① · 雾过浓**：`BambooSceneContext.ApplyFog()` 设的是较合理 Linear 雾（start=400/end=2200），但 `AtmosphereLayer.Build()` 随后覆写成 `ExponentialSquared` + `fogDensity=0.0016`；指数平方雾在距离 1000+ 处几乎全冲白，且 `InkSky` 天空球也没关雾被吞掉。
+**根因① · 雾过浓**：`BambooSceneContext.ApplyFog()` 设的是较合理 Linear 雾（start=400/end=2200），但 `AtmosphereLayer.Build()` 随后覆写成 `ExponentialSquared` + `fogDensity=0.0016`；指数平方雾在距离 1000+ 处几乎全冲白，且 `InkSky` 天空球也没关雾被吞掉。  
 **根因② · Tilemap 覆盖**：`WorldBuilder` 生成的 `Shumo_T2World/Terrain/Tilemap`（宣纸白、z=0）盖在 `BambooSceneContext` 的水墨地面 Plane（推到 z=+2）之前，两者同色 → 看起来纯色地面。
 
 **已落地**
+
 1. `AtmosphereLayer` **不再触碰雾**，雾由 `BambooSceneContext` 单一管理（避免互相覆盖）。
 2. `BambooSceneContext` 雾默认值改为 `Linear start=600 / end=2600`。
 3. `InkSky.shader` 加 `Fog { Mode Off }`；`InkGroundRich.shader` 加雾支持，地面/天空与场景雾自然融合。
@@ -1876,7 +1944,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 5. **水墨地面 Plane 扩大到整张 `WorldBuilder` 世界**（原只覆盖竹林区 1400×1400，超出会露相机底色）。
 6. 新增 `using UnityEngine.Tilemaps;`。
 
-**提交**：`b4154bf`（雾，父 `415e215`）、`cbb453a`（Tilemap 覆盖 + 地面扩面，父 `b4154bf`）。
+**提交**：`b4154bf`（雾，父 `415e215`）、`cbb453a`（Tilemap 覆盖 + 地面扩面，父 `b4154bf`）。  
 **注**：地面覆盖问题用户决定自行人工排查验收，此修复已落在仓库待其本地确认。
 
 ---
@@ -1886,18 +1954,20 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **任务**：给竹林加程序化点缀（纯装饰，不依赖内容/数值决策），复用现有 Ink 着色管线、不新增 Shader，降低本地编译风险。
 
 **已落地**（`BambooSceneContext.cs`）
+
 1. 新增字段：`rockMaterial` + `rockCount(=10)` / `rockMinScale(=36)` / `rockMaxScale(=110)`（Inspector 可调）。
 2. `EnsureMaterials`：石头材质留空时按 `InkGroundRich` 同款参数建深灰石色变体（宣纸白→深灰、墨色加深），并强制 Instancing。
 3. **`BuildDecorations()`**：沿竹林区（`groveHalfExtent`）确定性撒落石头。设计取舍：
    - 用「平贴地面的小 Plane」而非 3D 球体 —— 避免球体半径穿透玩法平面（z=0 女主）造成错误遮挡，也省去新增 Shader。
-   - 石头平面比地面（z=-_depthAxis*2）更靠前一点（z=-_depthAxis*1.9），既可见、又不挡女主；随机旋转角度避免方石太规整。
+   - 石头平面比地面（z=-\_depthAxis*2）更靠前一点（z=-\_depthAxis*1.9），既可见、又不挡女主；随机旋转角度避免方石太规整。
    - 确定性：独立随机流 `zoneSeedId + "_rock"`，与竹子布局互不串扰，同种子重放一致。
    - 纯装饰：不进玩法/战斗、不干扰砍竹命中；Unload 随 `_groveRoot` 销毁。
 
-**提交**：本轮（父 `cbb453a`）。
+**提交**：本轮（父 `cbb453a`）。  
 **红线合规**：未碰保护角色资产；未引入第三方包；纯逻辑+表现层改动，零美术资源。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile` → PlayMode：竹林区域内应散布若干深灰水墨石块（平贴地面、随机角度）。
 2. 调整 `rockCount / rockMinScale / rockMaxScale` Inspector 字段即可改数量与大小。
 3. 本环境无 Unity，编译/视觉以用户本地 PlayMode 为准；若石头材质 fallback 或朝向有偏差，截图反馈我修。
@@ -1911,13 +1981,15 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **根因**：`Update()` 用 `_spawned` 布尔当「仅撒一次」闸门；`OnDisable/OnDestroy` 调 `ClearSpawned()` 销毁全部敌人，但 `ClearSpawned()` **未复位 `_spawned = false`**。于是 spawner 被 disable 再 enable（暂停/分区切换/后续波次重刷）时，`OnEnable()` 见 `_spawned==true` 直接 return，`Update` 永不再撒点 → 敌人永久消失。
 
 **已落地**（`EnemyNpcSpawner.cs`）
+
 - `ClearSpawned()` 末尾新增 `_spawned = false;`：清空 → 重新激活能正确再来一轮。
 - 不影响 `R` 重载场景（整场景重建、字段默认 false）；只修正「同对象 disable/enable」与未来波次重刷路径。
 
-**提交**：本轮（父 `339a458`）。
+**提交**：本轮（父 `339a458`）。  
 **红线合规**：仅纯逻辑复位，未碰内核、未碰保护资产、未引入依赖。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile` 确认编译通过（无新增命名空间，低风险）。
 2. 进 PlayMode 敌人正常生成；若你有 spawner disable→enable 或波次重刷逻辑，验证重刷后敌人重新出现。
 
@@ -1928,6 +2000,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 **任务**：继阶段 76 修 `EnemyNpcSpawner` 后，全量扫描 Runtime 下所有「布尔闸门 + Clear/Unload/Reset」同类 bug（闸门旗标在 teardown 后未复位，导致 disable→enable / 重刷逻辑死掉）。
 
 **扫描对象与结论（均 Safe，无需改动）**
+
 1. `BambooSceneContext._loaded`：Unload() 已复位 `_loaded=false`（阶段 74/75 顺带确认）。
 2. `AtmosphereLayer._built`：Build 仅自 Awake / 编辑器菜单调用；GameObject 销毁即实例消亡，场景重载重建后 `_built` 默认 false；编辑器清除走 DestroyImmediate 销毁整个对象。无同实例重跑诉求。
 3. `HudBossBar / HudSkillBar / HudStatusIcons._built`：均「build once、同实例不销毁」，场景重载重建实例，`_built` 自然复位。
@@ -1936,7 +2009,7 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 **结论**：该类 bug 仅 `EnemyNpcSpawner` 一处（已阶段 76 修复）。无需额外代码改动，本阶段仅落档，避免后续重复扫描。
 
-**提交**：本轮（仅 changelog，父 `345160e`）。
+**提交**：本轮（仅 changelog，父 `345160e`）。  
 **用户本地验收**：无需；纯文档记录。
 
 ---
@@ -1944,10 +2017,12 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 ### 阶段 78 · 格子背包骨架 + 技能图鉴（2026-08-23）
 
 **任务**：用户要「背包格子 + 技能术大概的出来」作为学习样本。经查工程现状：
+
 - 技能内核（SkillDef / SkillTable / SkillConfig.BuildDefaultTable）已完整，HudSkillBar 已在战斗显示行动条 → 不重复造，只补一个「技能图鉴」只读面板。
 - 背包仅有 `PlayerInventory`（材料计数器，dict）+ `InventoryHud`（文字）→ **缺格子背包 UI**，本次补齐。
 
 **新增（独立 asmdef，隔离编译风险）**
+
 1. 纯逻辑 `Xianxia.Inventory`（noEngineReferences，引用 Xianxia.Core）
    - `ItemType` 枚举（Material / Consumable / Key / Misc）
    - `ItemStack` 结构（ItemId + Count，空格 = ItemId 空）
@@ -1959,14 +2034,16 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
    - `InventoryDemo`：`[RuntimeInitializeOnLoadMethod]` 自挂载 Canvas，建模型 + 塞 3 占位物品（竹材 / 嫩笋 / 朱果）+ 网格 + 图鉴；按 `I` 开关
 
 **设计取舍**
+
 - 内容全部占位：示例物品与技能数据均来自既有 `SkillConfig` / 硬编码占位，真实物品清单由用户用 `ItemDefinition` 在编辑器定义 —— 内容决策权归用户（红线）。
 - 与既有 `PlayerInventory`（材料计数）并存、不替换：本系统是「格子背包」独立维度，后续用户可决定两者如何桥接（如砍竹掉落写入格子背包）。
 - 独立 asmdef：本环境无法编译，若新代码有误仅炸 `Xianxia.Inventory` / `Xianxia.Unity.T2.Inventory` 两个包，不连累主工程（Xianxia.Unity.T2 等）编译。
 
-**提交**：本轮（父 `bc50c70`）。
+**提交**：本轮（父 `bc50c70`）。  
 **红线合规**：未碰保护角色资产；未引入第三方包；复用既有 `Hud` 帮助类与 `SkillConfig` 真源；纯新增、不改动任何既有文件。
 
 **用户本地验收（一次性）**
+
 1. `Shuimo/Scene/Force Recompile` —— 若报错只在 `Xianxia.Inventory` / `Xianxia.Unity.T2.Inventory` 两个新包，主工程照常编译即符合预期。
 2. 进 PlayMode，按 `I`：左下出现 4×5 格子背包（竹材×30 / 嫩笋×12 / 朱果×3），左下偏右出现「技能图鉴」文本面板（水剑斩 / 法阵冲击 / 血莲侵蚀 / 踏雪）。
 3. 想加真实物品：Project 右键 → Shuimo → Item Definition，填字段；想让图鉴 / 背包接你的玩法数据，告诉我桥接方式。
@@ -1999,5 +2076,27 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
   4. 存档框架就绪：任意脚本 `SaveManager.Save(new SaveData{...})` 即落 JSON 到 persistentDataPath（第5周装裱点 / 第10周继承复用）。
 
 ---
+
+**落盘日期**：2026-08-23
+
+---
+
+## 阶段 80 · 第2周战斗MVP：怪物AI脑伤害闭环接通（feature/2.5d，2026-08-23）
+
+- **触发**：用户（08-23）授权按《10 周清单》全权推进，第2周＝战斗 MVP + 技能框架。盘点发现：战斗内核 / 技能内核 / `EnemyNpcSpawner` / 连击计数 / 闪避 / `HudSkillBar` 技能栏框架**前序工作已全部存在**；`EnemyAiBrain`+`EnemyPatrol`+`EnemyContactAttack` 三件套亦已完成且有 EditMode 单测。但**敌人伤害闭环未接通**——`CombatBridge` 从未实现 `IDamageRequester`，`EnemyNpcSpawner` 挂了 `EnemyPatrol` 却没注入 `damageRequester`，导致敌人"起手攻击表现"但 `damageRequester == null` → **零伤害（纯表现模式）**。这正是阶段79 changelog 已预告的"遗留接线"。
+- **根因**：表现与逻辑解耦设计里，伤害结算的唯一出口 `IDamageRequester.RequestContactDamage` 定义（EnemyContactAttack.cs）、调用（EnemyPatrol.TickAttack）都已就位，却缺"接收端"（CombatBridge 实现 + Spawner 注入）。缺这一端，整条链空转。
+- **交付（覆写 3 文件）**：
+  1. `Assets/_Project/Scripts/Runtime/CombatBridge.cs`：① 类声明加 `, IDamageRequester`；② 实现 `public void RequestContactDamage(float rawDamage)` —— 红线：**不直改 HP**，只转发 `controller.Player.ApplyEnemyDamage(raw)`，由内核 `WCore.DamageFilter`（模型 B 减伤）统一结算（推进权唯一）。空安全：controller/Encounter/Player 任一缺失则静默返回。
+  2. `Assets/_Project/Scripts/Runtime/2.5D/EnemyPatrol.cs`：新增 `public bool damageEnabled = true;` 字段（NPC 关闭 → 永不掉血）。
+  3. `Assets/_Project/Scripts/Runtime/2.5D/EnemyNpcSpawner.cs`：① `SpawnEnemy` 注入 `patrol.damageRequester = ResolveBridge()`；② `SpawnNpc` 设 `patrol.damageEnabled = false`（NPC 守"不战斗"红线）；③ `Update` 每帧循环兜底注入（首帧 `CombatBridge` 未就绪时后续帧补上，敌人即真掉血；NPC 因 damageEnabled=false 永不注入）。
+- **效果**：敌人贴身 → `EnemyContactAttack.Decide` 判"开火且冷却到点" → `damageRequester.RequestContactDamage(contactDamage)` → `CombatBridge` → 玩家 `Combatant` 真实掉血（此前纯表现、零伤害）。NPC 永远零伤害。
+- **自证（无 Unity/dotnet）**：接口签名 `void RequestContactDamage(float)` 与 `IDamageRequester` 完全一致；`CombatBridge` 与 `IDamageRequester` 同处 `Xianxia.Unity.T2` 命名空间（无需新 using）；调用的 `controller.Player`/`Combatant.ApplyEnemyDamage`/`IsAlive` 全部命中既有 API；无新命名空间、无新依赖。
+- **诚实边界**：本环境无 Unity 编译。第2周清单里**框架已存在、本周未重复造**的项：技能栏（HudSkillBar 完整）、连击计数（Combo/ComboMult 已存在，P0 只显示不增伤）、闪避无敌帧（DodgeAction+RequestCast 已存在）、血条/真气条（Hud 已接）、死亡+按 R 重开（GameOverHud+GameManager 第1周已接）、战斗验证场景（竹林+BambooSceneContext+EnemyNpcSpawner 已存在）。**识别为未做缺口、留战斗深化周**（依赖手感/数值内容决策，不越界替用户定）：完美格挡/弹反、3 段连击动画链精调、蓄力破防精调、暴击+斩杀线细化、命中判定盒/受击反馈参数调校。
+- **红线合规**：未碰女主/小怪/用户本地在途改动；零美术、零场景资产、未引第三方包；纯新增接口实现 + 3 处最小介入（类声明/字段/注入），不改任何既有流程。
+- **遗留验收（用户本地一次性）**：
+  1. `Force Recompile` 0 错误；无新命名空间报错。
+  2. PlayMode：走近敌人贴身 → **玩家血条真实下降**（此前贴身只播 Attack 不掉血，这是本次行为变化点）。
+  3. NPC 贴身仍零伤害（守"不战斗"）。
+  4. 技能栏/连击/闪避/死亡重开 沿用既有，行为不变。
 
 **落盘日期**：2026-08-23

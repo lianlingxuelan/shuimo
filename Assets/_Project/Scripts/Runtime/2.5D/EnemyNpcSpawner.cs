@@ -269,9 +269,16 @@ namespace Xianxia.Unity.T2
                 {
                     for (int i = 0; i < _patrols.Count; i++)
                     {
-                        if (_patrols[i] != null)
+                        EnemyPatrol p = _patrols[i];
+                        if (p != null)
                         {
-                            _patrols[i].Tick(dt);
+                            // 兜底注入：首帧 CombatBridge 未就绪时后续帧补上，敌人即可真正掉血；
+                            // NPC 的 damageEnabled=false，此分支永不成立，保持零伤害。
+                            if (bridge != null && p.damageEnabled && p.damageRequester == null)
+                            {
+                                p.damageRequester = bridge;
+                            }
+                            p.Tick(dt);
                         }
                     }
                     for (int i = 0; i < _views.Count; i++)
@@ -459,6 +466,9 @@ namespace Xianxia.Unity.T2
             // 挂巡逻（选项A）：在所属区域内随机游走。
             EnemyPatrol patrol = root.AddComponent<EnemyPatrol>();
             patrol.Configure(patrolCenter, patrolRadius, patrolSeed);
+            // 注入伤害出口：让敌人贴身攻击时经 CombatBridge 真正掉玩家血（闭环）。
+            // 首帧 CombatBridge 未就绪时置 null，由 Update 循环兜底补注入。
+            patrol.damageRequester = ResolveBridge();
             _patrols.Add(patrol);
 
             // 深度排序：注册进 BSC（由 BSC.ApplyDepthSort 统一排序）；无 BSC 时自管列表。
@@ -542,6 +552,7 @@ namespace Xianxia.Unity.T2
             // NPC 也做极慢巡逻，让场景更有生气（不战斗、不 harvest）。
             EnemyPatrol patrol = root.AddComponent<EnemyPatrol>();
             patrol.moveSpeed = 28.0f; // NPC 比敌人慢
+            patrol.damageEnabled = false; // NPC 永不造成玩家伤害
             patrol.Configure(patrolCenter, patrolRadius, patrolSeed);
             _patrols.Add(patrol);
 
