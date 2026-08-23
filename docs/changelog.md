@@ -1941,4 +1941,36 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
-**落盘日期**：2026-08-21
+### 阶段 78 · 格子背包骨架 + 技能图鉴（2026-08-23）
+
+**任务**：用户要「背包格子 + 技能术大概的出来」作为学习样本。经查工程现状：
+- 技能内核（SkillDef / SkillTable / SkillConfig.BuildDefaultTable）已完整，HudSkillBar 已在战斗显示行动条 → 不重复造，只补一个「技能图鉴」只读面板。
+- 背包仅有 `PlayerInventory`（材料计数器，dict）+ `InventoryHud`（文字）→ **缺格子背包 UI**，本次补齐。
+
+**新增（独立 asmdef，隔离编译风险）**
+1. 纯逻辑 `Xianxia.Inventory`（noEngineReferences，引用 Xianxia.Core）
+   - `ItemType` 枚举（Material / Consumable / Key / Misc）
+   - `ItemStack` 结构（ItemId + Count，空格 = ItemId 空）
+   - `InventoryModel`：固定容量格子数组；`Add`（先填同类再填空槽、返回未放下数）/ `RemoveAt` / `Swap`；`SlotChanged(int)` 事件做增量刷新；`RegisterMaxStack` / `TotalOf`。可脱离引擎写 NUnit。
+2. Unity 表现层 `Xianxia.Unity.T2.Inventory`（引用 Xianxia.Inventory / Xianxia.Unity.T2 / Xianxia.Combat / UnityEngine.UI）
+   - `ItemDefinition`（ScriptableObject，[CreateAssetMenu] 右键建 .asset：id / 名 / 类型 / 堆叠上限 / 描述 / Tint 占位列底色）
+   - `InventoryGridView`：GridLayoutGroup 多格背包（≈ CSS Grid），订阅 `SlotChanged` 增量刷新，复用 `Hud` 帮助类（零美术、代码搭 UI）
+   - `SkillCodexPanel`：读 `SkillConfig.BuildDefaultTable()` 出文本技能书（名称 / 形状 / 伤害 / 耗蓝 / 耗体 / CD），只读不写
+   - `InventoryDemo`：`[RuntimeInitializeOnLoadMethod]` 自挂载 Canvas，建模型 + 塞 3 占位物品（竹材 / 嫩笋 / 朱果）+ 网格 + 图鉴；按 `I` 开关
+
+**设计取舍**
+- 内容全部占位：示例物品与技能数据均来自既有 `SkillConfig` / 硬编码占位，真实物品清单由用户用 `ItemDefinition` 在编辑器定义 —— 内容决策权归用户（红线）。
+- 与既有 `PlayerInventory`（材料计数）并存、不替换：本系统是「格子背包」独立维度，后续用户可决定两者如何桥接（如砍竹掉落写入格子背包）。
+- 独立 asmdef：本环境无法编译，若新代码有误仅炸 `Xianxia.Inventory` / `Xianxia.Unity.T2.Inventory` 两个包，不连累主工程（Xianxia.Unity.T2 等）编译。
+
+**提交**：本轮（父 `bc50c70`）。
+**红线合规**：未碰保护角色资产；未引入第三方包；复用既有 `Hud` 帮助类与 `SkillConfig` 真源；纯新增、不改动任何既有文件。
+
+**用户本地验收（一次性）**
+1. `Shuimo/Scene/Force Recompile` —— 若报错只在 `Xianxia.Inventory` / `Xianxia.Unity.T2.Inventory` 两个新包，主工程照常编译即符合预期。
+2. 进 PlayMode，按 `I`：左下出现 4×5 格子背包（竹材×30 / 嫩笋×12 / 朱果×3），左下偏右出现「技能图鉴」文本面板（水剑斩 / 法阵冲击 / 血莲侵蚀 / 踏雪）。
+3. 想加真实物品：Project 右键 → Shuimo → Item Definition，填字段；想让图鉴 / 背包接你的玩法数据，告诉我桥接方式。
+
+---
+
+**落盘日期**：2026-08-23
