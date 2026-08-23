@@ -1973,4 +1973,31 @@ PM 在 grep 现状时发现、主理人独立复核坐实的**存量隐患**：
 
 ---
 
+---
+
+## 阶段 79 · 第1周地基收口：核心管理器 GameManager / EventManager / SaveManager / SceneLoader（feature/2.5d，2026-08-23）
+
+- **触发**：用户（08-23）确认按《10 周开发任务清单》（docs/weekly-roadmap.md，由蓝图 v3.0 收敛）全权推进，第1周＝地基收口。盘点确认工程缺蓝图 0.2 要求的工程级核心管理器（GameManager/EventManager/SaveManager/SceneLoader 此前均不存在），而 PlayerController / BambooSceneContext / CombatBridge / 进度·技能内核已存在。用户授权"全权闭环、不回头问排期"。
+- **架构决策**：
+  - 4 个管理器 + 事件总线均落 `Xianxia.Unity.T2`（主运行时，Unity 耦合），**不新开 asmdef**——避免与 T2 的循环依赖风险（理由同 GameOverHud.cs 文件头）；纯逻辑系统在后续周次（第3周正魔／第4周背包等）再按需抽 `Xianxia.<Name>` 独立 asmdef。
+  - 命名空间 `Xianxia.Unity.T2.Core`（蓝图 0.1 要求的 Core 层首个真实落位；其它命名空间待对应系统周次落地）。
+  - 零美术、零场景资产：沿用 GameOverHud/Hud 的"运行时 new GameObject + Canvas + Legacy Text"套路；GameManager 懒加载单例 + DontDestroyOnLoad，不碰用户场景文件（红线）。
+- **交付（新增 5 文件 + 覆写 1 文件）**：
+  1. `Assets/_Project/Scripts/Runtime/Core/GameEvents.cs`（新增）：首批领域事件 DTO（GamePhaseChanged / RunStarted / RunEnded / PlayerSpawned / EnemyKilled / SaveRequested / LoadRequested；预留 MoralityChanged / InventoryChanged 占位供第3/4周）。
+  2. `Assets/_Project/Scripts/Runtime/Core/EventManager.cs`（新增）：静态类型化事件总线（Dictionary<Type, Delegate> + 泛型 Subscribe/Publish/Unsubscribe）；`[RuntimeInitializeOnLoadMethod(SubsystemRegistration)] ResetStatics` 清表，解决"关闭 Domain Reload 后 static 跨 PlayMode 残留死订阅"（与 Bootstrap 同源纪律）。
+  3. `Assets/_Project/Scripts/Runtime/Core/GameManager.cs`（新增）：宏观相位机（Boot/MainMenu/Playing/Paused/GameOver）懒加载单例 + DontDestroyOnLoad；SetPhase 广播 GamePhaseChangedEvent。
+  4. `Assets/_Project/Scripts/Runtime/Core/SaveManager.cs`（新增）：JSON 存档落 `Application.persistentDataPath`（List<SaveStat> 规避 JsonUtility 不序列化 Dictionary 的限制）；HasSave/Save/Load/Delete；多存档位 slot。
+  5. `Assets/_Project/Scripts/Runtime/Core/SceneLoader.cs`（新增）：同步/异步场景切换门面 + 零美术"加载中"遮罩（sortingOrder 300 压在结算200/血条100 之上）；ResetStatics 复位 `_loadingCanvas`。
+  6. `Assets/_Project/Scripts/Runtime/CombatBridge.cs`（覆写，外科手术式 6 接入点，不改既有流程）：① `using Xianxia.Unity.T2.Core`；② `Start()` 末尾 `GameManager.Ensure().NotifyRunStarted()`→Playing；③ `OnRunPhaseChanged` 终局 `NotifyRunEnded(p==Won)`→GameOver；④ `SetMenuPaused` 镜像相位（终局后不再被踩回 Playing）；⑤ `QuitGame` 前 `NotifyReturnedToMenu`；⑥ `ReloadScene` 改走 `SceneLoader.ReloadCurrent()`（带遮罩）。
+- **自证（无 Unity 环境）**：5 文件 + CombatBridge 6 处接入点花括号/括号配平；命名无冲突（`grep class (GameManager|EventManager|SaveManager|SceneLoader)` 全仓仅本批；`GamePhase` 与内核 `RunPhase` 异名无歧义）；所有 UI API 严格复用 GameOverHud 已验证写法（Canvas/CanvasScaler/GraphicRaycaster/Legacy Text/Builtin Font）；暂停权仍经 `CombatScheduler.Paused`（未用 Time.timeScale）。
+- **诚实边界**：本环境无 Unity/dotnet，未编译。改动均为新增 + CombatBridge 6 处单调用插入（最小风险切分），且沿用既有已编译通过的 API 形态；**最终放行以用户本地 Force Recompile + PlayMode 为准**。
+- **红线合规**：未碰女主/小怪/用户本地在途改动；未引入第三方包；纯新增文件 + CombatBridge 单调用接入（不改其既有逻辑）；新代码仅落在 Xianxia.Unity.T2 内。
+- **遗留验收（用户本地一次性）**：
+  1. `Shuimo/Scene/Force Recompile` —— 0 错误；新代码仅在 Xianxia.Unity.T2 内，无新命名空间报错。
+  2. ESC 暂停 / 退出菜单 行为不变且已接通 GameManager（可在任意订阅 GamePhaseChangedEvent 处观察相位 Boot→Playing→Paused→GameOver 切换）。
+  3. 按 R 重开 / 暂停菜单"重新开始" 现带"加载中"遮罩（SceneLoader 接管）。
+  4. 存档框架就绪：任意脚本 `SaveManager.Save(new SaveData{...})` 即落 JSON 到 persistentDataPath（第5周装裱点 / 第10周继承复用）。
+
+---
+
 **落盘日期**：2026-08-23

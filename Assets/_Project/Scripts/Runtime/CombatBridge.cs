@@ -23,6 +23,7 @@ using UnityEngine.SceneManagement;
 using Xianxia.Core;
 using Xianxia.Combat;
 using Xianxia.Combat.UnityBridge;
+using Xianxia.Unity.T2.Core;
 
 namespace Xianxia.Unity.T2
 {
@@ -357,6 +358,10 @@ namespace Xianxia.Unity.T2
             SetupHitFeedback();
 
             _ready = true;
+
+            // ★ 第1周地基：宏观相位推进到 Playing，广播给订阅者（Hud/存档/后续周次系统）。
+            //   GameManager 是懒加载单例，首次访问自造持久物体，不碰任何场景文件（红线）。
+            GameManager.Ensure().NotifyRunStarted();
 
             // ★ P0-2 胜负结算面板接线。
             //   动态造一个 GameOverHud 并 Build（和 Hud 同款套路），然后订阅内核的
@@ -1366,6 +1371,10 @@ namespace Xianxia.Unity.T2
             // 但它不会把 _menuPaused 的状态踩掉，也不会被后来的菜单关闭动作反向踩掉。
             ApplyPauseState();
 
+            // ★ 第1周地基：终局 → GameManager 相位切到 GameOver，广播 RunEndedEvent。
+            //   与 ApplyPauseState 同序：先停（上面）再切相位，避免"面板出来相位还没变"的观感。
+            GameManager.Ensure().NotifyRunEnded(p == RunPhase.Won);
+
             // ★P2-1：终局必收 BOSS 血条。
             //   BOSS 被打死那一路血条会自愈（HudBossBar.Update 见 _boss.IsAlive == false 就 Hide），
             //   但**玩家先死**那一路不会：BOSS 还活蹦乱跳，血条自然不收，于是结算面板顶上
@@ -1946,6 +1955,13 @@ namespace Xianxia.Unity.T2
         {
             _menuPaused = paused;
             ApplyPauseState();
+
+            // ★ 第1周地基：把菜单冻结状态镜像到 GameManager 相位。
+            //   终局后相位已由 NotifyRunEnded 钉成 GameOver，这里不再被 _menuPaused 踩回 Playing。
+            if (!IsRunOver)
+            {
+                GameManager.Ensure().SetPhase(paused ? GamePhase.Paused : GamePhase.Playing);
+            }
         }
 
         /// <summary>ESC 切换暂停面板。打开即冻结，关闭即解冻（终局时不解冻，见 IsGameplayBlocked）。</summary>
@@ -1979,7 +1995,9 @@ namespace Xianxia.Unity.T2
         /// <summary>重载当前场景（重开一局 / 返回主菜单共用）。</summary>
         private void ReloadScene()
         {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            // ★ 第1周地基：改走 SceneLoader，带"加载中"遮罩（为第6周四区块加载打底）。
+            //   SceneLoader 内部仍用 LoadSceneAsync，行为等价原同步 LoadScene。
+            SceneLoader.ReloadCurrent();
         }
 
         /// <summary>
@@ -1989,6 +2007,9 @@ namespace Xianxia.Unity.T2
         /// </summary>
         private void QuitGame()
         {
+            // ★ 第1周地基：退出前把相位切到 MainMenu（存档/统计可订阅感知）。
+            GameManager.Ensure().NotifyReturnedToMenu();
+
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else
