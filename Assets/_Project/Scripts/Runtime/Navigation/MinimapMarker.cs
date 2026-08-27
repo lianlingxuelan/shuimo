@@ -44,11 +44,7 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
-            if (wasConfigured)
-            {
-                MinimapMarkerRegistry.Refresh(this);
-            }
-            else
+            if (!wasConfigured)
             {
                 MinimapMarkerRegistry.Register(this);
             }

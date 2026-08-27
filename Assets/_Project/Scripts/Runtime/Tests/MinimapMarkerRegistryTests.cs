@@ -77,6 +77,28 @@ namespace Xianxia.Unity.T2.Tests
         }
 
         [Test]
+        public void Marker_ReconfigureUpdatesDataWithoutChangingRegistryMembership()
+        {
+            GameObject go = new GameObject("marker");
+            MinimapMarker marker = go.AddComponent<MinimapMarker>();
+            marker.Configure(MinimapMarkerKind.Enemy, "enemy_1", "山魈", false);
+            int changedCount = 0;
+            System.Action changed = () => changedCount++;
+            MinimapMarkerRegistry.Changed += changed;
+
+            marker.Configure(MinimapMarkerKind.Npc, "guide", "竹市引路人", true);
+
+            MinimapMarkerRegistry.Changed -= changed;
+            Assert.AreEqual(0, changedCount);
+            Assert.AreEqual(1, MinimapMarkerRegistry.Markers.Count);
+            Assert.AreEqual(MinimapMarkerKind.Npc, marker.Kind);
+            Assert.AreEqual("guide", marker.StableId);
+            Assert.AreEqual("竹市引路人", marker.DisplayName);
+            Assert.IsTrue(marker.PermanentVisibility);
+            Object.DestroyImmediate(go);
+        }
+
+        [Test]
         public void Registry_DestroyImmediateRemovesMarkerAndRaisesChangedOnce()
         {
             GameObject go = new GameObject("marker");
