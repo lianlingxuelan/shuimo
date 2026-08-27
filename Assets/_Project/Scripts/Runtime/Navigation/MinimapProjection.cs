@@ -6,7 +6,9 @@ namespace Xianxia.Unity.T2
     {
         public static Vector2 Project(Vector2 worldPosition, Vector2 worldSize, float iconPadding01)
         {
-            if (worldSize.x <= 0f || worldSize.y <= 0f)
+            if (worldSize.x <= 0f || worldSize.y <= 0f ||
+                float.IsNaN(worldSize.x) || float.IsNaN(worldSize.y) ||
+                float.IsInfinity(worldSize.x) || float.IsInfinity(worldSize.y))
             {
                 return new Vector2(0.5f, 0.5f);
             }
