@@ -44,3 +44,6 @@ Assets/images/samples_brightened/
 Assets/Scripts/**/Tests/*.py
 Assets/Scripts/Core/wcore_selfcheck.py
 Assets/_Project/t2_static_check.py
+
+# Isolated Codex implementation worktrees
+.worktrees/
