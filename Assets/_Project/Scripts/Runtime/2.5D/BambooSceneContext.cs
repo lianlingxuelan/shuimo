@@ -67,7 +67,7 @@ namespace Xianxia.Unity.T2
     /// 竹林 2.5D 场景上下文（feature/2.5d，仅此文件 + BambooVfx.cs 属轮次 B）。
     ///
     /// 生命周期：<see cref="Load"/> 生成竹林子树，<see cref="BindPlayer"/> 绑定相机跟随，
-    /// <see cref="Unload"/> 只销毁自己生成的子树。全程不触碰 WorldBuilder 的根、
+    /// <see cref="Unload"/> 只销毁自己生成并显式持有的对象。全程不触碰 WorldBuilder 的根、
     /// 不改任何战斗静态状态。
     /// </summary>
     [DisallowMultipleComponent]
@@ -544,13 +544,6 @@ namespace Xianxia.Unity.T2
                 SafeDestroy(existing.gameObject);
             }
 
-            Transform existingLandmarks = transform.Find(NavigationLandmarkView.RootName);
-            if (existingLandmarks != null)
-            {
-                NavigationLandmarkView.DestroyOwnedRoot(existingLandmarks);
-            }
-            _navigationLandmarksRoot = null;
-
             ResolveDepthAxis();
             EnsureMaterials();
 
@@ -729,7 +722,7 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>
-        /// 销毁竹林根（仅自身生成的子节点），还原雾设置、释放自建材质。
+        /// 销毁本上下文持有的静态道路地标与竹林根，还原雾设置、释放自建材质。
         /// 不触碰 WorldBuilder 的根、不改任何战斗静态状态。
         /// </summary>
         public void Unload()
@@ -743,12 +736,9 @@ namespace Xianxia.Unity.T2
 
             UnsubscribeT3();
 
-            Transform landmarks = _navigationLandmarksRoot != null
-                ? _navigationLandmarksRoot
-                : transform.Find(NavigationLandmarkView.RootName);
-            if (landmarks != null)
+            if (_navigationLandmarksRoot != null)
             {
-                NavigationLandmarkView.DestroyOwnedRoot(landmarks);
+                NavigationLandmarkView.DestroyOwnedRoot(_navigationLandmarksRoot);
                 _navigationLandmarksRoot = null;
             }
 

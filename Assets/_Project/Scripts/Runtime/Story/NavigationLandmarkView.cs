@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Xianxia.Unity.T2
@@ -13,6 +14,27 @@ namespace Xianxia.Unity.T2
         private static readonly Color Paper = new Color(0.64f, 0.58f, 0.43f, 0.90f);
         private static readonly Color Warm = new Color(0.68f, 0.43f, 0.19f, 0.82f);
         private static readonly Color Shadow = new Color(0.10f, 0.12f, 0.10f, 0.24f);
+        private static readonly Color Transparent = new Color(0f, 0f, 0f, 0f);
+        private static readonly Dictionary<Transform, Transform> OwnedRoots =
+            new Dictionary<Transform, Transform>();
+        private static readonly Dictionary<Transform, Transform> OwnersByRoot =
+            new Dictionary<Transform, Transform>();
+
+        private readonly List<PrimitiveBinding> primitiveBindings = new List<PrimitiveBinding>();
+
+        private readonly struct PrimitiveBinding
+        {
+            public SpriteRenderer Renderer { get; }
+            public string CircleKey { get; }
+
+            public PrimitiveBinding(SpriteRenderer renderer, string circleKey)
+            {
+                Renderer = renderer;
+                CircleKey = circleKey;
+            }
+
+            public bool IsCircle => !string.IsNullOrEmpty(CircleKey);
+        }
 
         public NavigationLandmarkKind Kind { get; private set; }
 
@@ -28,17 +50,23 @@ namespace Xianxia.Unity.T2
                 return null;
             }
 
-            Transform existing = owner.Find(RootName);
-            if (existing != null)
+            Transform existing;
+            if (OwnedRoots.TryGetValue(owner, out existing) && existing != null)
             {
                 DestroyOwnedRoot(existing);
             }
+            else
+            {
+                OwnedRoots.Remove(owner);
+            }
 
             Transform root = new GameObject(RootName).transform;
-            root.SetParent(owner, false);
+            root.SetParent(null, false);
             root.position = new Vector3(0f, 0f, 0f);
             root.localRotation = Quaternion.Euler(0f, 0f, 0f);
             root.localScale = Vector3.one;
+            OwnedRoots[owner] = root;
+            OwnersByRoot[root] = owner;
 
             NavigationLandmarkPlacement[] placements = NavigationLandmarkPlan.Create(layout, seed);
             for (int i = 0; i < placements.Length; i++)
@@ -56,6 +84,23 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
+            Transform owner;
+            if (!OwnersByRoot.TryGetValue(root, out owner))
+            {
+                return;
+            }
+
+            OwnersByRoot.Remove(root);
+            Transform current;
+            if (OwnedRoots.TryGetValue(owner, out current) && current == root)
+            {
+                OwnedRoots.Remove(owner);
+            }
+
+            root.gameObject.SetActive(false);
+            root.name = RootName + "_Retired";
+            root.SetParent(null, true);
+
             if (Application.isPlaying)
             {
                 Object.Destroy(root.gameObject);
@@ -63,6 +108,32 @@ namespace Xianxia.Unity.T2
             else
             {
                 Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
+        private void OnEnable()
+        {
+            SpriteFactory.Cleared += HandleSpriteFactoryCleared;
+        }
+
+        private void OnDisable()
+        {
+            SpriteFactory.Cleared -= HandleSpriteFactoryCleared;
+        }
+
+        private void HandleSpriteFactoryCleared()
+        {
+            for (int i = 0; i < primitiveBindings.Count; i++)
+            {
+                PrimitiveBinding binding = primitiveBindings[i];
+                if (binding.Renderer == null)
+                {
+                    continue;
+                }
+
+                binding.Renderer.sprite = binding.IsCircle
+                    ? SpriteFactory.Circle(binding.CircleKey, Color.white, Transparent, 0f)
+                    : SpriteFactory.UiPixel();
             }
         }
 
@@ -189,7 +260,16 @@ namespace Xianxia.Unity.T2
             float angle,
             int order)
         {
-            return MakeLayer(name, SpriteFactory.UiPixel(), color, localPosition, size, angle, order);
+            SpriteRenderer renderer = MakeSizedLayer(
+                name,
+                SpriteFactory.UiPixel(),
+                color,
+                localPosition,
+                size,
+                angle,
+                order);
+            primitiveBindings.Add(new PrimitiveBinding(renderer, null));
+            return renderer;
         }
 
         private SpriteRenderer MakeCircle(
@@ -200,17 +280,42 @@ namespace Xianxia.Unity.T2
             float angle,
             int order)
         {
+            string key = "navigation_landmark_" + name;
             Sprite sprite = SpriteFactory.Circle(
-                "navigation_landmark_" + name,
+                key,
                 Color.white,
-                new Color(0f, 0f, 0f, 0f),
+                Transparent,
                 0f);
+            SpriteRenderer renderer = MakeSizedLayer(
+                name,
+                sprite,
+                color,
+                localPosition,
+                size,
+                angle,
+                order);
+            primitiveBindings.Add(new PrimitiveBinding(renderer, key));
+            return renderer;
+        }
+
+        private SpriteRenderer MakeSizedLayer(
+            string name,
+            Sprite sprite,
+            Color color,
+            Vector2 localPosition,
+            Vector2 worldSize,
+            float angle,
+            int order)
+        {
+            Vector3 spriteSize = sprite != null ? sprite.bounds.size : Vector3.one;
+            float width = spriteSize.x > 0f ? spriteSize.x : 1f;
+            float height = spriteSize.y > 0f ? spriteSize.y : 1f;
             return MakeLayer(
                 name,
                 sprite,
                 color,
                 localPosition,
-                new Vector2(size.x / SpriteFactory.ShapePixels, size.y / SpriteFactory.ShapePixels),
+                new Vector2(worldSize.x / width, worldSize.y / height),
                 angle,
                 order);
         }
