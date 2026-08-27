@@ -5,13 +5,25 @@ namespace Xianxia.Unity.T2
     [DisallowMultipleComponent]
     public sealed class MinimapMarker : MonoBehaviour
     {
+        private bool _isConfigured;
+
         public MinimapMarkerKind Kind { get; private set; }
 
-        public string MarkerId { get; private set; } = string.Empty;
+        public string StableId { get; private set; } = string.Empty;
 
         public string DisplayName { get; private set; } = string.Empty;
 
-        public bool IsPermanentlyVisible { get; private set; }
+        public bool PermanentVisibility { get; private set; }
+
+        public string MarkerId
+        {
+            get { return StableId; }
+        }
+
+        public bool IsPermanentlyVisible
+        {
+            get { return PermanentVisibility; }
+        }
 
         public Transform MarkerTransform
         {
@@ -21,14 +33,33 @@ namespace Xianxia.Unity.T2
         public void Configure(MinimapMarkerKind kind, string markerId, string displayName, bool isPermanentlyVisible)
         {
             Kind = kind;
-            MarkerId = markerId ?? string.Empty;
+            StableId = markerId ?? string.Empty;
             DisplayName = displayName ?? string.Empty;
-            IsPermanentlyVisible = isPermanentlyVisible;
+            PermanentVisibility = isPermanentlyVisible;
+
+            bool wasConfigured = _isConfigured;
+            _isConfigured = true;
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
+            if (wasConfigured)
+            {
+                MinimapMarkerRegistry.Refresh(this);
+            }
+            else
+            {
+                MinimapMarkerRegistry.Register(this);
+            }
         }
 
         private void OnEnable()
         {
-            MinimapMarkerRegistry.Register(this);
+            if (_isConfigured)
+            {
+                MinimapMarkerRegistry.Register(this);
+            }
         }
 
         private void OnDisable()

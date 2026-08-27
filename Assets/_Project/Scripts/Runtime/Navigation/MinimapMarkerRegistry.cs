@@ -51,6 +51,19 @@ namespace Xianxia.Unity.T2
             }
         }
 
+        public static void Refresh(MinimapMarker marker)
+        {
+            bool removedNull = RemoveNullMarkers();
+            if (marker != null && LiveMarkers.Contains(marker))
+            {
+                NotifyChanged();
+            }
+            else if (removedNull)
+            {
+                NotifyChanged();
+            }
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
