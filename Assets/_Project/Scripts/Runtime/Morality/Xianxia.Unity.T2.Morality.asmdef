@@ -1,0 +1,21 @@
+{
+    "name": "Xianxia.Unity.T2.Morality",
+    "rootNamespace": "Xianxia.Unity.T2.Morality",
+    "references": [
+        "Xianxia.Unity.T2",
+        "Xianxia.Combat",
+        "Xianxia.Combat.Unity",
+        "Xianxia.Morality",
+        "Xianxia.Personality",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

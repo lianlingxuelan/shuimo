@@ -46,6 +46,10 @@ namespace Xianxia.Unity.T2
 
         /// <summary>乐师。</summary>
         Musician,
+
+        /// <summary>商店导入角色候选（Char_Feng，3D 模型 + Feng.controller）。
+        /// 仅作为「新增候选」，绝不替换/删除既有 boss/witch/elder/musician 占位。</summary>
+        Feng,
     }
 
     /// <summary>单个敌人原型表项（ScriptableObject 内序列化）。</summary>
@@ -188,6 +192,16 @@ namespace Xianxia.Unity.T2
         [Tooltip("生成根的父节点（留空则用本对象自身）")]
         public Transform spawnParent;
 
+        [Header("商店角色候选（Char_Feng，纯新增，不碰既有 4 类占位）")]
+        [Tooltip("是否额外生成 Char_Feng 角色候选（从 Resources 加载 FengEnemy prefab）。")]
+        public bool spawnFengStoreEnemy = true;
+
+        [Tooltip("Char_Feng 候选数量。")]
+        public int fengStoreEnemyCount = 2;
+
+        [Tooltip("Char_Feng prefab 的 Resources 路径（由 Shuimo/Store/Generate Prefabs 生成）。")]
+        public string fengStoreEnemyPath = "Enemies/FengEnemy";
+
         private readonly List<Transform> _spawnedRoots = new List<Transform>();
         private readonly List<CharacterView> _views = new List<CharacterView>();
         private readonly List<EnemyPatrol> _patrols = new List<EnemyPatrol>();
@@ -235,8 +249,12 @@ namespace Xianxia.Unity.T2
                 }
                 else
                 {
-                    Debug.LogWarning("[2.5D][EnemyNpcSpawner] config 为空，跳过撒点。");
+                    Debug.LogWarning("[2.5D][EnemyNpcSpawner] config 为空，跳过常规撒点。");
                 }
+
+                // 商店角色候选：独立路径，不依赖 config（即使没配 config 也能生成 Feng）。
+                SpawnStoreFengEnemies(ctx);
+
                 _spawned = true;
             }
 
@@ -251,9 +269,16 @@ namespace Xianxia.Unity.T2
                 {
                     for (int i = 0; i < _patrols.Count; i++)
                     {
-                        if (_patrols[i] != null)
+                        EnemyPatrol p = _patrols[i];
+                        if (p != null)
                         {
-                            _patrols[i].Tick(dt);
+                            // 兜底注入：首帧 CombatBridge 未就绪时后续帧补上，敌人即可真正掉血；
+                            // NPC 的 damageEnabled=false，此分支永不成立，保持零伤害。
+                            if (bridge != null && p.damageEnabled && p.damageRequester == null)
+                            {
+                                p.damageRequester = bridge;
+                            }
+                            p.Tick(dt);
                         }
                     }
                     for (int i = 0; i < _views.Count; i++)
@@ -398,22 +423,26 @@ namespace Xianxia.Unity.T2
                 enemyIdx, npcIdx, totalTarget, _depthAxis));
         }
 
-        /// <summary>生成一只小怪：prefab 或 primitives + Ink 材质；挂 CharacterView + 巡逻；注册排序/harvest。</summary>
+        /// <summary>生成一只小怪：prefab（entry.prefab 或 prefabOverride）或 primitives + Ink 材质；
+        /// 挂 CharacterView + 巡逻；注册排序/harvest。config 可为 null（商店候选路径）。</summary>
         private void SpawnEnemy(Transform parent, Vector2 worldXY, EnemyArchetypeEntry entry, BambooSceneContext ctx,
-            Vector2 patrolCenter, float patrolRadius, uint patrolSeed)
+            Vector2 patrolCenter, float patrolRadius, uint patrolSeed,
+            GameObject prefabOverride = null, bool? harvestableOverride = null)
         {
             GameObject root = new GameObject(string.Format("Enemy_{0}_{1}", entry != null ? entry.kind.ToString() : "X", _spawnedRoots.Count));
             root.transform.SetParent(parent, false);
             root.transform.localPosition = new Vector3(worldXY.x, worldXY.y, 0.0f);
             root.transform.localRotation = Quaternion.identity;
 
-            float scale = (entry != null && entry.scale > 0.0f ? entry.scale : DefaultScale(entry != null ? entry.kind : EnemyKind.Musician)) * config.globalScaleRef;
+            float gscale = (config != null) ? config.globalScaleRef : 1.0f;
+            float scale = (entry != null && entry.scale > 0.0f ? entry.scale : DefaultScale(entry != null ? entry.kind : EnemyKind.Musician)) * gscale;
             root.transform.localScale = new Vector3(scale, scale, scale);
 
-            // 外观：prefab 或 primitives + Ink 材质。
-            if (entry != null && entry.prefab != null)
+            // 外观：prefab（override 优先）或 primitives + Ink 材质。
+            GameObject prefabToUse = prefabOverride != null ? prefabOverride : (entry != null ? entry.prefab : null);
+            if (prefabToUse != null)
             {
-                GameObject inst = Instantiate(entry.prefab);
+                GameObject inst = Instantiate(prefabToUse);
                 inst.name = "Visual";
                 inst.transform.SetParent(root.transform, false);
                 inst.transform.localPosition = Vector3.zero;
@@ -437,22 +466,68 @@ namespace Xianxia.Unity.T2
             // 挂巡逻（选项A）：在所属区域内随机游走。
             EnemyPatrol patrol = root.AddComponent<EnemyPatrol>();
             patrol.Configure(patrolCenter, patrolRadius, patrolSeed);
+            // 注入伤害出口：让敌人贴身攻击时经 CombatBridge 真正掉玩家血（闭环）。
+            // 首帧 CombatBridge 未就绪时置 null，由 Update 循环兜底补注入。
+            patrol.damageRequester = ResolveBridge();
             _patrols.Add(patrol);
 
             // 深度排序：注册进 BSC（由 BSC.ApplyDepthSort 统一排序）；无 BSC 时自管列表。
-            if (config.depthSortEnabled && ctx != null)
+            bool depthSort = (config != null && config.depthSortEnabled) || (ctx != null);
+            if (depthSort && ctx != null)
             {
                 ctx.RegisterSortable(root.transform);
             }
 
-            // harvest：默认开 + 原型可 harvest 才进命中集。
-            bool harvestable = config.harvestableByDefault && (entry == null || entry.harvestable);
+            // harvest：override 优先；否则默认开 + 原型可 harvest 才进命中集。
+            bool harvestable = harvestableOverride.HasValue
+                ? harvestableOverride.Value
+                : (config != null && config.harvestableByDefault && (entry == null || entry.harvestable));
             if (harvestable && ctx != null)
             {
                 ctx.RegisterHarvestTarget(root.transform);
             }
 
             _spawnedRoots.Add(root.transform);
+        }
+
+        /// <summary>商店角色候选（Char_Feng）：独立生成路径，不依赖 config 是否存在。
+        /// prefab 由菜单 Shuimo/Store/Generate Prefabs 生成到 Resources/Enemies/FengEnemy。</summary>
+        private void SpawnStoreFengEnemies(BambooSceneContext ctx)
+        {
+            if (!spawnFengStoreEnemy || fengStoreEnemyCount <= 0)
+            {
+                return;
+            }
+            GameObject prefab = Resources.Load<GameObject>(fengStoreEnemyPath);
+            if (prefab == null)
+            {
+                Debug.LogWarning(string.Format(
+                    "[2.5D][EnemyNpcSpawner] 未找到 FengEnemy prefab（Resources/{0}）。先跑菜单 Shuimo/Store/Generate Prefabs。",
+                    fengStoreEnemyPath));
+                return;
+            }
+
+            Transform parent = spawnParent != null ? spawnParent : transform;
+            float area = (config != null) ? config.spawnAreaHalfExtent : 1400.0f;
+
+            for (int i = 0; i < fengStoreEnemyCount; i++)
+            {
+                Vector2 p = new Vector2(
+                    Random.Range(-area, area),
+                    Random.Range(-area, area));
+                uint seed = HashSeed("store_feng_" + i);
+                EnemyArchetypeEntry entry = new EnemyArchetypeEntry
+                {
+                    kind = EnemyKind.Feng,
+                    scale = 1.0f,
+                    harvestable = false,
+                };
+                SpawnEnemy(parent, p, entry, ctx, Vector2.zero, area, seed, prefab, false);
+            }
+
+            Debug.Log(string.Format(
+                "[2.5D][EnemyNpcSpawner] 商店角色候选 Feng 生成 {0} 只（Resources/{1}）。既有 boss/witch/elder/musician 占位不受影响。",
+                fengStoreEnemyCount, fengStoreEnemyPath));
         }
 
         /// <summary>生成一个 NPC 标记：Idle 占位 + InteractableMarker，不进 harvest 集，但参与巡逻（轻量游走）。</summary>
@@ -477,6 +552,7 @@ namespace Xianxia.Unity.T2
             // NPC 也做极慢巡逻，让场景更有生气（不战斗、不 harvest）。
             EnemyPatrol patrol = root.AddComponent<EnemyPatrol>();
             patrol.moveSpeed = 28.0f; // NPC 比敌人慢
+            patrol.damageEnabled = false; // NPC 永不造成玩家伤害
             patrol.Configure(patrolCenter, patrolRadius, patrolSeed);
             _patrols.Add(patrol);
 
@@ -499,7 +575,7 @@ namespace Xianxia.Unity.T2
         /// <summary>路线 B 兜底：Cylinder 躯干 + Sphere 头，套 Ink 材质（Shader.Find 回退）。</summary>
         private void BuildInkPrimitive(Transform parent, EnemyArchetypeEntry entry, EnemyNpcSpawnConfig cfg)
         {
-            Material trunkMat = (entry != null ? entry.inkMaterialOverride : null) ?? cfg.inkMaterialTrunk;
+            Material trunkMat = (entry != null ? entry.inkMaterialOverride : null) ?? (cfg != null ? cfg.inkMaterialTrunk : null);
             if (trunkMat == null)
             {
                 trunkMat = EnsureRuntimeInk(false);
@@ -523,7 +599,7 @@ namespace Xianxia.Unity.T2
                 bodyCol.isTrigger = true; // 只作命中几何，不参与物理
             }
 
-            Material headMat = cfg.inkMaterialLeaf ?? trunkMat;
+            Material headMat = (cfg != null ? cfg.inkMaterialLeaf : null) ?? trunkMat;
             GameObject head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             head.name = "Head";
             head.transform.SetParent(parent, false);
@@ -544,7 +620,7 @@ namespace Xianxia.Unity.T2
         /// <summary>prefab 分支：仅在子节点 MeshRenderer 缺材质时补 Ink 材质（不覆盖美术资产）。</summary>
         private static void ApplyInkIfMissing(GameObject inst, EnemyArchetypeEntry entry, EnemyNpcSpawnConfig cfg)
         {
-            Material trunkMat = (entry != null ? entry.inkMaterialOverride : null) ?? cfg.inkMaterialTrunk;
+            Material trunkMat = (entry != null ? entry.inkMaterialOverride : null) ?? (cfg != null ? cfg.inkMaterialTrunk : null);
             if (trunkMat == null)
             {
                 return;
@@ -729,6 +805,10 @@ namespace Xianxia.Unity.T2
                 }
             }
             _ownedMaterials.Clear();
+
+            // 复位闸门：ClearSpawned 后若 spawner 被重新激活（OnDisable→OnEnable、
+            // 或后续波次/分区重刷），Update 才能再次进入撒点分支，否则敌人会永久消失。
+            _spawned = false;
         }
 
         /// <summary>各类别默认缩放（复用 2D explore 的 4 类缩放思路）。</summary>

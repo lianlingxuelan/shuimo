@@ -47,6 +47,35 @@ namespace Shuimo.EditorTools
             Debug.Log("[Shuimo/2.5D] 已为 " + applied + " 个 MeshRenderer 套用水墨材质。");
         }
 
+        /// <summary>
+        /// 对工程内的 FBX 模型资产（而非场景实例）套水墨材质。
+        /// 供 <see cref="BambooScenePlacer"/> 在「自动放置竹林」时调用，
+        /// 保证用的是真·水墨模型而非灰模/粉红，更不是 primitives 格子。
+        /// 幂等：材质已存在则复用并刷新默认值。等价于在 Project 窗口选中该 fbx 后
+        /// 点菜单 Shuimo/2.5D/Apply Ink Bamboo Materials。
+        /// </summary>
+        /// <param name="assetPath">FBX 资产路径，如 Assets/_Project/Art/Bamboo/bamboo_ink.fbx。</param>
+        public static void ApplyToModel(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                return;
+            }
+
+            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (model == null)
+            {
+                Debug.LogWarning("[Shuimo/2.5D] ApplyToModel 找不到资产： " + assetPath);
+                return;
+            }
+
+            EnsureInkFolder();
+            int applied = ApplyRecursively(model.transform);
+            AssetDatabase.SaveAssets();
+            Debug.Log(string.Format(
+                "[Shuimo/2.5D] 已为 {0} 的 {1} 个 MeshRenderer 套用水墨材质。", assetPath, applied));
+        }
+
         // ======================= 递归套用 =======================
 
         private static int ApplyRecursively(Transform node)

@@ -17,19 +17,21 @@
 // 所以真正的装配放在 Start —— 所有 Awake 都结束了，Encounter 一定存在。
 // -----------------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Xianxia.Core;
 using Xianxia.Combat;
 using Xianxia.Combat.UnityBridge;
+using Xianxia.Unity.T2.Core;
 
 namespace Xianxia.Unity.T2
 {
     /// <summary>战斗编排器。挂在 Combat 节点上，与 CombatController 同体。</summary>
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(-200)]
-    public sealed class CombatBridge : MonoBehaviour
+    public sealed class CombatBridge : MonoBehaviour, IDamageRequester
     {
         // ---------------------------------------------------------------------
         // 玩家数值（三处口径必须一致：这里 / CombatController.playerHpMax /
@@ -161,11 +163,32 @@ namespace Xianxia.Unity.T2
             get { return IsRunOver || _menuPaused; }
         }
 
+        /// <summary>菜单是否打开（诊断用只读暴露）。与 IsGameplayBlocked 同源。</summary>
+        public bool IsMenuPaused
+        {
+            get { return _menuPaused; }
+        }
+
         /// <summary>玩家实体。未初始化时为 null。</summary>
         public Combatant Player
         {
             get { return controller != null ? controller.Player : null; }
         }
+
+        /// <summary>
+        /// 战斗事件出口（Unity 落地实现）。供表现层（如正魔 / 性格桥接）订阅
+        /// <see cref="CombatEventsUnity.EnemyDied"/> 等。未初始化时为 null。
+        /// </summary>
+        public CombatEventsUnity CombatEvents
+        {
+            get { return controller != null ? controller.EventsUnity : null; }
+        }
+
+        /// <summary>
+        /// 玩家投递了一次战斗意图（技能 / 普攻 / 闪避）。在 <see cref="RequestCast"/>
+        /// 真正写入内核缓冲后触发，供正魔 / 性格系统按意图性质（克己 vs 拔刀）做判定。
+        /// </summary>
+        public event Action<IntentSlot> CastRequested;
 
         /// <summary>
         /// P1-6 玩家成长状态机。供 <c>Hud</c> 与集成测试读取。
@@ -352,6 +375,10 @@ namespace Xianxia.Unity.T2
 
             _ready = true;
 
+            // ★ 第1周地基：宏观相位推进到 Playing，广播给订阅者（Hud/存档/后续周次系统）。
+            //   GameManager 是懒加载单例，首次访问自造持久物体，不碰任何场景文件（红线）。
+            GameManager.Ensure().NotifyRunStarted();
+
             // ★ P0-2 胜负结算面板接线。
             //   动态造一个 GameOverHud 并 Build（和 Hud 同款套路），然后订阅内核的
             //   终局事件。注意：Build() 必须显式调用——AddComponent 只挂脚本，
@@ -427,8 +454,11 @@ namespace Xianxia.Unity.T2
             }
             else
             {
-                SetMenuPaused(true);
-                _mainMenuHud.Show();
+                // 冷启动直接进入可玩状态：不弹主菜单、不冻结玩法。
+                // 当前阶段以「逛水墨世界 / PlayMode 演示」为主目标，开局冻结（主菜单 + 操作引导）
+                // 会直接表现为「玩家动不了」。菜单与引导组件仍已在上方 Build 完成，
+                // 未来若需要开始菜单，可在暂停流程或单独入口重新唤起，不改此默认行为。
+                // （重开路径的 skip 分支保持不变，仍走「引导期间冻结」流程。）
             }
 
             if (_dump != null)
@@ -547,9 +577,9 @@ namespace Xianxia.Unity.T2
             // 职责是"把组件挂到玩家身上"。挂上去就好，接线交给该管的人。
             PlayerHitFlash playerFlash;
 #if UNITY_2023_1_OR_NEWER
-            playerFlash = Object.FindFirstObjectByType<PlayerHitFlash>();
+            playerFlash = UnityEngine.Object.FindFirstObjectByType<PlayerHitFlash>();
 #else
-            playerFlash = Object.FindObjectOfType<PlayerHitFlash>();
+            playerFlash = UnityEngine.Object.FindObjectOfType<PlayerHitFlash>();
 #endif
             _feedback.Bind(this, null, _popupLayer, playerFlash);
 
@@ -994,7 +1024,12 @@ namespace Xianxia.Unity.T2
             {
                 return false;
             }
-            return controller.RequestPlayerCast(slot, facing);
+            bool written = controller.RequestPlayerCast(slot, facing);
+            if (written)
+            {
+                CastRequested?.Invoke(slot);
+            }
+            return written;
         }
 
         /// <summary>投递一次闪避意图。</summary>
@@ -1003,6 +1038,27 @@ namespace Xianxia.Unity.T2
         public bool RequestDodge(Vector2 dir)
         {
             return RequestCast(IntentSlot.Dodge, dir);
+        }
+
+        /// <summary>
+        /// <see cref="IDamageRequester"/> 实现：把敌人的接触伤害请求投递进战斗内核。
+        /// 【红线】本方法绝不直接改 HP，只调 <see cref="Combatant.ApplyEnemyDamage"/>，
+        /// 由内核 WCore.DamageFilter（模型 B 减伤）统一结算 —— 推进权唯一。
+        /// 由 <see cref="EnemyPatrol"/> 在贴身攻击且冷却到点时经此抛出（表现与逻辑解耦）。
+        /// </summary>
+        /// <param name="rawDamage">原始伤害（未套减伤，真减伤在内核侧）。</param>
+        public void RequestContactDamage(float rawDamage)
+        {
+            if (controller == null || controller.Encounter == null)
+            {
+                return;
+            }
+            Combatant player = controller.Player;
+            if (player == null || !player.IsAlive)
+            {
+                return;
+            }
+            player.ApplyEnemyDamage(rawDamage);
         }
 
         // ---------------------------------------------------------------------
@@ -1357,6 +1413,10 @@ namespace Xianxia.Unity.T2
             // 但它不会把 _menuPaused 的状态踩掉，也不会被后来的菜单关闭动作反向踩掉。
             ApplyPauseState();
 
+            // ★ 第1周地基：终局 → GameManager 相位切到 GameOver，广播 RunEndedEvent。
+            //   与 ApplyPauseState 同序：先停（上面）再切相位，避免"面板出来相位还没变"的观感。
+            GameManager.Ensure().NotifyRunEnded(p == RunPhase.Won);
+
             // ★P2-1：终局必收 BOSS 血条。
             //   BOSS 被打死那一路血条会自愈（HudBossBar.Update 见 _boss.IsAlive == false 就 Hide），
             //   但**玩家先死**那一路不会：BOSS 还活蹦乱跳，血条自然不收，于是结算面板顶上
@@ -1634,9 +1694,9 @@ namespace Xianxia.Unity.T2
             if (_bossBar == null)
             {
 #if UNITY_2023_1_OR_NEWER
-                _bossBar = Object.FindFirstObjectByType<HudBossBar>();
+                _bossBar = UnityEngine.Object.FindFirstObjectByType<HudBossBar>();
 #else
-                _bossBar = Object.FindObjectOfType<HudBossBar>();
+                _bossBar = UnityEngine.Object.FindObjectOfType<HudBossBar>();
 #endif
             }
             return _bossBar;
@@ -1937,6 +1997,13 @@ namespace Xianxia.Unity.T2
         {
             _menuPaused = paused;
             ApplyPauseState();
+
+            // ★ 第1周地基：把菜单冻结状态镜像到 GameManager 相位。
+            //   终局后相位已由 NotifyRunEnded 钉成 GameOver，这里不再被 _menuPaused 踩回 Playing。
+            if (!IsRunOver)
+            {
+                GameManager.Ensure().SetPhase(paused ? GamePhase.Paused : GamePhase.Playing);
+            }
         }
 
         /// <summary>ESC 切换暂停面板。打开即冻结，关闭即解冻（终局时不解冻，见 IsGameplayBlocked）。</summary>
@@ -1970,7 +2037,9 @@ namespace Xianxia.Unity.T2
         /// <summary>重载当前场景（重开一局 / 返回主菜单共用）。</summary>
         private void ReloadScene()
         {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            // ★ 第1周地基：改走 SceneLoader，带"加载中"遮罩（为第6周四区块加载打底）。
+            //   SceneLoader 内部仍用 LoadSceneAsync，行为等价原同步 LoadScene。
+            SceneLoader.ReloadCurrent();
         }
 
         /// <summary>
@@ -1980,6 +2049,9 @@ namespace Xianxia.Unity.T2
         /// </summary>
         private void QuitGame()
         {
+            // ★ 第1周地基：退出前把相位切到 MainMenu（存档/统计可订阅感知）。
+            GameManager.Ensure().NotifyReturnedToMenu();
+
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else

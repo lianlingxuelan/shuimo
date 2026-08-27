@@ -10,6 +10,8 @@
 //     PlayState / SetFacing / OnTick 抽象契约、ResolveOn 工厂。
 //   - SpriteCharacterView（默认）：用 SpriteRenderer，零 Spine 依赖，立即可用。
 //   - SpineCharacterView（可选）：仅当 HAS_SPINE_PACKAGE 定义时编译，引用 Spine 运行时。
+//   - UnityBoneCharacterView（2D 骨骼）：已拆至独立文件 UnityBoneCharacterView.cs
+//     （单类文件，fileID 11500000 才能正确解析到该类，避免 missing script）；本 asmdef 恒编译。
 //
 // 【红线（与 BambooVfx 同口径）】
 //   1. 动画推进唯一时钟 = FeedbackClock.Delta；Tick() 只读 FeedbackClock.Frozen 作闸门，
@@ -37,9 +39,8 @@ namespace Xianxia.Unity.T2
 #if HAS_SPINE_PACKAGE
     using Spine.Unity;
 #endif
-#if HAS_2D_BONE_PACKAGE
+    // 2D 骨骼命名空间：本 asmdef 已硬引用 Unity.2D.Animation.Runtime，恒可用，故不包 #if。
     using UnityEngine.U2D.Animation;
-#endif
 
     /// <summary>角色视图动画状态（战斗事件驱动）。</summary>
     public enum CharacterAnimState
@@ -134,6 +135,14 @@ namespace Xianxia.Unity.T2
                 return null;
             }
 
+            // 白衣分层角色不依赖 SpriteSkin；它有自己的 Transform 骨骼层级，必须在
+            // 通用 Sprite 回退之前识别，避免被错误加上 SpriteCharacterView。
+            WhiteHeroineCutoutView whiteCutout = root.GetComponent<WhiteHeroineCutoutView>();
+            if (whiteCutout != null)
+            {
+                return whiteCutout;
+            }
+
 #if HAS_SPINE_PACKAGE
             // 仅在符号存在时，才探测 Spine 组件（类型引用被 #if 隔离，缺包不编译）。
             Spine.Unity.SkeletonAnimation sk = root.GetComponent<Spine.Unity.SkeletonAnimation>();
@@ -146,8 +155,7 @@ namespace Xianxia.Unity.T2
             }
 #endif
 
-#if HAS_2D_BONE_PACKAGE
-            // 探测 Unity 2D Animation 骨骼组件（类型引用被 #if 隔离，缺包不编译）。
+            // 探测 Unity 2D Animation 骨骼组件（本 asmdef 已硬引用 2D Animation 包，恒可用）。
             // 优先级低于 Spine（若两者都装，Spine 优先），高于默认 Sprite 回落。
             SpriteSkin skin = root.GetComponent<SpriteSkin>();
             if (skin != null)
@@ -157,7 +165,6 @@ namespace Xianxia.Unity.T2
                 bv.Bind(skin);
                 return bv;
             }
-#endif
 
             // 默认：Sprite 视图（零依赖，立即可用）。
             SpriteCharacterView sp = root.GetComponent<SpriteCharacterView>()
@@ -505,198 +512,4 @@ namespace Xianxia.Unity.T2
     }
 #endif // HAS_SPINE_PACKAGE
 
-// =============================================================================
-// Unity 2D Animation 骨骼视图守卫（与 Spine 同口径）
-//   整个 UnityBoneCharacterView 类 + ResolveOn 分支均包在 #if HAS_2D_BONE_PACKAGE
-//   内。未定义符号时整类不编译 → 工程零 2D-Animation 依赖零报错。
-//   启用：Player Settings > Scripting Define Symbols 追加 HAS_2D_BONE_PACKAGE，
-//   并确保本 asmdef 引用了 UnityEngine.U2D.Animation 模块
-//   （com.unity.2d.animation 已随 com.unity.feature.2d 安装，无需额外装包）。
-// =============================================================================
-#if HAS_2D_BONE_PACKAGE
-    /// <summary>
-    /// Unity 2D Animation 骨骼角色视图（仅当 HAS_2D_BONE_PACKAGE 定义时编译）。
-    /// 探测 SpriteSkin（2D 骨骼绑定组件），用 Animator 手动 Update(FeedbackClock.Delta)
-    /// 喂动画，与全场顿帧同步冻结（同 Spine 分支的推进闸门语义）。
-    /// 受击对根骨骼做基于 dt 的抖动；朝向翻转翻 rootBone 的 localScale.x 符号。
-    /// </summary>
-    [DisallowMultipleComponent]
-    public sealed class UnityBoneCharacterView : CharacterView
-    {
-        [Header("受击表现")]
-        [Tooltip("受击骨骼抖动时长（秒）")]
-        public float hitShakeDuration = 0.22f;
-
-        [Tooltip("受击骨骼抖动幅度（局部单位）")]
-        public float hitShakeAmplitude = 0.18f;
-
-        [Header("状态→动画名映射")]
-        [Tooltip("Idle 对应的 Animator 状态/Clip 名")]
-        public string clipIdle = "idle";
-
-        [Tooltip("Walk 对应的 Animator 状态/Clip 名")]
-        public string clipWalk = "walk";
-
-        [Tooltip("Attack 对应的 Animator 状态/Clip 名")]
-        public string clipAttack = "attack";
-
-        [Tooltip("Hit 对应的 Animator 状态/Clip 名")]
-        public string clipHit = "hit";
-
-        [Tooltip("Death 对应的 Animator 状态/Clip 名")]
-        public string clipDeath = "death";
-
-        private SpriteSkin _skin;
-        private Animator _animator;
-        private readonly Dictionary<CharacterAnimState, string> _clipMap =
-            new Dictionary<CharacterAnimState, string>();
-
-        private float _hitShakeRemain;
-        private Vector3 _rootBaseLocalPos = Vector3.zero;
-        private Transform _rootBone;
-        private float _rootBaseScaleX = 1.0f;
-
-        /// <summary>由 ResolveOn 在运行时探测到 SpriteSkin 后调用，绑定骨骼组件。</summary>
-        /// <param name="skin">2D 骨骼绑定组件。</param>
-        public void Bind(SpriteSkin skin)
-        {
-            _skin = skin;
-            _animator = _skin != null ? _skin.GetComponent<Animator>() : null;
-            _clipMap[CharacterAnimState.Idle] = clipIdle;
-            _clipMap[CharacterAnimState.Walk] = clipWalk;
-            _clipMap[CharacterAnimState.Attack] = clipAttack;
-            _clipMap[CharacterAnimState.Hit] = clipHit;
-            _clipMap[CharacterAnimState.Death] = clipDeath;
-            HasView = _skin != null && _animator != null;
-            if (_skin != null)
-            {
-                _skin.enabled = true;
-                // 手动推进：避免 Animator 用 deltaTime 自动播放，改由 FeedbackClock.Delta 驱动，
-                // 实现与 Spine 分支一致的顿帧同步（Frozen 时 OnTick 不调用 → Animator 不动）。
-                if (_animator != null && _animator.playableGraph.IsValid())
-                {
-                    // Unity 2022.3 的 AnimatorUpdateMode 没有 Manual 枚举值，
-                    // 改为把 Animator 的 PlayableGraph 设成 Manual 时间更新模式，
-                    // 再由 OnTick 用 FeedbackClock.Delta 手动推进，顿帧期间自然冻结。
-                    _animator.playableGraph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                }
-                // 记录根骨骼用于朝向翻转与受击抖动。
-                _rootBone = _skin.rootBone;
-                if (_rootBone != null)
-                {
-                    _rootBaseScaleX = _rootBone.localScale.x;
-                    _rootBaseLocalPos = _rootBone.localPosition;
-                }
-                else
-                {
-                    _rootBaseLocalPos = _skin.transform.localPosition;
-                }
-            }
-        }
-
-        /// <inheritdoc />
-        protected override void Awake()
-        {
-            base.Awake();
-            // 若未走 ResolveOn.Bind（例如场景里直接挂了组件），尝试自探。
-            if (_skin == null)
-            {
-                _skin = GetComponent<SpriteSkin>();
-                if (_skin != null)
-                {
-                    Bind(_skin);
-                }
-            }
-        }
-
-        /// <inheritdoc />
-        public override void PlayState(CharacterAnimState state)
-        {
-            _state = state;
-            if (_animator == null)
-            {
-                return;
-            }
-            string clip;
-            if (!_clipMap.TryGetValue(state, out clip) || string.IsNullOrEmpty(clip))
-            {
-                return;
-            }
-            // Mecanim 状态机内 idle/walk 设为循环、attack/hit/death 设为 OneShot。
-            _animator.Play(clip, 0, 0.0f);
-            if (state == CharacterAnimState.Hit)
-            {
-                _hitShakeRemain = hitShakeDuration;
-            }
-        }
-
-        /// <inheritdoc />
-        public override void SetFacing(Vector2 dir)
-        {
-            _facing = dir;
-            // 与 Sprite/Spine 约定一致：dir.x < 0 朝左翻转。
-            float sign = dir.x < 0.0f ? -1.0f : 1.0f;
-            if (_rootBone != null)
-            {
-                Vector3 s = _rootBone.localScale;
-                s.x = _rootBaseScaleX * sign;
-                _rootBone.localScale = s;
-            }
-            else if (_skin != null)
-            {
-                SpriteRenderer sr = _skin.GetComponent<SpriteRenderer>();
-                if (sr != null)
-                {
-                    sr.flipX = dir.x < 0.0f;
-                }
-            }
-        }
-
-        /// <inheritdoc />
-        protected override void OnTick(float dt)
-        {
-            if (_animator == null)
-            {
-                return;
-            }
-            // 手动推进 Mecanim（Manual 模式），精确用 FeedbackClock.Delta；
-            // 顿帧期间 OnTick 不被调用 → Animator 不动 → 全场同步冻结。
-            _animator.Update(dt);
-
-            // 受击根骨骼抖动（按 dt 衰减）。
-            if (_hitShakeRemain > 0.0f)
-            {
-                _hitShakeRemain -= dt;
-                float t = hitShakeDuration > 1e-4f
-                    ? Mathf.Clamp01(_hitShakeRemain / hitShakeDuration)
-                    : 0.0f;
-                float damp = t * t;
-                float offset = Mathf.Sin((hitShakeDuration - _hitShakeRemain) * 40.0f) * hitShakeAmplitude * damp;
-                if (_rootBone != null)
-                {
-                    Vector3 p = _rootBone.localPosition;
-                    p.x = _rootBaseLocalPos.x + offset;
-                    _rootBone.localPosition = p;
-                }
-                else if (_skin != null)
-                {
-                    Vector3 p = _skin.transform.localPosition;
-                    p.x = _rootBaseLocalPos.x + offset;
-                    _skin.transform.localPosition = p;
-                }
-            }
-            else
-            {
-                if (_rootBone != null && _rootBone.localPosition != _rootBaseLocalPos)
-                {
-                    _rootBone.localPosition = _rootBaseLocalPos;
-                }
-                else if (_skin != null && _skin.transform.localPosition != _rootBaseLocalPos)
-                {
-                    _skin.transform.localPosition = _rootBaseLocalPos;
-                }
-            }
-        }
-    }
-#endif // HAS_2D_BONE_PACKAGE
 }

@@ -1,0 +1,14 @@
+{
+    "name": "Xianxia.Cultivation",
+    "rootNamespace": "Xianxia.Cultivation",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

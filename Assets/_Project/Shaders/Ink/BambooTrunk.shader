@@ -15,6 +15,9 @@ Shader "Xianxia/Ink/BambooTrunk"
         _StrokeStrength ("笔触强度", Range(0, 0.4)) = 0.15
         _EdgeInk    ("轮廓墨", Range(0, 0.8)) = 0.35
         _Roughness  ("粗糙度", Range(0, 1)) = 0.6
+        _NodeSpacing ("竹节间距", Range(0.5, 6)) = 2.2
+        _NodeWidth   ("竹节带宽", Range(0.02, 0.4)) = 0.12
+        _NodeInk     ("竹节墨浓", Range(0, 0.8)) = 0.45
     }
     SubShader
     {
@@ -22,7 +25,8 @@ Shader "Xianxia/Ink/BambooTrunk"
         LOD 200
 
         CGPROGRAM
-        #pragma surface surf Lambert vertex:vert addshadow
+        #pragma surface surf Lambert vertex:vert addshadow instancing
+        #pragma multi_compile_instancing
         #pragma target 3.0
 
         fixed4 _InkBottom;
@@ -36,6 +40,9 @@ Shader "Xianxia/Ink/BambooTrunk"
         float _StrokeStrength;
         float _EdgeInk;
         float _Roughness;
+        float _NodeSpacing;
+        float _NodeWidth;
+        float _NodeInk;
 
         struct Input
         {
@@ -87,7 +94,18 @@ Shader "Xianxia/Ink/BambooTrunk"
             float rim = pow(1.0 - saturate(dot(normalize(IN.viewDir), IN.worldNormal)), 1.5);
             col = lerp(col, _InkBottom.rgb, rim * _EdgeInk);
 
+            // 竹节:沿竿规则分布的墨环(竹之特征),节点处墨色收浓、略下淌
+            float nodePhase = abs(frac(IN.worldPos.y / _NodeSpacing + 0.5) - 0.5) * 2.0;
+            float nodeBand = 1.0 - smoothstep(0.0, _NodeWidth, nodePhase);
+            col = lerp(col, _InkBottom.rgb * 0.5, nodeBand * _NodeInk);
+            // 节下淡墨晕开(似运笔后墨未干)
+            float nodeBelow = smoothstep(0.0, _NodeWidth * 2.2, nodePhase) * (1.0 - smoothstep(_NodeWidth * 2.2, _NodeWidth * 5.0, nodePhase));
+            col = lerp(col, _InkMid.rgb * 0.85, nodeBelow * _NodeInk * 0.4);
+
             o.Albedo = col;
+            // 场景采用正交 2.5D 取景，竹子不应该因为没有直射灯而整体压成黑柱。
+            // 保留少量 Lambert 明暗，同时用自发光保证水墨底色始终可读。
+            o.Emission = col * 0.78;
             o.Alpha = 1.0;
             o.Specular = 0.0;
             o.Gloss = 0.0;

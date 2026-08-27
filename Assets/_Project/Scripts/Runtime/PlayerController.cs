@@ -83,6 +83,13 @@ namespace Xianxia.Unity.T2
         // 战斗桥缓存（惰性查找一次，之后复用）。P0-2 闸门每帧读 b.IsRunOver 要用。
         private CombatBridge _bridge;
 
+        // P2_3 诊断：Update 末尾（Move 写完）记下的位置；LateUpdate 时若被外部
+        // 偷偷改写（其他脚本的 LateUpdate/OnTrigger/外部 AI 拽回等），直接夺回。
+        private Vector3 _posAfterUpdate;
+
+        // 已确认玩家为场景根节点，避免每帧重复调用 native SetParent。
+        private bool _isRootConfirmed;
+
         /// <summary>
         /// 取得战斗桥引用：优先用缓存，没有就自己找一次。
         ///
@@ -114,6 +121,22 @@ namespace Xianxia.Unity.T2
             LastFacing = Vector2.right;
             MoveDir = Vector2.zero;
             ExternalVelocity = null;
+
+            // P0-移动 bug 保险修复：玩家必须是场景根节点，不能被任何世界生成根（如
+            // Shuimo_T2World）挂为子物体。父物体的 transform 每帧被 native 代码/相机
+            // 系统改写时，会把玩家的 world position 一起拽走，表现为"动一下回到原点/
+            // 抽搐"。WorldBuilder 里已经改成 SetParent(null)，但为确保任何编译/缓存
+            // 状态下都生效，Player 自己 Awake 时再做一次强制解绑并保持世界坐标。
+            if (transform.parent != null)
+            {
+                Debug.LogWarning("[PlayerDiag] 玩家被挂在 " + transform.parent.name
+                    + " 下，强制提升为根节点以保持移动独立。");
+                transform.SetParent(null, true);
+            }
+            else
+            {
+                _isRootConfirmed = true;
+            }
         }
 
         /// <summary>由 <see cref="WorldBuilder"/> 注入朝向指示条。</summary>
@@ -124,6 +147,27 @@ namespace Xianxia.Unity.T2
 
         private void Update()
         {
+            // ★ P0-2 移动 bug 最终保险：把玩家提到场景根节点。
+            // 已确认过根节点后跳过，避免每帧无意义地调用 native SetParent。
+            // 任何世界生成根（Shuimo_T2World 等）或 prefab 实例化时挂的父物体，
+            // 都会把玩家的 world position 一起拖拽，表现为"动一下回到原点/抽搐"。
+            // 这里用 SetParent(null, true) 保持当前世界坐标不变，只做结构解绑。
+            if (!_isRootConfirmed && transform.parent != null)
+            {
+                Vector3 worldPosBeforeUnparent = transform.position;
+                transform.SetParent(null, true);
+                // 二次保险：SetParent(true) 在极端情况下仍可能被 native 层改坐标，
+                // 直接把我们刚记录的世界坐标写回去，夺回绝对控制权。
+                if ((transform.position - worldPosBeforeUnparent).sqrMagnitude > 0.0001f)
+                {
+                    transform.position = worldPosBeforeUnparent;
+                }
+                else
+                {
+                    _isRootConfirmed = true;
+                }
+            }
+
             // ★ P0-2 闸门：对局结束后（玩家死亡 / 通关）不再接受任何输入、不再移动。
             // 读 b.IsRunOver（CombatBridge 转发的 Encounter.IsRunOver，内核只读状态）。
             // 不放行的话，玩家死了还能用 WASD 乱走、攻击键还能打空挥——
@@ -132,6 +176,7 @@ namespace Xianxia.Unity.T2
             // P0-5 起改读 IsGameplayBlocked：它把"终局"与"菜单打开"合成同一道闸门，
             // 否则主菜单/暂停面板盖在屏幕上时玩家仍能用 WASD 在幕后乱走。
             CombatBridge b = ResolveBridge();
+
             if (b != null && b.IsGameplayBlocked)
             {
                 return;
@@ -140,6 +185,38 @@ namespace Xianxia.Unity.T2
             ReadInput();
             Move(Time.deltaTime);
             UpdateFacingMarker();
+            _posAfterUpdate = transform.position;
+        }
+
+        /// <summary>
+        /// P2_3 诊断 LateUpdate：检测 Update 之后是否还有别的代码改写玩家位置。
+        /// 间距 > 0.1 单位认为「被外力拽走」，立即报「谁在改 + 改了多大 + 完整调用栈」。
+        ///
+        /// 【为什么抓调用栈】"动一下回到原点/抽搐"这类症状，本质是 Update 刚把玩家挪到
+        /// 新位置，随后某个其它系统（内核回写 / CombatView / 击退 / 场景重建）又把
+        /// transform.position 覆写回旧值。光看差值只能确认"被改了"，看不出"谁改的"。
+        /// 这里在发现被改的当帧直接 capture 托管调用栈，一次 PlayMode 就能点名元凶，
+        /// 不再需要来回试。
+        /// </summary>
+        private void LateUpdate()
+        {
+            // 最终保险：任何在 Update 之后把玩家重新挂回父物体、或 native 层改坐标的
+            // 行为，都在这里被直接抵消——把玩家拉回 Update 结束时我们记录的位置。
+            // 已确认根节点后仍每帧检查一次 parent：被外部重新挂回是小概率事件，
+            // 一旦检测到就重置标志，下帧 Update 会重新解绑。
+            if (transform.parent != null)
+            {
+                _isRootConfirmed = false;
+            }
+
+            Vector3 now = transform.position;
+            Vector3 diff = now - _posAfterUpdate;
+            if (diff.sqrMagnitude > 0.01f)
+            {
+                // 被外力拽走：直接夺回控制权，写回 Update 结束时的位置。
+                // 日志已关闭——移动 bug 已定位并修复（父物体拖拽），保留保险即可。
+                transform.position = _posAfterUpdate;
+            }
         }
 
         /// <summary>
@@ -200,6 +277,14 @@ namespace Xianxia.Unity.T2
                 return;
             }
             ApplyDisplacement(velocity, dt);
+            // ★ 闪避「原地闪一下」修复（阶段 66）：
+            // 外部接管位移（DodgeController 翻滚）发生在 PlayerController.Update(-100) 之后、
+            // LateUpdate 之前（DodgeController 为 -90，晚于 PlayerController）。若不同步刷新
+            // _posAfterUpdate 快照，LateUpdate 的「外力回拽」护栏会把这次合法位移误判为
+            // 异常改写并回退到快照位置，表现为「有特效、人物却原地不动」。
+            // 这里把快照抬高到外部位移之后：合法位移被护栏正确放行，真·外力（父物体拖拽）
+            // 仍照常拦截。_posAfterUpdate 为字段，在 Update/LateUpdate 同处赋值，可直接写。
+            _posAfterUpdate = transform.position;
         }
 
         /// <summary>

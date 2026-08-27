@@ -47,6 +47,12 @@ namespace Xianxia.Unity.T2
         /// <summary>连击变化回调，供 HUD 订阅。</summary>
         public Action<int, float> ComboChanged;
 
+        /// <summary>
+        /// 技能施放事件。参数：(caster, 技能定义, 施放朝向)。
+        /// 供外部模块订阅做表现联动（如竹林砍竹检测），不用于战斗规则。
+        /// </summary>
+        public event Action<Combatant, SkillDef, Vector2> SkillCast;
+
         /// <summary>是否输出详细日志。默认关闭 —— 战斗中每次命中都打日志会严重拖慢帧率。</summary>
         public bool VerboseLog;
 
@@ -126,6 +132,12 @@ namespace Xianxia.Unity.T2
             {
                 PlaySfx(def.Id);
             }
+
+            if (SkillCast != null)
+            {
+                SkillCast(caster, def, FacingOf(caster));
+            }
+
             if (VerboseLog)
             {
                 Debug.Log("[T3] cast " + def.Id);

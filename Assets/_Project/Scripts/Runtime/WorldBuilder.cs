@@ -73,14 +73,50 @@ namespace Xianxia.Unity.T2
         /// <summary>玩家占位方块边长（世界单位）。放大约 1.25 格（≈屏上 6%）以修复「玩家看不见」的比例缺陷。</summary>
         public const int PlayerBodySize = 40;
 
+        /// <summary>
+        /// 首期美术替换使用的白衣女主资源。放在 Resources 下，因而无需改动既有 prefab 的 GUID。
+        /// 旧 HeroineBone.prefab 保留为动作/骨骼装配容器，随时可撤销这张展示图。
+        /// </summary>
+        public const string PreferredHeroineSpriteResourcePath = "Characters/heroine_ink_idle_v2_transparent";
+
+        /// <summary>
+        /// 与站立图配套的挥剑姿态。它是单张立绘尚未完成网格权重前的可见动作过渡，
+        /// 由 UnityBoneCharacterView 在攻击窗口内切换，之后会自然回到站立图。
+        /// </summary>
+        public const string PreferredHeroineAttackSpriteResourcePath = "Characters/heroine_ink_attack_v2_chroma";
+
+        /// <summary>与站立图配套的跨步姿态，用于移动中的可见反馈。</summary>
+        public const string PreferredHeroineWalkSpriteResourcePath = "Characters/heroine_ink_walk_v2_chroma";
+
+        /// <summary>行走循环的另一脚跨步，用于和首帧交替形成真正的步态。</summary>
+        public const string PreferredHeroineWalkAlternateSpriteResourcePath = "Characters/heroine_ink_walk_v4_chroma";
+
+        /// <summary>
+        /// 蓝方块回退角色需要独立朝向条；正式女主立绘已有剑和身体朝向，显示它只会形成穿模的荧光线。
+        /// </summary>
+        public static bool ShouldShowFacingMarker(bool hasPreferredHeroineArt)
+        {
+            return !hasPreferredHeroineArt;
+        }
+
+        /// <summary>
+        /// 正式女主资源已经画入佩剑，不能再叠加旧的 3D 世界武器；回退方块才继续使用它。
+        /// </summary>
+        public static bool ShouldAttachLegacyWorldWeapon(bool hasPreferredHeroineArt)
+        {
+            return !hasPreferredHeroineArt;
+        }
+
         /// <summary>敌人占位圆直径（世界单位）。</summary>
         public const int EnemyBodySize = 26;
 
-        /// <summary>敌人首波生成的最小 / 最大半径（相对玩家出生点）。</summary>
-        public const float SpawnRingMin = 260.0f;
+        // P2_3：Boss 出生距离临时拉远，原 260 直接刷在玩家脸前、把玩家完全钉死，
+        // 让人根本无法验证移动。1500 ≈ 5+ tile，玩家至少有空间跑两步看清移动松/紧。
+        // Boss 战调好手感后再改回。
+        public const float SpawnRingMin = 1500.0f;
 
         /// <summary>敌人首波生成的最大半径。</summary>
-        public const float SpawnRingMax = 620.0f;
+        public const float SpawnRingMax = 1800.0f;
 
         // ---------------------------------------------------------------------
         // 生成结果（供 EnemySpawner / PlayerController / DeterminismDump 读取）
@@ -409,15 +445,20 @@ namespace Xianxia.Unity.T2
             renderer.mode = TilemapRenderer.Mode.Chunk;         // Chunk 才会合批
             renderer.sortOrder = TilemapRenderer.SortOrder.TopLeft;
 
-            ZonePalette pal = theme != null ? theme.Palette : null;
+            // 【水墨世界基线：空白宣纸画布】
+            // 原四色调色板（Ground/Ground2/Water/Rock）是 PRD 早期的「占位格子图」观感，
+            // 用户反馈它与「水墨像素图」混淆、且分不清竹林是否真的放进场景。这里把四种地块
+            // 全部渲染为同一张宣纸白：逻辑上 TileKind（可行走判定 / 落点校验）完全不变，
+            // 视觉上变成一张无格纹的空白画布，后续再逐步往上叠加水墨地形（路径 / 水洼 / 岩石皴擦）。
             Sprite white = SpriteFactory.WhiteTile();
+            Color paperWhite = new Color(0.95f, 0.94f, 0.89f, 1.0f);   // 宣纸白（非纯白，保留水墨纸感）
 
-            // 四种地块 = 四个 Tile 实例，共用一张贴图，只有 color 不同。
+            // 四种地块 = 四个 Tile 实例，共用一张贴图，颜色统一为宣纸白（无格子感）。
             Tile[] tiles = new Tile[4];
-            tiles[(int)TileKind.Ground] = MakeTile(white, ParseColor(pal != null ? pal.Ground : null, new Color32(0x42, 0x56, 0x3f, 0xff)), "ground");
-            tiles[(int)TileKind.Ground2] = MakeTile(white, ParseColor(pal != null ? pal.Ground2 : null, new Color32(0x4d, 0x63, 0x49, 0xff)), "ground2");
-            tiles[(int)TileKind.Water] = MakeTile(white, ParseColor(pal != null ? pal.Water : null, new Color32(0x3a, 0x6b, 0x6e, 0xff)), "water");
-            tiles[(int)TileKind.Rock] = MakeTile(white, ParseColor(pal != null ? pal.Rock : null, new Color32(0x4a, 0x4f, 0x42, 0xff)), "rock");
+            tiles[(int)TileKind.Ground]  = MakeTile(white, paperWhite, "ground");
+            tiles[(int)TileKind.Ground2] = MakeTile(white, paperWhite, "ground2");
+            tiles[(int)TileKind.Water]   = MakeTile(white, paperWhite, "water");
+            tiles[(int)TileKind.Rock]    = MakeTile(white, paperWhite, "rock");
 
             int total = Width * Height;
             Vector3Int[] positions = new Vector3Int[total];
@@ -534,18 +575,49 @@ namespace Xianxia.Unity.T2
 
         private static Transform BuildPlayer(Transform parent, Vector2 spawn)
         {
-            GameObject go = new GameObject("Player");
-            go.transform.SetParent(parent, false);
+            GameObject go;
+            bool isWhiteCutout = false;
+            bool hasPreferredHeroineArt = false;
+
+            // ===== 白衣角色：优先使用透明分层的 Cutout 骨骼 prefab =====
+            // 不再加载已证实不可用的黑衣 HeroineBone。白衣各层由明确的 Transform
+            // 骨骼层级驱动，走路和挥剑会直接改变手臂、头发与裙摆的相对位置。
+            GameObject whiteCutoutPrefab = Resources.Load<GameObject>("HeroineWhiteCutout");
+            if (whiteCutoutPrefab != null)
+            {
+                go = Object.Instantiate(whiteCutoutPrefab);
+                go.name = "Player";
+                isWhiteCutout = true;
+                hasPreferredHeroineArt = true;
+            }
+            else
+            {
+                go = new GameObject("Player");
+                SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = SpriteFactory.SolidRect("player", PlayerBodySize, PlayerBodySize,
+                                                    new Color(0.42f, 0.62f, 0.92f, 1.0f));
+                sr.sortingOrder = 10;
+            }
+
+            // P0-移动 bug 修复：玩家作为世界根节点的子物体会被父物体的 transform 变化拖拽。
+            // POS REWRITE 诊断显示 Update 之后玩家 world position 被神秘改写（调用栈为空，
+            // 非托管代码直接赋值），疑似父物体 Shuimo_T2World 在运行期被移动。把玩家提升到
+            // 场景根节点，彻底隔离父物体干扰；战斗/相机系统都直接持有 player 引用，不受影响。
+            go.transform.SetParent(null, false);
             go.transform.position = new Vector3(spawn.x, spawn.y, 0.0f);
 
-            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-            // ★兜底第一行：**无条件**先设程序化蓝方块。
-            //   下面的水墨精灵是"升级"，不是"替代"——精灵资源缺失 / 换平台读不到盘时，
-            //   这一行保证玩家身上永远有一个可见的 Sprite，行为与接入精灵之前逐字节一致。
-            //   千万不要因为"现在有精灵了"就删掉它（见设计 K10）。
-            sr.sprite = SpriteFactory.SolidRect("player", PlayerBodySize, PlayerBodySize,
-                                                new Color(0.42f, 0.62f, 0.92f, 1.0f));
-            sr.sortingOrder = 10;
+            // 白衣源图只有约 6×10 世界单位，而本项目一格为 32、
+            // 相机视野为数百单位；不放大时角色会小到近乎不可见。只缩放骨骼
+            // prefab 实例，程序化精灵回退路径保持既有 40×40 尺寸不变。
+            if (isWhiteCutout)
+            {
+                go.transform.localScale = Vector3.one * 11.0f;
+            }
+
+            if (isWhiteCutout)
+            {
+                Debug.Log("[WorldBuilder] 使用白衣分层 Cutout 骨骼角色（非黑衣旧资产）。");
+            }
 
             // 朝向指示：一根从体心指向 lastFacing 的短条。占位美术里没有它，
             // 玩家就完全看不出自己朝哪边——而扇形攻击判定恰恰吃朝向。
@@ -557,6 +629,7 @@ namespace Xianxia.Unity.T2
             fsr.sprite = SpriteFactory.SolidRect("player_facing", facingW, 7,
                                                  new Color(0.86f, 0.93f, 1.0f, 0.95f));
             fsr.sortingOrder = 11;
+            fsr.enabled = ShouldShowFacingMarker(hasPreferredHeroineArt);
 
             PlayerController pc = go.AddComponent<PlayerController>();
             pc.SetFacingMarker(facing.transform);
@@ -572,10 +645,9 @@ namespace Xianxia.Unity.T2
             // 为玩家阵营时调用 PlayerHitFlash.Play(...) 分流派发。
             //
             // 【为什么 Awake 一定能拿到 SpriteRenderer】
-            // 上面 :541 已经 AddComponent<SpriteRenderer>() 并设了蓝方块占位，
-            // 早于本行。PlayerHitFlash.Awake 里 GetComponent<SpriteRenderer>() 必中，
-            // 但仍自带惰性解析兜底（见 PlayerHitFlash.EnsureRenderer），装配顺序
-            // 即便将来被调整也不会空引用崩。
+            // 骨骼 prefab 的 root 上已有 SpriteRenderer；回落路径里上面也 AddComponent 过。
+            // PlayerHitFlash.Awake 里 GetComponent<SpriteRenderer>() 必中，但仍自带惰性
+            // 解析兜底（见 PlayerHitFlash.EnsureRenderer）。
             go.AddComponent<PlayerHitFlash>();
 
             go.AddComponent<AttackController>();
@@ -596,40 +668,63 @@ namespace Xianxia.Unity.T2
             go.AddComponent<SkillController>();   // K / 鼠标右键 → Skill1，L → Skill2
             go.AddComponent<DodgeController>();   // Shift / Space 闪避
 
-            // ===== 美术阶段 E：把蓝方块「升级」为 39 帧水墨女主精灵 =====
-            //
-            // 【为什么挂在最后】HeroineAnimator.Awake() 会 GetComponent 上面这些战斗组件
-            // 来做状态轮询（AddComponent 会立刻触发 Awake），先挂就一个都拿不到。
-            //
-            // 【三层 fallback 的第三层】前两层在 SpriteFactory.TryLoadPng（失败返 null 不抛）
-            // 和 HeroineAnimator.Warmup（读不到 idle 首帧则 IsReady=false）。这里是最后一层：
-            // 蓝方块已经在上面无条件设过了，精灵只是"能升级就升级"。
-            HeroineAnimator anim = go.AddComponent<HeroineAnimator>();
-            if (anim.IsReady)
+            // 回退方块仍可用独立世界剑；正式白衣图已画入佩剑，不再叠一把旧 3D 剑，
+            // 以免材质失效时冒出洋红线或双剑穿模。
+            if (ShouldAttachLegacyWorldWeapon(hasPreferredHeroineArt))
             {
-                // 精灵接管渲染。朝向条**弱化保留**而非删除：
-                // 攻击扇形吃 8 向 lastFacing，而走路动画只有 4 向（上/下/左/右），
-                // 站桩不动时 idle 图完全不表达朝向——删了玩家就看不出自己在往哪打。
-                // 所以留一根更细更淡的：看得见，但不跟角色抢戏。
-                // （这里能安全复用 "player_facing" 这个 key，正是因为 SolidRect 的
-                //   缓存 key 已修成包含 w/h/fill——否则会静默拿回上面那根粗的。）
+                go.AddComponent<PlayerWeaponRig>();
+            }
+
+            if (!isWhiteCutout)
+            {
+                // ===== 美术阶段 E（fallback）：把蓝方块「升级」为 39 帧水墨女主精灵 =====
+                //
+                // 【为什么挂在最后】HeroineAnimator.Awake() 会 GetComponent 上面这些战斗组件
+                // 来做状态轮询（AddComponent 会立刻触发 Awake），先挂就一个都拿不到。
+                //
+                // 【三层 fallback 的第三层】前两层在 SpriteFactory.TryLoadPng（失败返 null 不抛）
+                // 和 HeroineAnimator.Warmup（读不到 idle 首帧则 IsReady=false）。这里是最后一层：
+                // 蓝方块已经在上面无条件设过了，精灵只是"能升级就升级"。
+                HeroineAnimator anim = go.AddComponent<HeroineAnimator>();
+                if (anim.IsReady)
+                {
+                    // 精灵接管渲染。朝向条**弱化保留**而非删除：
+                    // 攻击扇形吃 8 向 lastFacing，而走路动画只有 4 向（上/下/左/右），
+                    // 站桩不动时 idle 图完全不表达朝向——删了玩家就看不出自己在往哪打。
+                    // 所以留一根更细更淡的：看得见，但不跟角色抢戏。
+                    int slimW = Mathf.Max(1, facingW / 2);
+                    fsr.sprite = SpriteFactory.SolidRect("player_facing", slimW, 7,
+                                                         new Color(0.86f, 0.93f, 1.0f, 0.45f));
+                }
+                else
+                {
+                    // 39 帧读不到（StreamingAssets 没拷过去 / 文件损坏 / 平台不支持同步读盘）：
+                    // 卸掉动画机，保留 40×40 蓝方块 + 原样朝向条，行为与接入精灵之前完全一致。
+                    if (Application.isPlaying)
+                    {
+                        Object.Destroy(anim);
+                    }
+                    else
+                    {
+                        Object.DestroyImmediate(anim);
+                    }
+                }
+            }
+            else
+            {
+                // 骨骼角色：朝向条弱化，避免跟角色抢戏。
                 int slimW = Mathf.Max(1, facingW / 2);
                 fsr.sprite = SpriteFactory.SolidRect("player_facing", slimW, 7,
                                                      new Color(0.86f, 0.93f, 1.0f, 0.45f));
             }
-            else
-            {
-                // 39 帧读不到（StreamingAssets 没拷过去 / 文件损坏 / 平台不支持同步读盘）：
-                // 卸掉动画机，保留 40×40 蓝方块 + 原样朝向条，行为与接入精灵之前完全一致。
-                if (Application.isPlaying)
-                {
-                    Object.Destroy(anim);
-                }
-                else
-                {
-                    Object.DestroyImmediate(anim);
-                }
-            }
+
+            // 砍竹内容闭环：玩家持有材料背包 + 调理状态 + HUD。
+            // 调理控制器只消费材料、保存本局选择；战斗修正仍由 CombatBridge 在读取点处理。
+            go.AddComponent<PlayerInventory>();
+            go.AddComponent<ConditioningController>();
+            go.AddComponent<ConditioningCombatAdapter>();
+            go.AddComponent<InventoryHud>();
+            go.AddComponent<AdventurePanelsHud>();
 
             return go.transform;
         }
@@ -656,7 +751,7 @@ namespace Xianxia.Unity.T2
             cam.orthographic = true;
             cam.orthographicSize = CameraOrthoSize;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.094f, 0.102f, 0.090f, 1.0f);   // 墨色底
+            cam.backgroundColor = new Color(0.95f, 0.94f, 0.89f, 1.0f);   // 宣纸白底（水墨世界基线，与地形同色 → 全白画布）
             cam.nearClipPlane = 0.3f;
             cam.farClipPlane = 1000.0f;
             cam.transform.position = new Vector3(player.position.x, player.position.y, -100.0f);
@@ -865,6 +960,10 @@ namespace Xianxia.Unity.T2
         /// 销毁场景里所有带 <see cref="ShuimoGenerated"/> 的根节点，返回销毁数量。
         /// 与编辑器工具的 CleanGeneratedObjects 同义 —— 之所以再写一遍而不是复用，
         /// 是因为那个方法在 Editor 程序集里，运行时兜底路径够不着。
+        ///
+        /// 此外会清理旧版场景里预置的 Shuimo_T2World 根节点下的 Combat / Player
+        /// 残留对象；这些对象没有随新版生成流程重建，会导致内核玩家位置被钉在
+        /// 初始点、技能特效在原地释放。
         /// </summary>
         public static int DestroyGeneratedRoots()
         {
@@ -879,20 +978,81 @@ namespace Xianxia.Unity.T2
             for (int i = 0; i < roots.Length; i++)
             {
                 GameObject go = roots[i];
-                if (go == null || go.GetComponent<ShuimoGenerated>() == null)
+                if (go == null)
                 {
                     continue;
                 }
-                if (Application.isPlaying)
+
+                // ① 新版生成根：带 ShuimoGenerated，整棵销毁。
+                if (go.GetComponent<ShuimoGenerated>() != null)
                 {
-                    Object.Destroy(go);
+                    if (Application.isPlaying)
+                    {
+                        Object.Destroy(go);
+                    }
+                    else
+                    {
+                        Object.DestroyImmediate(go);
+                    }
+                    n++;
+                    continue;
                 }
-                else
+
+                // ② 旧版场景残留：名为 RootName 但没有生成标记的根节点，
+                //    只销毁其下会干扰战斗系统的 Combat 和 Player 子物体。
+                if (go.name == RootName)
                 {
-                    Object.DestroyImmediate(go);
+                    Transform t = go.transform;
+                    for (int c = t.childCount - 1; c >= 0; c--)
+                    {
+                        Transform child = t.GetChild(c);
+                        if (child.name == "Combat" || child.name == "Player")
+                        {
+                            if (Application.isPlaying)
+                            {
+                                Object.Destroy(child.gameObject);
+                            }
+                            else
+                            {
+                                Object.DestroyImmediate(child.gameObject);
+                            }
+                            n++;
+                        }
+                    }
                 }
-                n++;
             }
+
+            // ③ 终极兜底：场景中任何名为 "Player" 或 "Combat" 的 GameObject，
+            //    无论挂在哪个根节点下，全部清理。旧版 SampleScene 里这些对象
+            //    可能直接放在根层级，前面按 RootName 遍历会漏掉。
+            //    必须在新版 BuildPlayer 之前执行，否则旧 Player 上的 PlayerController
+            //    会在新玩家生成后仍然触发 Awake 警告并干扰移动。
+            GameObject[] allPlayers = GameObject.FindObjectsOfType<GameObject>();
+            for (int i = allPlayers.Length - 1; i >= 0; i--)
+            {
+                GameObject go = allPlayers[i];
+                if (go == null)
+                {
+                    continue;
+                }
+                if (go.scene != scene)
+                {
+                    continue;
+                }
+                if (go.name == "Player" || go.name == "Combat")
+                {
+                    if (Application.isPlaying)
+                    {
+                        Object.Destroy(go);
+                    }
+                    else
+                    {
+                        Object.DestroyImmediate(go);
+                    }
+                    n++;
+                }
+            }
+
             return n;
         }
 

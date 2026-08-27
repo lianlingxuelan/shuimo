@@ -1,0 +1,13 @@
+{
+    "name": "Xianxia.Cultivation.Tests",
+    "rootNamespace": "Xianxia.Cultivation.Tests",
+    "references": ["com.unity.test-framework", "Xianxia.Cultivation"],
+    "includePlatforms": ["Editor"],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
