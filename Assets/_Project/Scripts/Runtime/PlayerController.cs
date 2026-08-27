@@ -264,7 +264,7 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
-            ApplyDisplacement(MoveDir * moveSpeed, dt);
+            ApplyDisplacement(MoveDir * moveSpeed, dt, true);
         }
 
         /// <summary>
@@ -287,7 +287,7 @@ namespace Xianxia.Unity.T2
             {
                 return;
             }
-            ApplyDisplacement(velocity, dt);
+            ApplyDisplacement(velocity, dt, false);
             // ★ 闪避「原地闪一下」修复（阶段 66）：
             // 外部接管位移（DodgeController 翻滚）发生在 PlayerController.Update(-100) 之后、
             // LateUpdate 之前（DodgeController 为 -90，晚于 PlayerController）。若不同步刷新
@@ -311,7 +311,7 @@ namespace Xianxia.Unity.T2
             LastFacing = facing.normalized;
         }
 
-        private void ApplyDisplacement(Vector2 velocity, float dt)
+        private void ApplyDisplacement(Vector2 velocity, float dt, bool reportBoundary)
         {
             Vector3 pos = transform.position;
             pos.x += velocity.x * dt;
@@ -326,11 +326,19 @@ namespace Xianxia.Unity.T2
                 pos.y = Mathf.Clamp(pos.y, margin, WorldBuilder.WorldHeight - margin);
             }
 
-            BoundaryBlockedThisFrame = BoundaryFeedbackRules.WasBlocked(
-                attempted,
-                new Vector2(pos.x, pos.y),
-                velocity);
-            BoundaryDirection = BoundaryBlockedThisFrame ? velocity.normalized : Vector2.zero;
+            if (reportBoundary)
+            {
+                BoundaryBlockedThisFrame = BoundaryFeedbackRules.WasBlocked(
+                    attempted,
+                    new Vector2(pos.x, pos.y),
+                    velocity);
+                BoundaryDirection = BoundaryBlockedThisFrame ? velocity.normalized : Vector2.zero;
+            }
+            else
+            {
+                BoundaryBlockedThisFrame = false;
+                BoundaryDirection = Vector2.zero;
+            }
 
             transform.position = pos;
         }
