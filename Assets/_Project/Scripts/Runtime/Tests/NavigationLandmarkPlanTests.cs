@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -238,6 +239,79 @@ namespace Xianxia.Unity.T2.Tests
         }
 
         [Test]
+        public void BuildRoot_AfterStaticRegistryResetReclaimsOnlyTheSameOwnersRoot()
+        {
+            GameObject firstContext = new GameObject("BambooSceneContext_First");
+            GameObject foreignContext = new GameObject("BambooSceneContext_Foreign");
+            Transform firstRoot = null;
+            Transform rebuiltRoot = null;
+            Transform foreignRoot = null;
+
+            try
+            {
+                FirstChapterLayout layout = FirstChapterLayout.Build(Vector2.zero);
+                firstRoot = NavigationLandmarkView.BuildRoot(firstContext.transform, layout, 201u, null, null);
+                foreignRoot = NavigationLandmarkView.BuildRoot(foreignContext.transform, layout, 202u, null, null);
+
+                SimulateOwnershipRegistryReset();
+                rebuiltRoot = NavigationLandmarkView.BuildRoot(firstContext.transform, layout, 203u, null, null);
+
+                NavigationLandmarkRootOwner[] markers = Object.FindObjectsOfType<NavigationLandmarkRootOwner>(true);
+                Assert.AreEqual(
+                    1,
+                    markers.Count(marker => marker.Owner == firstContext.transform && marker.gameObject.activeSelf));
+                Assert.AreEqual(
+                    1,
+                    markers.Count(marker => marker.Owner == foreignContext.transform && marker.gameObject.activeSelf));
+                Assert.AreSame(
+                    foreignRoot,
+                    markers.Single(marker => marker.Owner == foreignContext.transform).transform);
+                Assert.IsFalse(object.ReferenceEquals(firstRoot, rebuiltRoot));
+#if TASK5_SOURCE_HARNESS
+                Assert.IsFalse(firstRoot.gameObject.activeSelf);
+#endif
+            }
+            finally
+            {
+                NavigationLandmarkView.DestroyOwnedRoot(firstRoot);
+                NavigationLandmarkView.DestroyOwnedRoot(rebuiltRoot);
+                NavigationLandmarkView.DestroyOwnedRoot(foreignRoot);
+                Object.DestroyImmediate(firstContext);
+                Object.DestroyImmediate(foreignContext);
+            }
+        }
+
+        [Test]
+        public void DestroyOwnedRoot_AfterStaticRegistryResetRemovesPersistedPreviewRoot()
+        {
+            GameObject context = new GameObject("BambooSceneContext_Preview");
+            Transform root = null;
+
+            try
+            {
+                root = NavigationLandmarkView.BuildRoot(
+                    context.transform,
+                    FirstChapterLayout.Build(Vector2.zero),
+                    204u,
+                    null,
+                    null);
+
+                SimulateOwnershipRegistryReset();
+                NavigationLandmarkView.DestroyOwnedRoots(context.transform);
+
+                Assert.AreEqual(
+                    0,
+                    Object.FindObjectsOfType<NavigationLandmarkRootOwner>(true)
+                        .Count(marker => marker.Owner == context.transform && marker.gameObject.activeSelf));
+            }
+            finally
+            {
+                NavigationLandmarkView.DestroyOwnedRoot(root);
+                Object.DestroyImmediate(context);
+            }
+        }
+
+        [Test]
         public void BuildRoot_ReusesEnvironmentSpritesAndNeverAddsColliders()
         {
             GameObject context = new GameObject("BambooSceneContext_Test");
@@ -334,6 +408,15 @@ namespace Xianxia.Unity.T2.Tests
                 NavigationLandmarkView.DestroyOwnedRoot(root);
                 Object.DestroyImmediate(context);
             }
+        }
+
+        private static void SimulateOwnershipRegistryReset()
+        {
+            MethodInfo reset = typeof(NavigationLandmarkView).GetMethod(
+                "ResetOwnershipRegistry",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.IsNotNull(reset);
+            reset.Invoke(null, null);
         }
     }
 }

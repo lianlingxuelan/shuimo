@@ -739,8 +739,9 @@ namespace Xianxia.Unity.T2
             if (_navigationLandmarksRoot != null)
             {
                 NavigationLandmarkView.DestroyOwnedRoot(_navigationLandmarksRoot);
-                _navigationLandmarksRoot = null;
             }
+            NavigationLandmarkView.DestroyOwnedRoots(transform);
+            _navigationLandmarksRoot = null;
 
             if (_groveRoot != null)
             {

@@ -50,21 +50,14 @@ namespace Xianxia.Unity.T2
                 return null;
             }
 
-            Transform existing;
-            if (OwnedRoots.TryGetValue(owner, out existing) && existing != null)
-            {
-                DestroyOwnedRoot(existing);
-            }
-            else
-            {
-                OwnedRoots.Remove(owner);
-            }
+            DestroyOwnedRoots(owner);
 
             Transform root = new GameObject(RootName).transform;
             root.SetParent(null, false);
             root.position = new Vector3(0f, 0f, 0f);
             root.localRotation = Quaternion.Euler(0f, 0f, 0f);
             root.localScale = Vector3.one;
+            root.gameObject.AddComponent<NavigationLandmarkRootOwner>().Configure(owner);
             OwnedRoots[owner] = root;
             OwnersByRoot[root] = owner;
 
@@ -84,8 +77,15 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
-            Transform owner;
-            if (!OwnersByRoot.TryGetValue(root, out owner))
+            NavigationLandmarkRootOwner marker = root.GetComponent<NavigationLandmarkRootOwner>();
+            if (marker == null || marker.Owner == null)
+            {
+                return;
+            }
+
+            Transform owner = marker.Owner;
+            Transform registeredOwner;
+            if (OwnersByRoot.TryGetValue(root, out registeredOwner) && registeredOwner != owner)
             {
                 return;
             }
@@ -97,6 +97,7 @@ namespace Xianxia.Unity.T2
                 OwnedRoots.Remove(owner);
             }
 
+            marker.Release();
             root.gameObject.SetActive(false);
             root.name = RootName + "_Retired";
             root.SetParent(null, true);
@@ -109,6 +110,34 @@ namespace Xianxia.Unity.T2
             {
                 Object.DestroyImmediate(root.gameObject);
             }
+        }
+
+        public static void DestroyOwnedRoots(Transform owner)
+        {
+            if (owner == null)
+            {
+                return;
+            }
+
+            NavigationLandmarkRootOwner[] markers =
+                Object.FindObjectsOfType<NavigationLandmarkRootOwner>(true);
+            for (int i = 0; i < markers.Length; i++)
+            {
+                NavigationLandmarkRootOwner marker = markers[i];
+                if (marker != null && marker.Owner == owner)
+                {
+                    DestroyOwnedRoot(marker.transform);
+                }
+            }
+
+            OwnedRoots.Remove(owner);
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOwnershipRegistry()
+        {
+            OwnedRoots.Clear();
+            OwnersByRoot.Clear();
         }
 
         private void OnEnable()
