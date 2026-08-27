@@ -62,6 +62,12 @@ namespace Xianxia.Unity.T2
             get { return MoveDir.sqrMagnitude > 0.0f; }
         }
 
+        /// <summary>本帧的位移是否被世界边界钳制。</summary>
+        public bool BoundaryBlockedThisFrame { get; private set; }
+
+        /// <summary>本帧被边界阻挡时的尝试移动方向；否则为零。</summary>
+        public Vector2 BoundaryDirection { get; private set; }
+
         /// <summary>
         /// 外部接管的速度（世界单位/秒）。非 null 时本组件**不再**用输入驱动位移，
         /// 由接管方（<see cref="DodgeController"/>）负责积分，避免同一帧被推两次。
@@ -121,6 +127,8 @@ namespace Xianxia.Unity.T2
             LastFacing = Vector2.right;
             MoveDir = Vector2.zero;
             ExternalVelocity = null;
+            BoundaryBlockedThisFrame = false;
+            BoundaryDirection = Vector2.zero;
 
             // P0-移动 bug 保险修复：玩家必须是场景根节点，不能被任何世界生成根（如
             // Shuimo_T2World）挂为子物体。父物体的 transform 每帧被 native 代码/相机
@@ -147,6 +155,9 @@ namespace Xianxia.Unity.T2
 
         private void Update()
         {
+            BoundaryBlockedThisFrame = false;
+            BoundaryDirection = Vector2.zero;
+
             // ★ P0-2 移动 bug 最终保险：把玩家提到场景根节点。
             // 已确认过根节点后跳过，避免每帧无意义地调用 native SetParent。
             // 任何世界生成根（Shuimo_T2World 等）或 prefab 实例化时挂的父物体，
@@ -305,6 +316,7 @@ namespace Xianxia.Unity.T2
             Vector3 pos = transform.position;
             pos.x += velocity.x * dt;
             pos.y += velocity.y * dt;
+            Vector2 attempted = new Vector2(pos.x, pos.y);
 
             if (clampToWorld && WorldBuilder.Grid != null)
             {
@@ -313,6 +325,12 @@ namespace Xianxia.Unity.T2
                 pos.x = Mathf.Clamp(pos.x, margin, WorldBuilder.WorldWidth - margin);
                 pos.y = Mathf.Clamp(pos.y, margin, WorldBuilder.WorldHeight - margin);
             }
+
+            BoundaryBlockedThisFrame = BoundaryFeedbackRules.WasBlocked(
+                attempted,
+                new Vector2(pos.x, pos.y),
+                velocity);
+            BoundaryDirection = BoundaryBlockedThisFrame ? velocity.normalized : Vector2.zero;
 
             transform.position = pos;
         }
