@@ -334,11 +334,6 @@ namespace Xianxia.Unity.T2
                     velocity);
                 BoundaryDirection = BoundaryBlockedThisFrame ? velocity.normalized : Vector2.zero;
             }
-            else
-            {
-                BoundaryBlockedThisFrame = false;
-                BoundaryDirection = Vector2.zero;
-            }
 
             transform.position = pos;
         }

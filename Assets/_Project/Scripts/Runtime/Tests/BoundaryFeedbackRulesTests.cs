@@ -68,6 +68,30 @@ namespace Xianxia.Unity.T2.Tests
         }
 
         [Test]
+        public void MoveExternal_AfterInputWasBlocked_PreservesInputBoundaryState()
+        {
+            GameObject host = new GameObject("BoundaryInputThenExternalTest");
+            try
+            {
+                ConfigureWorldBounds();
+                PlayerController player = host.AddComponent<PlayerController>();
+                player.transform.position = new Vector3(WorldBuilder.WorldWidth - WorldBuilder.TileUnit * 0.5f, 160f, 0f);
+                typeof(PlayerController).GetProperty("MoveDir").SetValue(player, Vector2.right, null);
+                InvokePrivate(player, "Move", 1f);
+
+                player.MoveExternal(new Vector2(PlayerController.MoveSpeed, 0f), 1f);
+
+                Assert.IsTrue(player.BoundaryBlockedThisFrame);
+                Assert.AreEqual(Vector2.right, player.BoundaryDirection);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+                ClearWorldBounds();
+            }
+        }
+
+        [Test]
         public void WorldBoundaryFeedback_ThrottlesTriggeredAndKeepsLastDirection()
         {
             GameObject playerHost = new GameObject("BoundaryFeedbackPlayerTest");
