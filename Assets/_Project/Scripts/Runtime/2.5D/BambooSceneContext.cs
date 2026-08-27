@@ -2089,8 +2089,9 @@ namespace Xianxia.Unity.T2
         }
 
         /// <summary>
-        /// 一丛独立、可替换的前景竹子。它补足底图中的远景竹林，不接入碰撞或砍伐逻辑，
-        /// 也不会遮挡女主；以后可以用真正可砍的 3D 竹丛替换这一层。
+        /// 多丛独立、可替换的前景竹子。它补足底图中的远景竹林，不接入碰撞或砍伐逻辑；
+        /// 布局会保留中间道路，避免浓密画面遮挡角色、遇怪或对话节点。
+        /// 以后可以用真正可砍的 3D 竹丛替换这一层。
         /// </summary>
         private void BuildForegroundBamboo()
         {
@@ -2105,14 +2106,23 @@ namespace Xianxia.Unity.T2
                 return;
             }
 
-            GameObject bamboo = new GameObject("Ink_Bamboo_Clump_Left");
-            bamboo.transform.SetParent(_groveRoot, false);
             float extent = Mathf.Max(180.0f, groveHalfExtent);
-            bamboo.transform.localPosition = new Vector3(-extent * 0.40f, extent * 0.10f, -_depthAxis.z * 0.28f);
-            bamboo.transform.localScale = Vector3.one * 15.0f;
-            SpriteRenderer renderer = bamboo.AddComponent<SpriteRenderer>();
-            renderer.sprite = clump;
-            renderer.sortingOrder = -45;
+            BambooForegroundDressingPlacement[] placements = BambooForegroundDressingPlan.Create(extent);
+            for (int i = 0; i < placements.Length; i++)
+            {
+                BambooForegroundDressingPlacement placement = placements[i];
+                GameObject bamboo = new GameObject(string.Format("Ink_Bamboo_Clump_{0:D2}", i + 1));
+                bamboo.transform.SetParent(_groveRoot, false);
+                bamboo.transform.localPosition = new Vector3(
+                    placement.Position.x,
+                    placement.Position.y,
+                    -_depthAxis.z * 0.28f);
+                bamboo.transform.localScale = Vector3.one * placement.Scale;
+
+                SpriteRenderer renderer = bamboo.AddComponent<SpriteRenderer>();
+                renderer.sprite = clump;
+                renderer.sortingOrder = placement.SortingOrder;
+            }
         }
 
         /// <summary>放置六根独立近景竹，形成一圈可连续验证砍伐的微型竹林。</summary>
