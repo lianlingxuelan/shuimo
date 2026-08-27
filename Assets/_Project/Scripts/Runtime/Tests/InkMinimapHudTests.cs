@@ -295,8 +295,9 @@ namespace Xianxia.Unity.T2.Tests
                 Assert.IsNotNull(remappedImage);
                 Assert.AreSame(originalImage, remappedImage);
                 Assert.IsNull(host.transform.Find("InkMinimapCanvas/Scroll/MapClip/Markers/Marker-old-id"));
-                Assert.AreEqual(new Vector2(14.0f, 7.0f), ((RectTransform)remappedImage).sizeDelta);
-                Assert.AreEqual((Color32)InkMinimapPalette.RoadInk, (Color32)remappedImage.GetComponent<Image>().color);
+                Assert.AreEqual(new Vector2(18.0f, 14.0f), ((RectTransform)remappedImage).sizeDelta);
+                Assert.AreEqual((byte)0, ((Color32)remappedImage.GetComponent<Image>().color).a);
+                Assert.IsTrue(remappedImage.Find("GlyphRoofLeft").gameObject.activeSelf);
             }
             finally
             {
@@ -365,14 +366,24 @@ namespace Xianxia.Unity.T2.Tests
                 hud.RefreshNow();
 
                 Transform root = host.transform.Find("InkMinimapCanvas/Scroll/MapClip/Markers");
-                Assert.AreEqual(new Vector2(8.0f, 8.0f), ((RectTransform)root.Find("Marker-enemy")).sizeDelta);
-                Assert.AreNotEqual((Color32)InkMinimapPalette.Cinnabar, (Color32)root.Find("Marker-enemy").GetComponent<Image>().color);
-                Assert.AreEqual(new Vector2(14.0f, 14.0f), ((RectTransform)root.Find("Marker-chapter")).sizeDelta);
-                Assert.AreEqual(new Vector2(8.0f, 16.0f), ((RectTransform)root.Find("Marker-quest")).sizeDelta);
+                Assert.AreEqual(new Vector2(9.0f, 9.0f), ((RectTransform)root.Find("Marker-enemy")).sizeDelta);
+                Assert.IsTrue(root.Find("Marker-enemy").GetComponent<Image>().sprite.name.Contains("minimap_enemy_dot"));
+                Assert.AreEqual(new Vector2(16.0f, 16.0f), ((RectTransform)root.Find("Marker-chapter")).sizeDelta);
+                Assert.IsTrue(root.Find("Marker-chapter").GetComponent<Image>().sprite.name.Contains("minimap_chapter_elite"));
+                Assert.AreEqual(new Vector2(14.0f, 14.0f), ((RectTransform)root.Find("Marker-quest")).sizeDelta);
+                Assert.IsTrue(root.Find("Marker-quest").GetComponent<Image>().sprite.name.Contains("minimap_quest_ring"));
                 Assert.AreEqual(new Vector2(10.0f, 10.0f), ((RectTransform)root.Find("Marker-npc")).sizeDelta);
                 Assert.AreEqual((Color32)InkMinimapPalette.NpcGold, (Color32)root.Find("Marker-npc").GetComponent<Image>().color);
-                Assert.AreEqual(new Vector2(14.0f, 7.0f), ((RectTransform)root.Find("Marker-shop")).sizeDelta);
-                Assert.AreEqual(new Vector2(13.0f, 11.0f), ((RectTransform)root.Find("Marker-building")).sizeDelta);
+                Assert.AreEqual(Quaternion.Euler(0.0f, 0.0f, 45.0f), root.Find("Marker-npc").localRotation);
+                Assert.AreEqual(new Vector2(18.0f, 14.0f), ((RectTransform)root.Find("Marker-shop")).sizeDelta);
+                Assert.IsTrue(root.Find("Marker-shop/GlyphRoofLeft").gameObject.activeSelf);
+                Assert.IsTrue(root.Find("Marker-shop/GlyphRoofRight").gameObject.activeSelf);
+                Assert.IsTrue(root.Find("Marker-shop/GlyphEave").gameObject.activeSelf);
+                Assert.AreEqual(new Vector2(18.0f, 15.0f), ((RectTransform)root.Find("Marker-building")).sizeDelta);
+                Assert.IsFalse(root.Find("Marker-building/GlyphRoofLeft").gameObject.activeSelf);
+                Assert.IsTrue(root.Find("Marker-building/GlyphEave").gameObject.activeSelf);
+                Assert.IsTrue(root.Find("Marker-building/GlyphLeftPost").gameObject.activeSelf);
+                Assert.IsTrue(root.Find("Marker-building/GlyphRightPost").gameObject.activeSelf);
             }
             finally
             {
@@ -418,6 +429,56 @@ namespace Xianxia.Unity.T2.Tests
                 RestoreWorldGrid(oldGrid);
                 Object.DestroyImmediate(targetHost);
                 Object.DestroyImmediate(playerHost);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void QuestPulse_UsesUnscaledPhaseAndPoolReuseClearsAllQuestState()
+        {
+            GameObject host = new GameObject("hud-quest-pulse-host");
+            GameObject questHost = new GameObject("pulsing-quest-host");
+            GameObject shopHost = new GameObject("pooled-shop-host");
+            Vector2 oldGrid = SetWorldGrid(32, 25);
+            try
+            {
+                InkMinimapHud hud = host.AddComponent<InkMinimapHud>();
+                hud.Build();
+                MinimapMarker quest = questHost.AddComponent<MinimapMarker>();
+                quest.Configure(MinimapMarkerKind.QuestTarget, "pulse-quest", "问剑台", true);
+                hud.RefreshNow();
+                Transform questImage = host.transform.Find("InkMinimapCanvas/Scroll/MapClip/Markers/Marker-pulse-quest");
+
+                MethodInfo pulse = typeof(InkMinimapHud).GetMethod(
+                    "UpdateQuestPulses",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                pulse.Invoke(hud, new object[] { 0.3f });
+                Assert.AreNotEqual(Vector3.one, questImage.localScale);
+
+                questHost.SetActive(false);
+                hud.RefreshNow();
+                MinimapMarker shop = shopHost.AddComponent<MinimapMarker>();
+                shop.Configure(MinimapMarkerKind.Shop, "pooled-shop", "竹市商铺", true);
+                hud.RefreshNow();
+                Transform shopImage = host.transform.Find("InkMinimapCanvas/Scroll/MapClip/Markers/Marker-pooled-shop");
+
+                Assert.AreSame(questImage, shopImage);
+                Assert.AreEqual(Vector3.one, shopImage.localScale);
+                Assert.AreSame(SpriteFactory.UiPixel(), shopImage.GetComponent<Image>().sprite);
+                Assert.IsTrue(shopImage.Find("GlyphRoofLeft").gameObject.activeSelf);
+
+                shop.Configure(MinimapMarkerKind.Building, "pooled-shop", "山门", true);
+                hud.RefreshNow();
+                Assert.AreEqual(Vector3.one, shopImage.localScale);
+                Assert.IsFalse(shopImage.Find("GlyphRoofLeft").gameObject.activeSelf);
+                Assert.IsTrue(shopImage.Find("GlyphLeftPost").gameObject.activeSelf);
+                Assert.IsTrue(shopImage.Find("GlyphRightPost").gameObject.activeSelf);
+            }
+            finally
+            {
+                RestoreWorldGrid(oldGrid);
+                Object.DestroyImmediate(shopHost);
+                Object.DestroyImmediate(questHost);
                 Object.DestroyImmediate(host);
             }
         }

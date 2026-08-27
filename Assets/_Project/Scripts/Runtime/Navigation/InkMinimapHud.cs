@@ -31,6 +31,7 @@ namespace Xianxia.Unity.T2
 
         private readonly Dictionary<string, Image> _markerImages = new Dictionary<string, Image>();
         private readonly Dictionary<string, MinimapMarker> _markerSources = new Dictionary<string, MinimapMarker>();
+        private readonly Dictionary<Image, Image[]> _markerParts = new Dictionary<Image, Image[]>();
         private readonly Stack<Image> _markerPool = new Stack<Image>();
         private readonly List<string> _scratchIds = new List<string>();
         private readonly HashSet<string> _scratchStableIds = new HashSet<string>();
@@ -103,6 +104,7 @@ namespace Xianxia.Unity.T2
                 RefreshMarkers(hasPlayer, playerPosition, worldSize, worldReady);
             }
 
+            UpdateQuestPulses(Time.unscaledTime);
             TickBoundaryFeedback(Time.unscaledDeltaTime);
         }
 
@@ -175,6 +177,7 @@ namespace Xianxia.Unity.T2
             bool worldReady = IsValidWorldSize(worldSize);
             RefreshPlayer(hasPlayer, playerPosition, playerFacing, worldSize, worldReady);
             RefreshMarkers(hasPlayer, playerPosition, worldSize, worldReady);
+            UpdateQuestPulses(Time.unscaledTime);
         }
 
         private void BuildScrollLayers()
@@ -496,6 +499,7 @@ namespace Xianxia.Unity.T2
                 string stableId = _scratchIds[i];
                 Image released = _markerImages[stableId];
                 _markerImages.Remove(stableId);
+                ResetMarkerVisual(released);
                 released.gameObject.name = "PooledMarker";
                 released.gameObject.SetActive(false);
                 _markerPool.Push(released);
@@ -527,48 +531,153 @@ namespace Xianxia.Unity.T2
                 Hud.Anchor(rect, Vector2.zero, Vector2.zero, new Vector2(0.5f, 0.5f));
                 rect.sizeDelta = new Vector2(10.0f, 10.0f);
                 image = rect.GetComponent<Image>();
+                _markerParts.Add(image, BuildMarkerParts(rect));
             }
+            ResetMarkerVisual(image);
             image.gameObject.name = "Marker-" + stableId;
             image.gameObject.SetActive(true);
             return image;
         }
 
-        private static void ConfigureMarkerVisual(Image image, MinimapMarkerKind kind)
+        private Image[] BuildMarkerParts(Transform parent)
+        {
+            return new[]
+            {
+                BuildMarkerPart("GlyphRoofLeft", parent),
+                BuildMarkerPart("GlyphRoofRight", parent),
+                BuildMarkerPart("GlyphEave", parent),
+                BuildMarkerPart("GlyphLeftPost", parent),
+                BuildMarkerPart("GlyphRightPost", parent),
+            };
+        }
+
+        private static Image BuildMarkerPart(string name, Transform parent)
+        {
+            RectTransform rect = Hud.NewImageRect(name, parent, Color.white);
+            Hud.Anchor(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = Vector2.zero;
+            rect.gameObject.SetActive(false);
+            return rect.GetComponent<Image>();
+        }
+
+        private void ResetMarkerVisual(Image image)
         {
             RectTransform rect = (RectTransform)image.transform;
+            image.sprite = SpriteFactory.UiPixel();
+            image.color = Color.white;
+            rect.sizeDelta = new Vector2(10.0f, 10.0f);
             rect.localRotation = Quaternion.Euler(0.0f, 0.0f, 0.0f);
+            rect.localScale = Vector3.one;
+
+            Image[] parts;
+            if (!_markerParts.TryGetValue(image, out parts))
+            {
+                return;
+            }
+            for (int i = 0; i < parts.Length; i++)
+            {
+                Image part = parts[i];
+                RectTransform partRect = (RectTransform)part.transform;
+                part.sprite = SpriteFactory.UiPixel();
+                part.color = Color.white;
+                partRect.anchoredPosition = Vector2.zero;
+                partRect.sizeDelta = Vector2.zero;
+                partRect.localRotation = Quaternion.Euler(0.0f, 0.0f, 0.0f);
+                partRect.localScale = Vector3.one;
+                part.gameObject.SetActive(false);
+            }
+        }
+
+        private void ConfigureMarkerVisual(Image image, MinimapMarkerKind kind)
+        {
+            ResetMarkerVisual(image);
+            RectTransform rect = (RectTransform)image.transform;
             if (kind == MinimapMarkerKind.Enemy)
             {
                 Color cinnabar = InkMinimapPalette.Cinnabar;
-                image.color = new Color(cinnabar.r * 0.68f, cinnabar.g * 0.68f, cinnabar.b * 0.68f, cinnabar.a);
-                rect.sizeDelta = new Vector2(8.0f, 8.0f);
+                Color darkCinnabar = new Color(cinnabar.r * 0.68f, cinnabar.g * 0.68f, cinnabar.b * 0.68f, cinnabar.a);
+                image.sprite = SpriteFactory.Circle(
+                    "minimap_enemy_dot",
+                    darkCinnabar,
+                    new Color(0.0f, 0.0f, 0.0f, 0.0f),
+                    0.0f);
+                rect.sizeDelta = new Vector2(9.0f, 9.0f);
             }
             else if (kind == MinimapMarkerKind.ChapterEnemy)
             {
-                image.color = InkMinimapPalette.Cinnabar;
-                rect.sizeDelta = new Vector2(14.0f, 14.0f);
-                rect.localRotation = Quaternion.Euler(0.0f, 0.0f, 45.0f);
+                image.sprite = SpriteFactory.Circle(
+                    "minimap_chapter_elite",
+                    InkMinimapPalette.Cinnabar,
+                    InkMinimapPalette.DeepInk,
+                    7.0f);
+                rect.sizeDelta = new Vector2(16.0f, 16.0f);
+                Image[] parts = _markerParts[image];
+                ConfigurePart(parts[2], new Vector2(4.5f, 4.5f), Vector2.zero, 45.0f, InkMinimapPalette.Paper);
             }
             else if (kind == MinimapMarkerKind.QuestTarget)
             {
-                image.color = InkMinimapPalette.Cinnabar;
-                rect.sizeDelta = new Vector2(8.0f, 16.0f);
+                image.sprite = SpriteFactory.Circle(
+                    "minimap_quest_ring",
+                    new Color(0.0f, 0.0f, 0.0f, 0.0f),
+                    InkMinimapPalette.Cinnabar,
+                    8.0f);
+                rect.sizeDelta = new Vector2(14.0f, 14.0f);
             }
             else if (kind == MinimapMarkerKind.Npc)
             {
                 image.color = InkMinimapPalette.NpcGold;
                 rect.sizeDelta = new Vector2(10.0f, 10.0f);
+                rect.localRotation = Quaternion.Euler(0.0f, 0.0f, 45.0f);
             }
             else if (kind == MinimapMarkerKind.Shop)
             {
-                image.color = InkMinimapPalette.RoadInk;
-                rect.sizeDelta = new Vector2(14.0f, 7.0f);
-                rect.localRotation = Quaternion.Euler(0.0f, 0.0f, 45.0f);
+                image.color = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+                rect.sizeDelta = new Vector2(18.0f, 14.0f);
+                Image[] parts = _markerParts[image];
+                ConfigurePart(parts[0], new Vector2(9.0f, 2.0f), new Vector2(-3.0f, 4.0f), 25.0f, InkMinimapPalette.DeepInk);
+                ConfigurePart(parts[1], new Vector2(9.0f, 2.0f), new Vector2(3.0f, 4.0f), -25.0f, InkMinimapPalette.DeepInk);
+                ConfigurePart(parts[2], new Vector2(17.0f, 2.0f), new Vector2(0.0f, 2.0f), 0.0f, InkMinimapPalette.RoadInk);
+                ConfigurePart(parts[3], new Vector2(2.0f, 8.0f), new Vector2(-5.0f, -2.0f), 0.0f, InkMinimapPalette.RoadInk);
+                ConfigurePart(parts[4], new Vector2(2.0f, 8.0f), new Vector2(5.0f, -2.0f), 0.0f, InkMinimapPalette.RoadInk);
             }
             else
             {
-                image.color = InkMinimapPalette.DeepInk;
-                rect.sizeDelta = new Vector2(13.0f, 11.0f);
+                image.color = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+                rect.sizeDelta = new Vector2(18.0f, 15.0f);
+                Image[] parts = _markerParts[image];
+                ConfigurePart(parts[2], new Vector2(16.0f, 3.0f), new Vector2(0.0f, 4.0f), 0.0f, InkMinimapPalette.DeepInk);
+                ConfigurePart(parts[3], new Vector2(3.0f, 11.0f), new Vector2(-5.0f, -1.0f), 0.0f, InkMinimapPalette.DeepInk);
+                ConfigurePart(parts[4], new Vector2(3.0f, 11.0f), new Vector2(5.0f, -1.0f), 0.0f, InkMinimapPalette.DeepInk);
+            }
+        }
+
+        private static void ConfigurePart(Image part, Vector2 size, Vector2 position, float degrees, Color color)
+        {
+            RectTransform rect = (RectTransform)part.transform;
+            part.sprite = SpriteFactory.UiPixel();
+            part.color = color;
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+            rect.localRotation = Quaternion.Euler(0.0f, 0.0f, degrees);
+            rect.localScale = Vector3.one;
+            part.gameObject.SetActive(true);
+        }
+
+        private void UpdateQuestPulses(float unscaledTime)
+        {
+            float scale = 1.0f + Mathf.Sin(unscaledTime * 5.2359877f) * 0.055f;
+            foreach (KeyValuePair<string, MinimapMarker> pair in _markerSources)
+            {
+                if (pair.Value == null || pair.Value.Kind != MinimapMarkerKind.QuestTarget)
+                {
+                    continue;
+                }
+                Image image;
+                if (_markerImages.TryGetValue(pair.Key, out image) && image.gameObject.activeSelf)
+                {
+                    image.transform.localScale = Vector3.one * scale;
+                }
             }
         }
 
