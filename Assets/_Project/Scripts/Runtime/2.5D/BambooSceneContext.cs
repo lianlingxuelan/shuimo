@@ -143,6 +143,9 @@ namespace Xianxia.Unity.T2
         [Tooltip("确定性布局用的区域种子 id（走 ZoneSeed.CreateRng，复刻 WorldBuilder 的随机纪律）")]
         public string zoneSeedId = "zone_bamboo_2_5d";
 
+        [Tooltip("第一章道路地标的确定性种子；相同种子会复现完全相同的轻微位移与缩放。")]
+        public uint navigationLandmarkSeed = 20260827u;
+
         // =====================================================================
         // 砍竹判定（复用 AttackController 的扇形常量，见设计 §3.4）
         // =====================================================================
@@ -391,6 +394,7 @@ namespace Xianxia.Unity.T2
         private Material _proceduralLeafMaterial;
 
         private Transform _groveRoot;
+        private Transform _navigationLandmarksRoot;
         // 原画底图保持在竹林根下，Unload 时可随根一起销毁；但它的世界位置会在
         // LateUpdate 对齐相机，以适配本项目动态调整过的斜俯视取景。
         private Transform _illustratedBackdrop;
@@ -540,6 +544,13 @@ namespace Xianxia.Unity.T2
                 SafeDestroy(existing.gameObject);
             }
 
+            Transform existingLandmarks = transform.Find(NavigationLandmarkView.RootName);
+            if (existingLandmarks != null)
+            {
+                NavigationLandmarkView.DestroyOwnedRoot(existingLandmarks);
+            }
+            _navigationLandmarksRoot = null;
+
             ResolveDepthAxis();
             EnsureMaterials();
 
@@ -563,6 +574,7 @@ namespace Xianxia.Unity.T2
 
             BuildHeroScholarRock();
             BuildForegroundBamboo();
+            BuildNavigationLandmarks();
             BuildHarvestBambooGrove();
 
             // 完整原画已经负责远、中景竹林。旧程序竹不仅会显得粗糙，还会在顶视
@@ -730,6 +742,15 @@ namespace Xianxia.Unity.T2
             _harvestTargets.Clear();
 
             UnsubscribeT3();
+
+            Transform landmarks = _navigationLandmarksRoot != null
+                ? _navigationLandmarksRoot
+                : transform.Find(NavigationLandmarkView.RootName);
+            if (landmarks != null)
+            {
+                NavigationLandmarkView.DestroyOwnedRoot(landmarks);
+                _navigationLandmarksRoot = null;
+            }
 
             if (_groveRoot != null)
             {
@@ -2123,6 +2144,23 @@ namespace Xianxia.Unity.T2
                 renderer.sprite = clump;
                 renderer.sortingOrder = placement.SortingOrder;
             }
+        }
+
+        /// <summary>
+        /// Builds fixed-world road references independently from the player-following grove. The dedicated
+        /// root is the only landmark object owned by this context, so binding a player cannot move these views.
+        /// </summary>
+        private void BuildNavigationLandmarks()
+        {
+            FirstChapterLayout layout = FirstChapterLayout.Build(ResolveGroveCenter());
+            Sprite bamboo = LoadEnvironmentSprite("Environments/ink_bamboo_clump_v1");
+            Sprite rock = LoadEnvironmentSprite("Environments/ink_scholar_rock_wash_v1");
+            _navigationLandmarksRoot = NavigationLandmarkView.BuildRoot(
+                transform,
+                layout,
+                navigationLandmarkSeed,
+                bamboo,
+                rock);
         }
 
         /// <summary>放置六根独立近景竹，形成一圈可连续验证砍伐的微型竹林。</summary>

@@ -17,6 +17,7 @@ namespace Xianxia.Unity.T2
         public Vector2 InnPlaceholder { get; }
         public Vector2 HerbPlaceholder { get; }
         public Vector2 GatePlaceholder { get; }
+        public float RoadCenterX => roadCenterX;
 
         private readonly float roadCenterX;
 
@@ -60,6 +61,21 @@ namespace Xianxia.Unity.T2
             float reserveSqr = StoryNodeReserveRadius * StoryNodeReserveRadius;
             return (position - RoadEncounter).sqrMagnitude <= reserveSqr
                 || (position - GuideNpc).sqrMagnitude <= reserveSqr;
+        }
+
+        /// <summary>
+        /// Returns whether scenery would crowd any authored first-chapter anchor. This broader check is
+        /// for static navigation dressing; the narrower reserved-node rule remains the combat/dialogue seam.
+        /// </summary>
+        public bool IsNearAnyChapterNode(Vector2 position)
+        {
+            float reserveSqr = StoryNodeReserveRadius * StoryNodeReserveRadius;
+            return (position - RoadEncounter).sqrMagnitude <= reserveSqr
+                || (position - GuideNpc).sqrMagnitude <= reserveSqr
+                || (position - Shop).sqrMagnitude <= reserveSqr
+                || (position - InnPlaceholder).sqrMagnitude <= reserveSqr
+                || (position - HerbPlaceholder).sqrMagnitude <= reserveSqr
+                || (position - GatePlaceholder).sqrMagnitude <= reserveSqr;
         }
     }
 }
