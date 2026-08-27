@@ -487,6 +487,13 @@ namespace Xianxia.Unity.T2
                 ctx.RegisterHarvestTarget(root.transform);
             }
 
+            MinimapMarker minimapMarker = root.AddComponent<MinimapMarker>();
+            minimapMarker.Configure(
+                MinimapMarkerKind.Enemy,
+                string.Format("enemy_{0}", patrolSeed),
+                entry != null ? entry.kind.ToString() : "Enemy",
+                false);
+
             _spawnedRoots.Add(root.transform);
         }
 
@@ -559,6 +566,9 @@ namespace Xianxia.Unity.T2
             InteractableMarker marker = root.AddComponent<InteractableMarker>();
             marker.markerId = string.Format("npc_{0}", index);
             marker.displayName = string.Format("NPC {0}", index);
+
+            MinimapMarker minimapMarker = root.AddComponent<MinimapMarker>();
+            minimapMarker.Configure(MinimapMarkerKind.Npc, marker.markerId, marker.displayName, true);
 
             if (config.depthSortEnabled && ctx != null)
             {
