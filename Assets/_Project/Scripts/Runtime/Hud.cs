@@ -380,7 +380,8 @@ namespace Xianxia.Unity.T2
         {
             RectTransform panel = NewRect("RightTop", parent);
             Anchor(panel, new Vector2(1.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f, 1.0f));
-            panel.anchoredPosition = new Vector2(-28.0f, -24.0f);
+            // 水墨小地图拥有右上角。既有敌数/诊断内容整体下移，保留 20px 清晰间隔。
+            panel.anchoredPosition = new Vector2(-28.0f, -InkMinimapHud.DiagnosticsTopOffset);
             panel.sizeDelta = new Vector2(420.0f, 210.0f);
 
             _enemyText = NewText("EnemyCount", panel, 24, TextAnchor.UpperRight,
