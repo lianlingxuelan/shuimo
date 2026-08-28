@@ -193,6 +193,7 @@ namespace Xianxia.Unity.T2
             GameObject enemyTemplate = BuildEnemyTemplate(root.transform);
             BuildCombat(root.transform, player, enemyTemplate);
             BuildHud(root.transform);
+            BuildNavigation(root.transform, player);
 
             Debug.Log(string.Format(
                 "[T2] 世界已生成：{0}（{1}×{2} tile / {3:F0}×{4:F0} 单位）seed={5} visits={6}，清理旧根节点 {7} 个。",
@@ -950,6 +951,63 @@ namespace Xianxia.Unity.T2
             GameObject go = new GameObject("HUD");
             go.transform.SetParent(parent, false);
             go.AddComponent<Hud>();
+        }
+
+        /// <summary>
+        /// Assembles the navigation stack after the regular HUD exists. All bindings are explicit so the HUD
+        /// does not need scene searches in the normal generated-world path, and repeated assembly is harmless.
+        /// </summary>
+        public static void BuildNavigation(Transform worldRoot, Transform player)
+        {
+            if (worldRoot == null || player == null)
+            {
+                return;
+            }
+
+            PlayerController controller = player.GetComponent<PlayerController>();
+            if (controller == null)
+            {
+                return;
+            }
+
+            MinimapMarker playerMarker = player.GetComponent<MinimapMarker>();
+            if (playerMarker == null)
+            {
+                playerMarker = player.gameObject.AddComponent<MinimapMarker>();
+            }
+            playerMarker.Configure(MinimapMarkerKind.Player, "player", "", true);
+
+            WorldBoundaryFeedback boundary = worldRoot.GetComponent<WorldBoundaryFeedback>();
+            if (boundary == null)
+            {
+                boundary = worldRoot.gameObject.AddComponent<WorldBoundaryFeedback>();
+            }
+            boundary.Bind(controller);
+
+            InkMinimapHud minimap = worldRoot.GetComponent<InkMinimapHud>();
+            if (minimap == null)
+            {
+                minimap = worldRoot.gameObject.AddComponent<InkMinimapHud>();
+            }
+            minimap.Bind(controller, boundary);
+            minimap.BindAdventurePanels(player.GetComponent<AdventurePanelsHud>());
+            minimap.Build();
+
+            EnemyNpcSpawner storySpawner = worldRoot.GetComponent<EnemyNpcSpawner>();
+            if (storySpawner == null)
+            {
+                storySpawner = worldRoot.gameObject.AddComponent<EnemyNpcSpawner>();
+                storySpawner.spawnFengStoreEnemy = false;
+                storySpawner.SuppressInitialSpawns = true;
+            }
+
+            FirstChapterRuntime chapter = worldRoot.GetComponent<FirstChapterRuntime>();
+            if (chapter == null)
+            {
+                chapter = worldRoot.gameObject.AddComponent<FirstChapterRuntime>();
+            }
+            chapter.Bind(player, storySpawner);
+            chapter.Build();
         }
 
         // ---------------------------------------------------------------------
