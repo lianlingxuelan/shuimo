@@ -993,6 +993,12 @@ namespace Xianxia.Unity.T2
             minimap.BindAdventurePanels(player.GetComponent<AdventurePanelsHud>());
             minimap.Build();
 
+            InkDialogueHud dialogue = worldRoot.GetComponent<InkDialogueHud>();
+            if (dialogue == null)
+            {
+                dialogue = worldRoot.gameObject.AddComponent<InkDialogueHud>();
+            }
+
             EnemyNpcSpawner storySpawner = worldRoot.GetComponent<EnemyNpcSpawner>();
             if (storySpawner == null)
             {
@@ -1007,7 +1013,15 @@ namespace Xianxia.Unity.T2
                 chapter = worldRoot.gameObject.AddComponent<FirstChapterRuntime>();
             }
             chapter.Bind(player, storySpawner);
+            chapter.BindDialogue(dialogue);
             chapter.Build();
+
+            InkQuestBook questBook = worldRoot.GetComponent<InkQuestBook>();
+            if (questBook == null)
+            {
+                questBook = worldRoot.gameObject.AddComponent<InkQuestBook>();
+            }
+            questBook.Bind(player.GetComponent<PlayerInventory>(), chapter);
         }
 
         // ---------------------------------------------------------------------

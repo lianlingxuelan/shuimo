@@ -28,10 +28,10 @@ namespace Xianxia.Unity.T2
         };
 
         private static readonly string[] SkillKeys = { "鼠标左键", "K", "L", "Shift / Space" };
-        private static readonly Color Ink = new Color(0.11f, 0.16f, 0.14f, 1.0f);
-        private static readonly Color Paper = new Color(0.89f, 0.84f, 0.72f, 0.985f);
-        private static readonly Color PaperText = new Color(0.16f, 0.21f, 0.17f, 1.0f);
-        private static readonly Color MutedInk = new Color(0.28f, 0.34f, 0.29f, 1.0f);
+        private static readonly Color Ink = InkUiTheme.Ink;
+        private static readonly Color Paper = InkUiTheme.Paper;
+        private static readonly Color PaperText = InkUiTheme.Ink;
+        private static readonly Color MutedInk = InkUiTheme.MutedInk;
 
         private GameObject _canvasGo;
         private GameObject _panel;
@@ -43,6 +43,7 @@ namespace Xianxia.Unity.T2
         private Text _characterText;
         private Text _skillsText;
         private Text _inventoryText;
+        private InkInventoryGrid _inventoryGrid;
         private Text _cultivationText;
         private Text _questsText;
         private Text _daoHeartText;
@@ -128,10 +129,11 @@ namespace Xianxia.Unity.T2
             shadow.anchoredPosition = new Vector2(25.0f, 25.0f);
             shadow.sizeDelta = new Vector2(472.0f, 136.0f);
 
-            RectTransform root = Hud.NewImageRect("AdventureSealGrid", shadow, new Color(0.13f, 0.19f, 0.16f, 0.94f));
+            Image rootImage = InkUiFactory.CreatePanel("AdventureSealGrid", shadow, new Vector2(464.0f, 128.0f));
+            RectTransform root = rootImage.rectTransform;
             Hud.Stretch(root, 4.0f);
 
-            Text eyebrow = Hud.NewText("AdventureSealGridTitle", root, 15, TextAnchor.MiddleLeft, new Color(0.76f, 0.72f, 0.59f, 1.0f));
+            Text eyebrow = Hud.NewText("AdventureSealGridTitle", root, 15, TextAnchor.MiddleLeft, InkUiTheme.MutedInk);
             eyebrow.text = "行 旅 · 书";
             Hud.Anchor(eyebrow.rectTransform, new Vector2(0.0f, 1.0f), new Vector2(0.0f, 1.0f), new Vector2(0.0f, 1.0f));
             eyebrow.rectTransform.anchoredPosition = new Vector2(14.0f, -10.0f);
@@ -169,8 +171,10 @@ namespace Xianxia.Unity.T2
             shadow.anchoredPosition = new Vector2(12.0f, 8.0f);
             shadow.sizeDelta = new Vector2(742.0f, 532.0f);
 
-            RectTransform book = Hud.NewImageRect("AdventureBook", shadow, Paper);
+            Image bookImage = InkUiFactory.CreatePanel("AdventureBook", shadow, new Vector2(732.0f, 522.0f));
+            RectTransform book = bookImage.rectTransform;
             Hud.Stretch(book, 5.0f);
+
             _panel = shadow.gameObject;
 
             _title = Hud.NewText("AdventureBookTitle", book, 34, TextAnchor.UpperLeft, Ink);
@@ -202,7 +206,7 @@ namespace Xianxia.Unity.T2
 
             _contents.Add(AdventurePanelKind.Character, BuildTextContent("CharacterContent", book, out _characterText));
             _contents.Add(AdventurePanelKind.Skills, BuildTextContent("SkillsContent", book, out _skillsText));
-            _contents.Add(AdventurePanelKind.Inventory, BuildTextContent("InventoryContent", book, out _inventoryText));
+            _contents.Add(AdventurePanelKind.Inventory, BuildInventoryContent(book));
             GameObject cultivation = BuildTextContent("CultivationContent", book, out _cultivationText);
             _contents.Add(AdventurePanelKind.Cultivation, cultivation);
             _contents.Add(AdventurePanelKind.Quests, BuildTextContent("QuestsContent", book, out _questsText));
@@ -218,6 +222,18 @@ namespace Xianxia.Unity.T2
             Hud.Anchor(text.rectTransform, new Vector2(0.0f, 1.0f), new Vector2(0.0f, 1.0f), new Vector2(0.0f, 1.0f));
             text.rectTransform.anchoredPosition = new Vector2(40.0f, -132.0f);
             text.rectTransform.sizeDelta = new Vector2(640.0f, 242.0f);
+            return root.gameObject;
+        }
+
+        private GameObject BuildInventoryContent(Transform parent)
+        {
+            RectTransform root = Hud.NewRect("InventoryContent", parent);
+            Hud.Stretch(root, 0.0f);
+            _inventoryGrid = new InkInventoryGrid(root, ShowInventoryItemDetails);
+            _inventoryText = Hud.NewText("InventoryContentText", root, 19, TextAnchor.UpperLeft, PaperText);
+            Hud.Anchor(_inventoryText.rectTransform, new Vector2(0.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(0.5f, 1.0f));
+            _inventoryText.rectTransform.anchoredPosition = new Vector2(466.0f, -140.0f);
+            _inventoryText.rectTransform.sizeDelta = new Vector2(-510.0f, 254.0f);
             return root.gameObject;
         }
 
@@ -278,7 +294,11 @@ namespace Xianxia.Unity.T2
                     break;
                 case AdventurePanelKind.Inventory:
                     SetHeading("行囊 · 采获", "本局采得的竹材与山中灵物");
-                    _inventoryText.text = BuildInventoryText();
+                    if (_inventoryGrid != null) _inventoryGrid.Refresh(ResolveInventory());
+                    if (_inventoryGrid == null || string.IsNullOrEmpty(_inventoryGrid.SelectedItemId))
+                    {
+                        _inventoryText.text = BuildInventoryText();
+                    }
                     _noticeText.text = "材料来自实际砍竹与采集，并非演示数据。";
                     break;
                 case AdventurePanelKind.Cultivation:
@@ -366,6 +386,20 @@ namespace Xianxia.Unity.T2
             return string.Format("竹材    {0}\n嫩笋    {1}\n\n说明\n竹材来自砍伐后掉落，嫩笋会在竹林资源点附近生长。\n\n用途\n前往“修行”页，可消耗材料启用一帖当局调理。", wood, shoot);
         }
 
+        private void ShowInventoryItemDetails(string itemId)
+        {
+            PlayerInventory inventory = ResolveInventory();
+            int count = inventory != null ? inventory.Count(itemId) : 0;
+            if (itemId == PlayerInventory.BambooWood)
+            {
+                _inventoryText.text = "竹材\n\n数量  " + count + "\n\n新鲜竹材，可用于配制当局调理药散。";
+            }
+            else if (itemId == PlayerInventory.BambooShoot)
+            {
+                _inventoryText.text = "嫩笋\n\n数量  " + count + "\n\n竹根附近生长的嫩笋，可与竹材一同入药。";
+            }
+        }
+
         private string BuildCultivationText()
         {
             ConditioningController conditioning = ResolveConditioning();
@@ -437,21 +471,27 @@ namespace Xianxia.Unity.T2
             RectTransform rt = Hud.NewRect(name, parent);
             Image image = rt.gameObject.AddComponent<Image>();
             image.sprite = SpriteFactory.UiPixel();
-            image.color = normalColor;
+            image.color = new Color(InkUiTheme.Paper.r, InkUiTheme.Paper.g, InkUiTheme.Paper.b, 0.93f);
             image.raycastTarget = true;
             Button button = rt.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
             ColorBlock colors = button.colors;
-            colors.normalColor = normalColor;
-            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.22f);
-            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.25f);
-            colors.selectedColor = normalColor;
-            colors.disabledColor = new Color(normalColor.r, normalColor.g, normalColor.b, 0.45f);
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.89f, 0.95f, 0.84f, 1.0f);
+            colors.pressedColor = new Color(0.72f, 0.76f, 0.67f, 1.0f);
+            colors.selectedColor = Color.white;
+            colors.disabledColor = new Color(1.0f, 1.0f, 1.0f, 0.45f);
             colors.colorMultiplier = 1.0f;
             colors.fadeDuration = 0.08f;
             button.colors = colors;
 
-            Text text = Hud.NewText(name + "Label", rt, fontSize, TextAnchor.MiddleCenter, new Color(0.96f, 0.94f, 0.84f, 1.0f));
+            Image accent = InkUiFactory.CreateLine(name + "Accent", rt, normalColor);
+            Hud.Anchor(accent.rectTransform, Vector2.zero, new Vector2(1.0f, 0.0f), new Vector2(0.5f, 0.0f));
+            accent.rectTransform.anchoredPosition = new Vector2(0.0f, 3.0f);
+            accent.rectTransform.sizeDelta = new Vector2(-16.0f, 3.0f);
+            accent.raycastTarget = false;
+
+            Text text = Hud.NewText(name + "Label", rt, fontSize, TextAnchor.MiddleCenter, InkUiTheme.Ink);
             Hud.Stretch(text.rectTransform, 0.0f);
             text.text = label;
             return button;

@@ -25,6 +25,7 @@ namespace Xianxia.Unity.T2
 
         [SerializeField] private Transform player;
         [SerializeField] private EnemyNpcSpawner enemySpawner;
+        [SerializeField] private InkDialogueHud dialogueHud;
 
         private bool _built;
         private Transform _guideNpc;
@@ -53,6 +54,12 @@ namespace Xianxia.Unity.T2
         {
             player = playerTransform;
             enemySpawner = spawner;
+        }
+
+        /// <summary>Visual dialogue is optional so the story loop remains usable in headless tests.</summary>
+        public void BindDialogue(InkDialogueHud hud)
+        {
+            dialogueHud = hud;
         }
 
         /// <summary>Builds authored chapter entities once from the same authoritative layout as navigation dressing.</summary>
@@ -133,7 +140,12 @@ namespace Xianxia.Unity.T2
 
         private void Advance(FirstChapterEvent occurred)
         {
+            FirstChapterStage before = Stage;
             Stage = FirstChapterRules.Advance(Stage, occurred);
+            if (Stage != before)
+            {
+                ShowNarrativeFor(occurred);
+            }
         }
 
         private void RevealGuide()
@@ -153,6 +165,20 @@ namespace Xianxia.Unity.T2
             if (_building != null)
             {
                 _building.gameObject.SetActive(true);
+            }
+        }
+
+        private void ShowNarrativeFor(FirstChapterEvent occurred)
+        {
+            if (dialogueHud == null)
+            {
+                return;
+            }
+
+            FirstChapterNarrativeBeat beat;
+            if (FirstChapterNarrativeSchedule.TryGet(occurred, out beat))
+            {
+                dialogueHud.Show(FirstChapterNarrative.For(beat));
             }
         }
 
