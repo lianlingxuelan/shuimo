@@ -36,6 +36,12 @@ namespace Xianxia.Unity.T2
         // 不去重的话 Console 会被同一行 Warning 刷爆，真正的报错反而被淹没。
         private static readonly HashSet<string> _pngWarned = new HashSet<string>();
 
+        /// <summary>
+        /// Raised after the owned sprite/texture cache is emptied. Long-lived scene views can rebind
+        /// their cached primitive sprites without changing the world's global cleanup semantics.
+        /// </summary>
+        public static event System.Action Cleared;
+
         /// <summary>地块贴图边长（像素）。与 <see cref="WorldBuilder.TileUnit"/> 等值，PPU 取 1。</summary>
         public const int TilePixels = 32;
 
@@ -60,6 +66,12 @@ namespace Xianxia.Unity.T2
             // 缓存清空后，之前"缺图"的判断不再有效（用户可能刚把 StreamingAssets 补齐），
             // 所以警告去重表也要跟着重置，否则补好图之后反而再也看不到新的警告。
             _pngWarned.Clear();
+
+            System.Action handler = Cleared;
+            if (handler != null)
+            {
+                handler();
+            }
         }
 
         /// <summary>

@@ -12,6 +12,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using Xianxia.Combat;
 using Xianxia.Inventory;
 

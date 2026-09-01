@@ -79,6 +79,8 @@ Shader "Xianxia/Ink/BambooLeaf"
             col = lerp(col, col * 0.55, tip * _TipInk);
 
             o.Albedo = col;
+            // 同竹竿：叶片保持水墨本色，不依赖场景灯光才能看见。
+            o.Emission = col * 0.78;
             o.Alpha = saturate(alpha) * _Alpha;
         }
         ENDCG

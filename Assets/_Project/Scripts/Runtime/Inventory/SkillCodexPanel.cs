@@ -10,6 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Text;
+using UnityEngine;
+using UnityEngine.UI;
 using Xianxia.Combat;
 using Xianxia.Unity.T2;
 
@@ -21,7 +23,7 @@ namespace Xianxia.Unity.T2
         /// <summary>构建图鉴面板（固定在屏幕左下，背包网格右侧）。</summary>
         public SkillCodexPanel(Transform canvas, SkillTable table)
         {
-            Transform root = Hud.NewRect("SkillCodex", canvas);
+            RectTransform root = Hud.NewRect("SkillCodex", canvas);
             Hud.Anchor(root, new Vector2(0.0f, 0.0f), new Vector2(0.0f, 0.0f), new Vector2(0.0f, 0.0f));
             // 放在背包网格右侧：背包在 x=24 起、约 4 列×72=288 宽，这里 x=340 避开。
             root.anchoredPosition = new Vector2(340.0f, 24.0f);

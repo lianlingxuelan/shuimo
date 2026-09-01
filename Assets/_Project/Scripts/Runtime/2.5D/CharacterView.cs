@@ -135,6 +135,14 @@ namespace Xianxia.Unity.T2
                 return null;
             }
 
+            // 白衣分层角色不依赖 SpriteSkin；它有自己的 Transform 骨骼层级，必须在
+            // 通用 Sprite 回退之前识别，避免被错误加上 SpriteCharacterView。
+            WhiteHeroineCutoutView whiteCutout = root.GetComponent<WhiteHeroineCutoutView>();
+            if (whiteCutout != null)
+            {
+                return whiteCutout;
+            }
+
 #if HAS_SPINE_PACKAGE
             // 仅在符号存在时，才探测 Spine 组件（类型引用被 #if 隔离，缺包不编译）。
             Spine.Unity.SkeletonAnimation sk = root.GetComponent<Spine.Unity.SkeletonAnimation>();

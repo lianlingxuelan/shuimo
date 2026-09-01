@@ -145,7 +145,27 @@ namespace Shuimo.EditorTools
             Component skin = prefab.GetComponent(skinType);
             if (skin != null)
             {
-                return CheckResult.Pass("预制体含 SpriteSkin（骨骼数据已绑定）。");
+                Behaviour skinBehaviour = skin as Behaviour;
+                if (skinBehaviour != null && !skinBehaviour.enabled)
+                {
+                    return CheckResult.Fail(
+                        "预制体虽然含 SpriteSkin，但组件处于禁用状态；当前仍是整张立绘回退，不是可变形骨骼角色。\n" +
+                        "指引：先完成部件拆分、网格与权重，再启用 SpriteSkin 并在 Play 模式确认人物没有消失。");
+                }
+
+                SerializedObject skinSo = new SerializedObject(skin);
+                SerializedProperty rootBone = skinSo.FindProperty("m_RootBone");
+                SerializedProperty boneTransforms = skinSo.FindProperty("m_BoneTransforms");
+                bool missingRoot = rootBone == null || rootBone.objectReferenceValue == null;
+                bool missingBones = boneTransforms == null || boneTransforms.arraySize == 0;
+                if (missingRoot || missingBones)
+                {
+                    return CheckResult.Fail(
+                        "SpriteSkin 缺少有效的根骨或骨骼列表，不能证明已经完成蒙皮绑定。\n" +
+                        "指引：在 Skinning Editor 完成骨骼、几何和权重后 Apply，再重新运行自检。");
+                }
+
+                return CheckResult.Pass("SpriteSkin 已启用，且包含根骨与骨骼列表。");
             }
             return CheckResult.Fail(
                 "预制体缺少 SpriteSkin 组件，说明骨骼尚未绑定。\n" +
@@ -178,12 +198,18 @@ namespace Shuimo.EditorTools
             }
 
             List<string> missing = new List<string>();
+            List<string> emptyMotion = new List<string>();
             HashSet<string> present = new HashSet<string>();
             foreach (var layer in ac.layers)
             {
                 foreach (var state in layer.stateMachine.states)
                 {
-                    present.Add(state.state.name.ToLowerInvariant());
+                    string stateName = state.state.name.ToLowerInvariant();
+                    present.Add(stateName);
+                    if (System.Array.IndexOf(required, stateName) >= 0 && state.state.motion == null)
+                    {
+                        emptyMotion.Add(stateName);
+                    }
                 }
             }
             foreach (string r in required)
@@ -194,12 +220,20 @@ namespace Shuimo.EditorTools
                 }
             }
 
-            if (missing.Count == 0)
+            if (missing.Count == 0 && emptyMotion.Count == 0)
             {
-                return CheckResult.Pass("AnimatorController 含 idle/walk/attack/hit/death 全部 5 状态。");
+                return CheckResult.Pass("AnimatorController 的 idle/walk/attack/hit/death 均存在且已挂动作。");
+            }
+            string detail = missing.Count > 0
+                ? "缺失状态：" + string.Join(", ", missing)
+                : string.Empty;
+            if (emptyMotion.Count > 0)
+            {
+                detail += (detail.Length > 0 ? "；" : string.Empty)
+                    + "未挂 Motion：" + string.Join(", ", emptyMotion);
             }
             return CheckResult.Fail(
-                "AnimatorController 缺失状态：" + string.Join(", ", missing) +
+                "AnimatorController 未完成：" + detail +
                 "。\n指引：按 guide 第 7 步录制 heroine_idle/walk/attack/hit/death.anim 并拖入状态机。");
         }
 

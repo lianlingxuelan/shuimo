@@ -73,6 +73,40 @@ namespace Xianxia.Unity.T2
         /// <summary>玩家占位方块边长（世界单位）。放大约 1.25 格（≈屏上 6%）以修复「玩家看不见」的比例缺陷。</summary>
         public const int PlayerBodySize = 40;
 
+        /// <summary>
+        /// 首期美术替换使用的白衣女主资源。放在 Resources 下，因而无需改动既有 prefab 的 GUID。
+        /// 旧 HeroineBone.prefab 保留为动作/骨骼装配容器，随时可撤销这张展示图。
+        /// </summary>
+        public const string PreferredHeroineSpriteResourcePath = "Characters/heroine_ink_idle_v2_transparent";
+
+        /// <summary>
+        /// 与站立图配套的挥剑姿态。它是单张立绘尚未完成网格权重前的可见动作过渡，
+        /// 由 UnityBoneCharacterView 在攻击窗口内切换，之后会自然回到站立图。
+        /// </summary>
+        public const string PreferredHeroineAttackSpriteResourcePath = "Characters/heroine_ink_attack_v2_chroma";
+
+        /// <summary>与站立图配套的跨步姿态，用于移动中的可见反馈。</summary>
+        public const string PreferredHeroineWalkSpriteResourcePath = "Characters/heroine_ink_walk_v2_chroma";
+
+        /// <summary>行走循环的另一脚跨步，用于和首帧交替形成真正的步态。</summary>
+        public const string PreferredHeroineWalkAlternateSpriteResourcePath = "Characters/heroine_ink_walk_v4_chroma";
+
+        /// <summary>
+        /// 蓝方块回退角色需要独立朝向条；正式女主立绘已有剑和身体朝向，显示它只会形成穿模的荧光线。
+        /// </summary>
+        public static bool ShouldShowFacingMarker(bool hasPreferredHeroineArt)
+        {
+            return !hasPreferredHeroineArt;
+        }
+
+        /// <summary>
+        /// 正式女主资源已经画入佩剑，不能再叠加旧的 3D 世界武器；回退方块才继续使用它。
+        /// </summary>
+        public static bool ShouldAttachLegacyWorldWeapon(bool hasPreferredHeroineArt)
+        {
+            return !hasPreferredHeroineArt;
+        }
+
         /// <summary>敌人占位圆直径（世界单位）。</summary>
         public const int EnemyBodySize = 26;
 
@@ -159,6 +193,7 @@ namespace Xianxia.Unity.T2
             GameObject enemyTemplate = BuildEnemyTemplate(root.transform);
             BuildCombat(root.transform, player, enemyTemplate);
             BuildHud(root.transform);
+            BuildNavigation(root.transform, player);
 
             Debug.Log(string.Format(
                 "[T2] 世界已生成：{0}（{1}×{2} tile / {3:F0}×{4:F0} 单位）seed={5} visits={6}，清理旧根节点 {7} 个。",
@@ -542,18 +577,19 @@ namespace Xianxia.Unity.T2
         private static Transform BuildPlayer(Transform parent, Vector2 spawn)
         {
             GameObject go;
-            bool isBone = false;
+            bool isWhiteCutout = false;
+            bool hasPreferredHeroineArt = false;
 
-            // ===== 美术阶段 E：优先使用 2D Animation 骨骼角色 prefab =====
-            // prefab 自带 SpriteRenderer + SpriteSkin + UnityBoneCharacterView，
-            // BambooSceneContext 会通过 CharacterView.ResolveOn 识别并驱动动画。
-            // 加载失败则回落到原来的程序化蓝方块 + HeroineAnimator 方案。
-            GameObject bonePrefab = Resources.Load<GameObject>("HeroineBone");
-            if (bonePrefab != null)
+            // ===== 白衣角色：优先使用透明分层的 Cutout 骨骼 prefab =====
+            // 不再加载已证实不可用的黑衣 HeroineBone。白衣各层由明确的 Transform
+            // 骨骼层级驱动，走路和挥剑会直接改变手臂、头发与裙摆的相对位置。
+            GameObject whiteCutoutPrefab = Resources.Load<GameObject>("HeroineWhiteCutout");
+            if (whiteCutoutPrefab != null)
             {
-                go = Object.Instantiate(bonePrefab);
+                go = Object.Instantiate(whiteCutoutPrefab);
                 go.name = "Player";
-                isBone = true;
+                isWhiteCutout = true;
+                hasPreferredHeroineArt = true;
             }
             else
             {
@@ -571,13 +607,18 @@ namespace Xianxia.Unity.T2
             go.transform.SetParent(null, false);
             go.transform.position = new Vector3(spawn.x, spawn.y, 0.0f);
 
-            // ★ 骨骼角色渲染：直接使用 HeroineBone.prefab 自带的原始美术资源。
-            // prefab 的 SpriteRenderer 已绑定用户原图
-            //   Assets/_Project/Art/Characters/Heroine2D/heroine_base_open.png
-            // （GUID da6e9774…，8/13 提交 5b5e490，从未丢失），
-            // Animator 已绑定 HeroineBoneAnimator.controller（GUID b882eb0d…，含 heroine_idle 动画）。
-            // 不再运行时覆盖 sprite —— 之前误判"原图缺失"而注入 AI 生成图是错的，已撤销。
-            // 用户要求保留 AI 生成的 Resources/Characters/heroine.png，但不强制使用。
+            // 白衣源图只有约 6×10 世界单位，而本项目一格为 32、
+            // 相机视野为数百单位；不放大时角色会小到近乎不可见。只缩放骨骼
+            // prefab 实例，程序化精灵回退路径保持既有 40×40 尺寸不变。
+            if (isWhiteCutout)
+            {
+                go.transform.localScale = Vector3.one * 11.0f;
+            }
+
+            if (isWhiteCutout)
+            {
+                Debug.Log("[WorldBuilder] 使用白衣分层 Cutout 骨骼角色（非黑衣旧资产）。");
+            }
 
             // 朝向指示：一根从体心指向 lastFacing 的短条。占位美术里没有它，
             // 玩家就完全看不出自己朝哪边——而扇形攻击判定恰恰吃朝向。
@@ -589,6 +630,7 @@ namespace Xianxia.Unity.T2
             fsr.sprite = SpriteFactory.SolidRect("player_facing", facingW, 7,
                                                  new Color(0.86f, 0.93f, 1.0f, 0.95f));
             fsr.sortingOrder = 11;
+            fsr.enabled = ShouldShowFacingMarker(hasPreferredHeroineArt);
 
             PlayerController pc = go.AddComponent<PlayerController>();
             pc.SetFacingMarker(facing.transform);
@@ -627,7 +669,14 @@ namespace Xianxia.Unity.T2
             go.AddComponent<SkillController>();   // K / 鼠标右键 → Skill1，L → Skill2
             go.AddComponent<DodgeController>();   // Shift / Space 闪避
 
-            if (!isBone)
+            // 回退方块仍可用独立世界剑；正式白衣图已画入佩剑，不再叠一把旧 3D 剑，
+            // 以免材质失效时冒出洋红线或双剑穿模。
+            if (ShouldAttachLegacyWorldWeapon(hasPreferredHeroineArt))
+            {
+                go.AddComponent<PlayerWeaponRig>();
+            }
+
+            if (!isWhiteCutout)
             {
                 // ===== 美术阶段 E（fallback）：把蓝方块「升级」为 39 帧水墨女主精灵 =====
                 //
@@ -670,9 +719,13 @@ namespace Xianxia.Unity.T2
                                                      new Color(0.86f, 0.93f, 1.0f, 0.45f));
             }
 
-            // 砍竹内容闭环：玩家持有材料背包 + 竹材 HUD（纯数据 / 纯显示，不碰战斗内核）。
+            // 砍竹内容闭环：玩家持有材料背包 + 调理状态 + HUD。
+            // 调理控制器只消费材料、保存本局选择；战斗修正仍由 CombatBridge 在读取点处理。
             go.AddComponent<PlayerInventory>();
+            go.AddComponent<ConditioningController>();
+            go.AddComponent<ConditioningCombatAdapter>();
             go.AddComponent<InventoryHud>();
+            go.AddComponent<AdventurePanelsHud>();
 
             return go.transform;
         }
@@ -898,6 +951,77 @@ namespace Xianxia.Unity.T2
             GameObject go = new GameObject("HUD");
             go.transform.SetParent(parent, false);
             go.AddComponent<Hud>();
+        }
+
+        /// <summary>
+        /// Assembles the navigation stack after the regular HUD exists. All bindings are explicit so the HUD
+        /// does not need scene searches in the normal generated-world path, and repeated assembly is harmless.
+        /// </summary>
+        public static void BuildNavigation(Transform worldRoot, Transform player)
+        {
+            if (worldRoot == null || player == null)
+            {
+                return;
+            }
+
+            PlayerController controller = player.GetComponent<PlayerController>();
+            if (controller == null)
+            {
+                return;
+            }
+
+            MinimapMarker playerMarker = player.GetComponent<MinimapMarker>();
+            if (playerMarker == null)
+            {
+                playerMarker = player.gameObject.AddComponent<MinimapMarker>();
+            }
+            playerMarker.Configure(MinimapMarkerKind.Player, "player", "", true);
+
+            WorldBoundaryFeedback boundary = worldRoot.GetComponent<WorldBoundaryFeedback>();
+            if (boundary == null)
+            {
+                boundary = worldRoot.gameObject.AddComponent<WorldBoundaryFeedback>();
+            }
+            boundary.Bind(controller);
+
+            InkMinimapHud minimap = worldRoot.GetComponent<InkMinimapHud>();
+            if (minimap == null)
+            {
+                minimap = worldRoot.gameObject.AddComponent<InkMinimapHud>();
+            }
+            minimap.Bind(controller, boundary);
+            minimap.BindAdventurePanels(player.GetComponent<AdventurePanelsHud>());
+            minimap.Build();
+
+            InkDialogueHud dialogue = worldRoot.GetComponent<InkDialogueHud>();
+            if (dialogue == null)
+            {
+                dialogue = worldRoot.gameObject.AddComponent<InkDialogueHud>();
+            }
+
+            EnemyNpcSpawner storySpawner = worldRoot.GetComponent<EnemyNpcSpawner>();
+            if (storySpawner == null)
+            {
+                storySpawner = worldRoot.gameObject.AddComponent<EnemyNpcSpawner>();
+                storySpawner.spawnFengStoreEnemy = false;
+                storySpawner.SuppressInitialSpawns = true;
+            }
+
+            FirstChapterRuntime chapter = worldRoot.GetComponent<FirstChapterRuntime>();
+            if (chapter == null)
+            {
+                chapter = worldRoot.gameObject.AddComponent<FirstChapterRuntime>();
+            }
+            chapter.Bind(player, storySpawner);
+            chapter.BindDialogue(dialogue);
+            chapter.Build();
+
+            InkQuestBook questBook = worldRoot.GetComponent<InkQuestBook>();
+            if (questBook == null)
+            {
+                questBook = worldRoot.gameObject.AddComponent<InkQuestBook>();
+            }
+            questBook.Bind(player.GetComponent<PlayerInventory>(), chapter);
         }
 
         // ---------------------------------------------------------------------

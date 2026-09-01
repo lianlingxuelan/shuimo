@@ -1,0 +1,13 @@
+{
+    "name": "Xianxia.Morality.Tests",
+    "rootNamespace": "Xianxia.Morality.Tests",
+    "references": ["com.unity.test-framework", "Xianxia.Morality"],
+    "includePlatforms": ["Editor"],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

@@ -18,8 +18,10 @@
 //   1. 不引用 CombatScheduler / RunPhase / DamageResolver / RequestHitstop / KickHitstop；
 //   2. 不写 Time.timeScale、不写 FeedbackClock.Frozen，本文件根本不读任何时钟；
 //   3. 不改动任何内核类型；
-//   4. **不造成任何伤害**：ShouldAttack 只是「该播攻击表现了」的信号，
-//      真正的伤害流转须走内核，留待后续任务接入（见文末 TODO）。
+//   4. **不造成任何伤害**：ShouldAttack 只是「该播攻击表现了」的信号。
+//      真正的伤害流转已由 EnemyPatrol 经注入的 IDamageRequester 投递进内核
+//      （见 EnemyPatrol.cs / EnemyContactAttack.cs / CombatBridge.RequestContactDamage），
+//      本文件是纯决策、物理上写不进内核，无需也绝不自行造成伤害。
 //
 // 【设计要点】
 //   · 滞回（hysteresis）：进入追击用 alertRadius，脱离追击用更大的 loseRadius。
@@ -223,9 +225,9 @@ namespace Xianxia.Unity.T2
             return d;
         }
 
-        // TODO（后续任务，需接内核）：
-        //   ShouldAttack 目前只驱动攻击「表现」。要让敌人真正打掉玩家血量，
-        //   必须经 CombatBridge 暴露的接口投递到战斗内核（内核推进权唯一红线），
-        //   不能在本文件或 EnemyPatrol 里直接改玩家 HP / 调 DamageResolver。
+        // ✅ 伤害流转已接通（第2周）：ShouldAttack 只驱动「表现」；
+        //   真正掉血由 EnemyPatrol 在冷却到点且贴身时，经注入的 IDamageRequester
+        //   调用 CombatBridge.RequestContactDamage → 内核结算（见 EnemyPatrol.cs:305）。
+        //   本文件保持纯决策，不碰内核、不改玩家 HP，符合数值红线。
     }
 }

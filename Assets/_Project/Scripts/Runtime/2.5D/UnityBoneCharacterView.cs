@@ -70,6 +70,24 @@ namespace Xianxia.Unity.T2
         private Vector3 _rootBaseLocalPos = Vector3.zero;
         private Transform _rootBone;
         private float _rootBaseScaleX = 1.0f;
+        private SpriteRenderer _spriteRenderer;
+        private Sprite _sourceSprite;
+        private Sprite _walkSprite;
+        private Sprite _walkAlternateSprite;
+        private Sprite _attackSprite;
+        private Material _sourceMaterial;
+        private Material _chromaKeyMaterial;
+        private Vector3 _visualBaseScale = Vector3.one;
+        private Quaternion _visualBaseRotation = Quaternion.identity;
+        private float _poseClock;
+        private float _oneShotRemain;
+
+        // 当前骨骼资源还没有绘制 SpriteSkin 权重时，启用 SpriteSkin 会让原图消失。
+        // 这组根节点姿态是安全的可见回退：保留原图，同时让站立、走路、挥砍和受击
+        // 都有明确动作反馈；待权重完成后仍可无缝由 SpriteSkin 接管变形。
+        private const float AttackPoseSeconds = 0.32f;
+        private const float HitPoseSeconds = 0.22f;
+        private const string ChromaKeyMaterialResourcePath = "Characters/HeroineChromaKey";
 
         /// <summary>由 ResolveOn 在运行时探测到 SpriteSkin 后调用，绑定骨骼组件。</summary>
         /// <param name="skin">2D 骨骼绑定组件。</param>
@@ -83,6 +101,17 @@ namespace Xianxia.Unity.T2
             _clipMap[CharacterAnimState.Hit] = clipHit;
             _clipMap[CharacterAnimState.Death] = clipDeath;
             HasView = _skin != null && _animator != null;
+            _spriteRenderer = _skin != null ? _skin.GetComponent<SpriteRenderer>() : null;
+            if (_sourceSprite == null && _spriteRenderer != null)
+            {
+                _sourceSprite = _spriteRenderer.sprite;
+            }
+            if (_sourceMaterial == null && _spriteRenderer != null)
+            {
+                _sourceMaterial = _spriteRenderer.sharedMaterial;
+            }
+            _visualBaseScale = transform.localScale;
+            _visualBaseRotation = transform.localRotation;
             if (_skin != null)
             {
                 // 不强制启用 SpriteSkin：若 prefab 中权重未绘制（Sprite Editor 里 weight 全 0），
@@ -111,6 +140,45 @@ namespace Xianxia.Unity.T2
             }
         }
 
+        /// <summary>
+        /// 设置当前角色可见的待机/行走/攻击立绘。SpriteSkin 权重尚未完成时，仍可提供
+        /// 可读的跨步与挥剑画面；完成蒙皮后可以清空这些覆盖图，让骨骼动画自然接管。
+        /// </summary>
+        public void ConfigureSpriteOverrides(
+            Sprite idleSprite,
+            Sprite walkSprite,
+            Sprite walkAlternateSprite,
+            Sprite attackSprite)
+        {
+            _sourceSprite = idleSprite;
+            _walkSprite = walkSprite;
+            _walkAlternateSprite = walkAlternateSprite;
+            _attackSprite = attackSprite;
+            // Instantiate 会先触发 Awake/Bind，而 WorldBuilder 随后才把角色调整到
+            // 适合当前相机的运行时尺寸。动作姿态必须以这个最终尺寸为基准，
+            // 否则第一帧 OnTick 会把 11 倍角色缩回 prefab 里的旧尺寸。
+            _visualBaseScale = transform.localScale;
+            _visualBaseRotation = transform.localRotation;
+            RestoreSourceSprite();
+        }
+
+        /// <summary>攻击状态且存在专用攻击图时，切换独立挥剑姿态。</summary>
+        public static bool ShouldUseAttackSprite(CharacterAnimState state, bool hasAttackSprite)
+        {
+            return state == CharacterAnimState.Attack && hasAttackSprite;
+        }
+
+        /// <summary>
+        /// Idle/Walk 会由场景每帧重复派发；相同循环状态不能反复从第 0 帧播放，
+        /// 否则真正接入的骨骼动画会永远停在第一帧。一次性状态允许重复触发，
+        /// 这样连续攻击或受击仍能从头播放反馈。
+        /// </summary>
+        public static bool ShouldRestartAnimator(CharacterAnimState current, CharacterAnimState requested)
+        {
+            return current != requested
+                || (requested != CharacterAnimState.Idle && requested != CharacterAnimState.Walk);
+        }
+
         /// <inheritdoc />
         protected override void Awake()
         {
@@ -129,13 +197,46 @@ namespace Xianxia.Unity.T2
         /// <inheritdoc />
         public override void PlayState(CharacterAnimState state)
         {
+            if ((state == CharacterAnimState.Idle || state == CharacterAnimState.Walk)
+                && _oneShotRemain > 0.0f)
+            {
+                return;
+            }
+            bool shouldRestartAnimator = ShouldRestartAnimator(_state, state);
             _state = state;
+            if (state == CharacterAnimState.Attack)
+            {
+                _oneShotRemain = AttackPoseSeconds;
+            }
+            else if (state == CharacterAnimState.Hit)
+            {
+                _oneShotRemain = HitPoseSeconds;
+            }
+            if (ShouldUseAttackSprite(state, _attackSprite != null))
+            {
+                SetVisibleSprite(_attackSprite);
+            }
+            else if (state == CharacterAnimState.Walk && _walkSprite != null)
+            {
+                SetVisibleSprite(ResolveWalkSprite());
+            }
+            else if (state != CharacterAnimState.Attack)
+            {
+                RestoreSourceSprite();
+            }
+            // 终局会立刻冻结 FeedbackClock，之后 Tick 不再推进。状态切换当下先应用
+            // 一次姿态，确保 Death 等终局动作不会因为零 Delta 永远保持站立。
+            ApplyVisibleFallbackPose();
             if (_animator == null)
             {
                 return;
             }
             string clip;
             if (!_clipMap.TryGetValue(state, out clip) || string.IsNullOrEmpty(clip))
+            {
+                return;
+            }
+            if (!shouldRestartAnimator)
             {
                 return;
             }
@@ -159,26 +260,38 @@ namespace Xianxia.Unity.T2
                 s.x = _rootBaseScaleX * sign;
                 _rootBone.localScale = s;
             }
-            else if (_skin != null)
+            if (_spriteRenderer != null)
             {
-                SpriteRenderer sr = _skin.GetComponent<SpriteRenderer>();
-                if (sr != null)
-                {
-                    sr.flipX = dir.x < 0.0f;
-                }
+                // SpriteSkin 未启用时，根骨骼翻转不会作用于原 SpriteRenderer；
+                // 同步翻转原图，保证左右移动与攻击方向可见。
+                _spriteRenderer.flipX = dir.x < 0.0f;
             }
         }
 
         /// <inheritdoc />
         protected override void OnTick(float dt)
         {
-            if (_animator == null)
+            if (_animator != null)
             {
-                return;
+                // 手动推进 Mecanim（Manual 模式），精确用 FeedbackClock.Delta；
+                // 顿帧期间 OnTick 不被调用 → Animator 不动 → 全场同步冻结。
+                _animator.Update(dt);
             }
-            // 手动推进 Mecanim（Manual 模式），精确用 FeedbackClock.Delta；
-            // 顿帧期间 OnTick 不被调用 → Animator 不动 → 全场同步冻结。
-            _animator.Update(dt);
+
+            _poseClock += dt;
+            if (_state == CharacterAnimState.Walk && _walkSprite != null)
+            {
+                SetVisibleSprite(ResolveWalkSprite());
+            }
+            if (_oneShotRemain > 0.0f)
+            {
+                _oneShotRemain = Mathf.Max(0.0f, _oneShotRemain - dt);
+                if (_oneShotRemain <= 0.0f && _state == CharacterAnimState.Attack)
+                {
+                    RestoreSourceSprite();
+                }
+            }
+            ApplyVisibleFallbackPose();
 
             // 受击根骨骼抖动（按 dt 衰减）。
             if (_hitShakeRemain > 0.0f)
@@ -212,6 +325,151 @@ namespace Xianxia.Unity.T2
                 {
                     _skin.transform.localPosition = _rootBaseLocalPos;
                 }
+            }
+        }
+
+        private void ApplyVisibleFallbackPose()
+        {
+            float bob = 0.0f;
+            float tilt = 0.0f;
+            float width = 1.0f;
+            float height = 1.0f;
+
+            switch (_state)
+            {
+                case CharacterAnimState.Idle:
+                    bob = Mathf.Sin(_poseClock * 3.0f) * 0.018f;
+                    height = 1.0f + bob;
+                    width = 1.0f - bob * 0.45f;
+                    break;
+                case CharacterAnimState.Walk:
+                    bob = Mathf.Sin(_poseClock * 11.0f) * 0.055f;
+                    tilt = Mathf.Sin(_poseClock * 5.5f) * 4.5f;
+                    height = 1.0f + bob;
+                    width = 1.0f - bob * 0.5f;
+                    break;
+                case CharacterAnimState.Attack:
+                    if (_attackSprite == null)
+                    {
+                        float attackT = 1.0f - _oneShotRemain / AttackPoseSeconds;
+                        CutoutPose attackPose = FallbackCutoutPose.Evaluate(CharacterAnimState.Attack, attackT);
+                        tilt = attackPose.TiltDeg;
+                        width = attackPose.WidthScale;
+                        height = attackPose.HeightScale;
+                    }
+                    break;
+                case CharacterAnimState.Hit:
+                    float hitT = 1.0f - _oneShotRemain / HitPoseSeconds;
+                    tilt = Mathf.Sin(Mathf.Clamp01(hitT) * Mathf.PI * 3.0f) * 8.0f;
+                    width = 0.90f;
+                    height = 0.96f;
+                    break;
+                case CharacterAnimState.Death:
+                    tilt = -76.0f;
+                    height = 0.55f;
+                    width = 1.20f;
+                    break;
+            }
+
+            transform.localRotation = _visualBaseRotation * Quaternion.Euler(0.0f, 0.0f, tilt);
+            transform.localScale = new Vector3(
+                _visualBaseScale.x * width,
+                _visualBaseScale.y * height,
+                _visualBaseScale.z);
+        }
+
+        private void SetVisibleSprite(Sprite sprite)
+        {
+            if (_spriteRenderer != null && sprite != null)
+            {
+                if (_spriteRenderer.sprite != sprite)
+                {
+                    _spriteRenderer.sprite = sprite;
+                }
+                UseChromaKeyMaterial(
+                    sprite == _walkSprite
+                    || sprite == _walkAlternateSprite
+                    || sprite == _attackSprite);
+            }
+        }
+
+        private void RestoreSourceSprite()
+        {
+            SetVisibleSprite(_sourceSprite);
+        }
+
+        private Sprite ResolveWalkSprite()
+        {
+            if (_walkAlternateSprite == null)
+            {
+                return _walkSprite;
+            }
+
+            int frame = Mathf.FloorToInt(_poseClock * 5.0f);
+            return (frame & 1) == 0 ? _walkSprite : _walkAlternateSprite;
+        }
+
+        private void UseChromaKeyMaterial(bool shouldUseChromaKey)
+        {
+            if (_spriteRenderer == null)
+            {
+                return;
+            }
+
+            if (!shouldUseChromaKey)
+            {
+                if (_spriteRenderer.sharedMaterial != _sourceMaterial)
+                {
+                    _spriteRenderer.sharedMaterial = _sourceMaterial;
+                }
+                return;
+            }
+
+            if (_chromaKeyMaterial == null)
+            {
+                Material template = Resources.Load<Material>(ChromaKeyMaterialResourcePath);
+                if (template != null)
+                {
+                    _chromaKeyMaterial = new Material(template)
+                    {
+                        name = "Heroine Chroma Key (Runtime)"
+                    };
+                }
+                else
+                {
+                    Shader shader = Shader.Find("Xianxia/Ink/ChromaKeySprite");
+                    if (shader == null)
+                    {
+                        Debug.LogWarning("[UnityBoneCharacterView] 未找到 HeroineChromaKey 材质和 ChromaKeySprite Shader，动作帧保留默认材质。");
+                        return;
+                    }
+                    _chromaKeyMaterial = new Material(shader)
+                    {
+                        name = "Heroine Chroma Key (Runtime Fallback)"
+                    };
+                }
+            }
+
+            if (_spriteRenderer.sharedMaterial != _chromaKeyMaterial)
+            {
+                _spriteRenderer.sharedMaterial = _chromaKeyMaterial;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_chromaKeyMaterial == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(_chromaKeyMaterial);
+            }
+            else
+            {
+                DestroyImmediate(_chromaKeyMaterial);
             }
         }
     }

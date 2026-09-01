@@ -103,6 +103,9 @@ Shader "Xianxia/Ink/BambooTrunk"
             col = lerp(col, _InkMid.rgb * 0.85, nodeBelow * _NodeInk * 0.4);
 
             o.Albedo = col;
+            // 场景采用正交 2.5D 取景，竹子不应该因为没有直射灯而整体压成黑柱。
+            // 保留少量 Lambert 明暗，同时用自发光保证水墨底色始终可读。
+            o.Emission = col * 0.78;
             o.Alpha = 1.0;
             o.Specular = 0.0;
             o.Gloss = 0.0;

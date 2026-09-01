@@ -101,8 +101,18 @@ namespace Xianxia.Unity.T2.Core
         /// <summary>一局开始 → Playing。</summary>
         public void NotifyRunStarted() => SetPhase(GamePhase.Playing);
 
-        /// <summary>一局结束 → GameOver（won 仅作语义保留，本周相位不区分胜负）。</summary>
-        public void NotifyRunEnded(bool won) => SetPhase(GamePhase.GameOver);
+        /// <summary>一局结束 → GameOver，并把胜负结果广播给人物表现等订阅者。</summary>
+        public void NotifyRunEnded(bool won)
+        {
+            // CombatBridge 正常只通知一次；仍在这里幂等保护，避免重复结算让
+            // Death/胜利表现被从头播放两遍。
+            if (Phase == GamePhase.GameOver)
+            {
+                return;
+            }
+            SetPhase(GamePhase.GameOver);
+            EventManager.Publish(new RunEndedEvent { Won = won });
+        }
 
         /// <summary>进入菜单冻结 → Paused。</summary>
         public void NotifyPaused() => SetPhase(GamePhase.Paused);

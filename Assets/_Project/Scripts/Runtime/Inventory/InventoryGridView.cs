@@ -40,7 +40,7 @@ namespace Xianxia.Unity.T2
             _defs = new Dictionary<string, ItemDefinition>(defs);
             _capacity = model.Capacity;
 
-            Transform root = Hud.NewRect("InventoryGrid", canvas);
+            RectTransform root = Hud.NewRect("InventoryGrid", canvas);
             Hud.Anchor(root, new Vector2(0.0f, 0.0f), new Vector2(0.0f, 0.0f), new Vector2(0.0f, 0.0f));
             root.anchoredPosition = new Vector2(24.0f, 24.0f);
 

@@ -49,10 +49,18 @@ namespace Shuimo.EditorTools
     public static class BambooScenePlacer
     {
         private const string MenuPlace = "Shuimo/2.5D/放置竹林 BambooSceneContext";
+        private const string MenuAssignHeroRock = "Shuimo/2.5D/接入 Blender 太湖石到当前竹林";
         private const string MenuRemove = "Shuimo/2.5D/移除竹林 BambooSceneContext";
         private const string MenuToggle = "Shuimo/2.5D/自动放置竹林";
         private const string HostName = "BambooGrove";
-        private const string FbxPath = "Assets/_Project/Art/Bamboo/bamboo_ink.fbx";
+        private const string FbxPath = "Assets/_Project/Art/Bamboo/Generated/InkBambooHero.fbx";
+        private const string HeroRockFbxPath = "Assets/_Project/Art/Rocks/Generated/InkScholarRock_v1.fbx";
+        private const string HeroRockSpritePath = "Assets/_Project/Resources/Environments/ink_scholar_rock_wash_v1.png";
+        private const string BambooClumpSpritePath = "Assets/_Project/Resources/Environments/ink_bamboo_clump_v1.png";
+        private const string HarvestBambooSpritePath = "Assets/_Project/Resources/Environments/ink_harvest_bamboo_v1.png";
+        private const string BambooStumpSpritePath = "Assets/_Project/Resources/Environments/ink_bamboo_stump_v1.png";
+        private const string YoungBambooSpritePath = "Assets/_Project/Resources/Environments/ink_young_bamboo_v1.png";
+        private const string BambooShootsSpritePath = "Assets/_Project/Resources/Environments/ink_bamboo_shoots_v1.png";
         private const string TargetSceneName = "SampleScene";
         private const string AutoKey = "Shuimo.2_5D.AutoBamboo";
 
@@ -86,9 +94,11 @@ namespace Shuimo.EditorTools
                 return;
             }
 
-            // 已存在则跳过（幂等）。
-            if (Object.FindObjectOfType<BambooSceneContext>() != null)
+            // 已存在则升级为当前的英雄竹丛资源（幂等），不再保留历史 FBX 引用。
+            BambooSceneContext existing = Object.FindObjectOfType<BambooSceneContext>();
+            if (existing != null)
             {
+                ConfigureGeneratedHeroModel(existing);
                 return;
             }
 
@@ -110,6 +120,7 @@ namespace Shuimo.EditorTools
             BambooSceneContext existing = Object.FindObjectOfType<BambooSceneContext>();
             if (existing != null)
             {
+                ConfigureGeneratedHeroModel(existing);
                 Selection.activeGameObject = existing.gameObject;
                 if (!silent)
                 {
@@ -127,14 +138,7 @@ namespace Shuimo.EditorTools
             // 若工程里已有 bamboo_ink.fbx：先程序化套水墨材质（确保是真·水墨而非灰模/粉红），
             // 再接成 bambooModelPrefab（路线 A，最高保真，零 primitives/格子）。
             // fbx 缺失或套材质失败时，组件退回 primitives + 运行时 Ink 材质兜底（路线 B）。
-            GameObject fbx = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
-            bool usedModel = false;
-            if (fbx != null)
-            {
-                BambooInkImporter.ApplyToModel(FbxPath);
-                ctx.bambooModelPrefab = fbx;
-                usedModel = true;
-            }
+            bool usedModel = ConfigureGeneratedHeroModel(ctx);
 
             Selection.activeGameObject = go;
             EditorUtility.SetDirty(go);
@@ -158,6 +162,91 @@ namespace Shuimo.EditorTools
                         usedModel ? "已接入 bamboo_ink 模型" : "走 primitives 兜底"),
                     "OK");
             }
+        }
+
+        /// <summary>把旧场景里遗留的 bamboo_ink 引用无损切换到本轮生成的英雄竹丛。</summary>
+        private static bool ConfigureGeneratedHeroModel(BambooSceneContext context)
+        {
+            if (context == null)
+            {
+                return false;
+            }
+
+            ConfigureHeroScholarRock(context);
+            GameObject fbx = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
+            if (fbx == null)
+            {
+                return false;
+            }
+
+            BambooInkImporter.ApplyToModel(FbxPath);
+            bool changed = context.bambooModelPrefab != fbx
+                || context.forcePrimitiveBamboo
+                || !context.bambooModelIncludesLeafClusters;
+            context.bambooModelPrefab = fbx;
+            context.forcePrimitiveBamboo = false;
+            context.bambooModelIncludesLeafClusters = true;
+            if (changed)
+            {
+                EditorUtility.SetDirty(context);
+                Debug.Log("[Shuimo/2.5D] 已把 BambooGrove 更新为 InkBambooHero 正式竹丛。");
+            }
+            return true;
+        }
+
+        /// <summary>把本地 Blender 导出的太湖石接入场景宿主，不触碰用户现有对象。</summary>
+        private static void ConfigureHeroScholarRock(BambooSceneContext context)
+        {
+            EnsureSpriteImport(HeroRockSpritePath);
+            EnsureSpriteImport(BambooClumpSpritePath);
+            EnsureSpriteImport(HarvestBambooSpritePath);
+            EnsureSpriteImport(BambooStumpSpritePath);
+            EnsureSpriteImport(YoungBambooSpritePath);
+            EnsureSpriteImport(BambooShootsSpritePath);
+            GameObject rock = AssetDatabase.LoadAssetAtPath<GameObject>(HeroRockFbxPath);
+            if (context == null || rock == null || context.heroRockModelPrefab == rock)
+            {
+                return;
+            }
+
+            context.heroRockModelPrefab = rock;
+            EditorUtility.SetDirty(context);
+            Debug.Log("[Shuimo/2.5D] 已接入 Blender 太湖石：道路右侧主景。 ");
+        }
+
+        private static void EnsureSpriteImport(string assetPath)
+        {
+            TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+            if (importer == null || importer.textureType == TextureImporterType.Sprite)
+            {
+                return;
+            }
+
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.spritePixelsPerUnit = 100.0f;
+            importer.alphaIsTransparency = true;
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+        }
+
+        [MenuItem(MenuAssignHeroRock)]
+        public static void AssignHeroRockToCurrentGrove()
+        {
+            if (Application.isPlaying)
+            {
+                Debug.LogWarning("[Shuimo/2.5D] 请先退出 Play 模式，再接入太湖石引用。 ");
+                return;
+            }
+
+            BambooSceneContext context = Object.FindObjectOfType<BambooSceneContext>();
+            if (context == null)
+            {
+                Debug.LogError("[Shuimo/2.5D] 当前场景没有 BambooSceneContext，无法接入太湖石。 ");
+                return;
+            }
+
+            ConfigureHeroScholarRock(context);
+            EditorUtility.SetDirty(context);
         }
 
         [MenuItem(MenuRemove)]

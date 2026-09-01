@@ -73,6 +73,16 @@ namespace Xianxia.Unity.T2.Core
         public float Mo;
     }
 
+    /// <summary>性格值变化。第 3 周（性格系统）真正发布。五维 0–100。</summary>
+    public sealed class PersonalityChangedEvent
+    {
+        public float Wuxing;
+        public float Chongdong;
+        public float Yinren;
+        public float Lengjing;
+        public float Tanlan;
+    }
+
     /// <summary>背包内容变化。第 4 周（背包桥接）真正发布。</summary>
     public sealed class InventoryChangedEvent
     {

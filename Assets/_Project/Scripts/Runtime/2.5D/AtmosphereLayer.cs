@@ -23,7 +23,8 @@ public class AtmosphereLayer : MonoBehaviour
 
     [Header("远山")]
     public Color mountainInk = new Color(0.32f, 0.36f, 0.40f, 1f);
-    public int mountainLayers = 2;
+    [Tooltip("俯视竹林默认关闭：未经美术剪裁的 Quad 会显示为悬浮矩形。")]
+    public int mountainLayers = 0;
     public float mountainBaseZ = -1600f;   // 第一层远山纵深
     public float mountainLayerGap = 700f;   // 层间纵深
     public float mountainHeight = 700f;     // 山高
@@ -118,7 +119,11 @@ public class AtmosphereLayer : MonoBehaviour
         sky.transform.SetParent(root.transform, false);
         sky.transform.localScale = Vector3.one * (skyRadius * 2f);
         var skyCol = sky.GetComponent<Collider>();
-        if (skyCol != null) Object.Destroy(skyCol);
+        if (skyCol != null)
+        {
+            if (Application.isPlaying) Object.Destroy(skyCol);
+            else Object.DestroyImmediate(skyCol);
+        }
         var skyRend = sky.GetComponent<MeshRenderer>();
         var skyMat = new Material(Shader.Find("Xianxia/Ink/InkSky"));
         if (skyMat != null)
@@ -149,7 +154,11 @@ public class AtmosphereLayer : MonoBehaviour
             m.transform.localPosition = new Vector3((i % 2 == 0 ? -1f : 1f) * 200f, h * 0.5f, z);
             // Quad 默认法线 +Z，放在 -Z 远处正对相机即可，无需旋转。
             var mCol = m.GetComponent<Collider>();
-            if (mCol != null) Object.Destroy(mCol);
+            if (mCol != null)
+            {
+                if (Application.isPlaying) Object.Destroy(mCol);
+                else Object.DestroyImmediate(mCol);
+            }
             var mr = m.GetComponent<MeshRenderer>();
             if (mtnMat != null) mr.sharedMaterial = mtnMat;
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

@@ -202,6 +202,12 @@ namespace Xianxia.Unity.T2
         [Tooltip("Char_Feng prefab 的 Resources 路径（由 Shuimo/Store/Generate Prefabs 生成）。")]
         public string fengStoreEnemyPath = "Enemies/FengEnemy";
 
+        /// <summary>
+        /// Allows a chapter-owned spawner to tick explicitly-created story patrols without also attempting the
+        /// optional config-driven scatter pass. Default remains false for all ordinary spawners.
+        /// </summary>
+        public bool SuppressInitialSpawns { get; set; }
+
         private readonly List<Transform> _spawnedRoots = new List<Transform>();
         private readonly List<CharacterView> _views = new List<CharacterView>();
         private readonly List<EnemyPatrol> _patrols = new List<EnemyPatrol>();
@@ -243,7 +249,12 @@ namespace Xianxia.Unity.T2
                 {
                     _depthAxis = ctx.DepthAxis;
                 }
-                if (config != null)
+                if (SuppressInitialSpawns)
+                {
+                    // Story runtime has already used SpawnStoryEnemy; keep its patrol tick path alive without
+                    // injecting a second ordinary scatter pass or a misleading missing-config warning.
+                }
+                else if (config != null)
                 {
                     SpawnAll();
                 }
@@ -253,7 +264,10 @@ namespace Xianxia.Unity.T2
                 }
 
                 // 商店角色候选：独立路径，不依赖 config（即使没配 config 也能生成 Feng）。
-                SpawnStoreFengEnemies(ctx);
+                if (!SuppressInitialSpawns)
+                {
+                    SpawnStoreFengEnemies(ctx);
+                }
 
                 _spawned = true;
             }
@@ -425,7 +439,7 @@ namespace Xianxia.Unity.T2
 
         /// <summary>生成一只小怪：prefab（entry.prefab 或 prefabOverride）或 primitives + Ink 材质；
         /// 挂 CharacterView + 巡逻；注册排序/harvest。config 可为 null（商店候选路径）。</summary>
-        private void SpawnEnemy(Transform parent, Vector2 worldXY, EnemyArchetypeEntry entry, BambooSceneContext ctx,
+        private Transform SpawnEnemy(Transform parent, Vector2 worldXY, EnemyArchetypeEntry entry, BambooSceneContext ctx,
             Vector2 patrolCenter, float patrolRadius, uint patrolSeed,
             GameObject prefabOverride = null, bool? harvestableOverride = null)
         {
@@ -487,7 +501,39 @@ namespace Xianxia.Unity.T2
                 ctx.RegisterHarvestTarget(root.transform);
             }
 
+            MinimapMarker minimapMarker = root.AddComponent<MinimapMarker>();
+            minimapMarker.Configure(
+                MinimapMarkerKind.Enemy,
+                string.Format("enemy_{0}", patrolSeed),
+                entry != null ? entry.kind.ToString() : "Enemy",
+                false);
+
             _spawnedRoots.Add(root.transform);
+            return root.transform;
+        }
+
+        /// <summary>
+        /// Creates a deterministic chapter-owned enemy through the same view, patrol, sorting and marker path
+        /// as ordinary enemies. The caller chooses whether its minimap marker is the persistent chapter seal.
+        /// </summary>
+        public Transform SpawnStoryEnemy(Vector2 position, bool chapterEnemy, Vector2 patrolCenter, float patrolRadius, uint seed)
+        {
+            BambooSceneContext ctx = ResolveContext();
+            if (ctx != null)
+            {
+                _depthAxis = ctx.DepthAxis;
+            }
+
+            Transform parent = spawnParent != null ? spawnParent : transform;
+            Transform root = SpawnEnemy(parent, position, null, ctx, patrolCenter, patrolRadius, seed, null, false);
+
+            MinimapMarker marker = root.GetComponent<MinimapMarker>();
+            marker.Configure(
+                chapterEnemy ? MinimapMarkerKind.ChapterEnemy : MinimapMarkerKind.Enemy,
+                chapterEnemy ? string.Format("chapter_enemy_{0}", seed) : string.Format("enemy_{0}", seed),
+                chapterEnemy ? "拦路妖物" : "巡路妖物",
+                chapterEnemy);
+            return root;
         }
 
         /// <summary>商店角色候选（Char_Feng）：独立生成路径，不依赖 config 是否存在。
@@ -559,6 +605,9 @@ namespace Xianxia.Unity.T2
             InteractableMarker marker = root.AddComponent<InteractableMarker>();
             marker.markerId = string.Format("npc_{0}", index);
             marker.displayName = string.Format("NPC {0}", index);
+
+            MinimapMarker minimapMarker = root.AddComponent<MinimapMarker>();
+            minimapMarker.Configure(MinimapMarkerKind.Npc, marker.markerId, marker.displayName, true);
 
             if (config.depthSortEnabled && ctx != null)
             {

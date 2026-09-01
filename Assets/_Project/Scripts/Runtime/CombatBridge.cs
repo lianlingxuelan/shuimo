@@ -17,6 +17,7 @@
 // 所以真正的装配放在 Start —— 所有 Awake 都结束了，Encounter 一定存在。
 // -----------------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -173,6 +174,21 @@ namespace Xianxia.Unity.T2
         {
             get { return controller != null ? controller.Player : null; }
         }
+
+        /// <summary>
+        /// 战斗事件出口（Unity 落地实现）。供表现层（如正魔 / 性格桥接）订阅
+        /// <see cref="CombatEventsUnity.EnemyDied"/> 等。未初始化时为 null。
+        /// </summary>
+        public CombatEventsUnity CombatEvents
+        {
+            get { return controller != null ? controller.EventsUnity : null; }
+        }
+
+        /// <summary>
+        /// 玩家投递了一次战斗意图（技能 / 普攻 / 闪避）。在 <see cref="RequestCast"/>
+        /// 真正写入内核缓冲后触发，供正魔 / 性格系统按意图性质（克己 vs 拔刀）做判定。
+        /// </summary>
+        public event Action<IntentSlot> CastRequested;
 
         /// <summary>
         /// P1-6 玩家成长状态机。供 <c>Hud</c> 与集成测试读取。
@@ -561,9 +577,9 @@ namespace Xianxia.Unity.T2
             // 职责是"把组件挂到玩家身上"。挂上去就好，接线交给该管的人。
             PlayerHitFlash playerFlash;
 #if UNITY_2023_1_OR_NEWER
-            playerFlash = Object.FindFirstObjectByType<PlayerHitFlash>();
+            playerFlash = UnityEngine.Object.FindFirstObjectByType<PlayerHitFlash>();
 #else
-            playerFlash = Object.FindObjectOfType<PlayerHitFlash>();
+            playerFlash = UnityEngine.Object.FindObjectOfType<PlayerHitFlash>();
 #endif
             _feedback.Bind(this, null, _popupLayer, playerFlash);
 
@@ -1008,7 +1024,12 @@ namespace Xianxia.Unity.T2
             {
                 return false;
             }
-            return controller.RequestPlayerCast(slot, facing);
+            bool written = controller.RequestPlayerCast(slot, facing);
+            if (written)
+            {
+                CastRequested?.Invoke(slot);
+            }
+            return written;
         }
 
         /// <summary>投递一次闪避意图。</summary>
@@ -1673,9 +1694,9 @@ namespace Xianxia.Unity.T2
             if (_bossBar == null)
             {
 #if UNITY_2023_1_OR_NEWER
-                _bossBar = Object.FindFirstObjectByType<HudBossBar>();
+                _bossBar = UnityEngine.Object.FindFirstObjectByType<HudBossBar>();
 #else
-                _bossBar = Object.FindObjectOfType<HudBossBar>();
+                _bossBar = UnityEngine.Object.FindObjectOfType<HudBossBar>();
 #endif
             }
             return _bossBar;

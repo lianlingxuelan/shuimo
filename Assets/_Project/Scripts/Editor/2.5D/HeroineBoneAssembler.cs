@@ -67,6 +67,80 @@ namespace Shuimo.EditorTools
         }
 
         /// <summary>
+        /// 安全升级已经存在的 HeroineBone：只为没有 Motion 的状态补基础动画，
+        /// 不重建也不删除 Prefab，用户手录的 Motion 保持原样。
+        /// </summary>
+        [MenuItem("Shuimo/2.5D/补全女主默认骨骼动作", false, 221)]
+        public static void CompleteExistingMotions()
+        {
+#if HAS_2D_BONE_PACKAGE
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+            if (prefab == null)
+            {
+                EditorUtility.DisplayDialog("HeroineBone", "未找到 HeroineBone.prefab，请先执行“一键生成女主绑骨Prefab”。", "OK");
+                return;
+            }
+
+            SpriteSkin skin = prefab.GetComponent<SpriteSkin>();
+            Animator animator = prefab.GetComponent<Animator>();
+            AnimatorController controller = animator != null
+                ? animator.runtimeAnimatorController as AnimatorController
+                : null;
+            if (skin == null || skin.boneTransforms == null || skin.boneTransforms.Length == 0 || controller == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "HeroineBone",
+                    "现有预制体缺少可用 SpriteSkin 骨骼或标准 AnimatorController，无法安全补全动作。",
+                    "OK");
+                return;
+            }
+
+            EnsureDefaultMotions(controller, skin.boneTransforms);
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[HeroineBone] 已补全现有 HeroineBone 的空状态动作，不覆盖已有 Motion。");
+            EditorUtility.DisplayDialog("HeroineBone", "已补全 idle / walk / attack / hit / death 的空状态动作。", "OK");
+#else
+            EditorUtility.DisplayDialog("HeroineBone", "未定义 HAS_2D_BONE_PACKAGE，无法处理骨骼动作。", "OK");
+#endif
+        }
+
+        /// <summary>
+        /// 在 Skinning Editor 已生成网格和权重后，安全启用现有 prefab 的 SpriteSkin。
+        /// 不重建 prefab，也不会覆盖 Animator 或用户已录制的动作。
+        /// </summary>
+        [MenuItem("Shuimo/2.5D/启用已蒙皮女主的真实骨骼", false, 222)]
+        public static void EnableExistingSpriteSkin()
+        {
+#if HAS_2D_BONE_PACKAGE
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+            SpriteSkin skin = prefab != null ? prefab.GetComponent<SpriteSkin>() : null;
+            SpriteRenderer renderer = prefab != null ? prefab.GetComponent<SpriteRenderer>() : null;
+            if (skin == null || renderer == null || renderer.sprite == null
+                || skin.rootBone == null || skin.boneTransforms == null || skin.boneTransforms.Length == 0)
+            {
+                EditorUtility.DisplayDialog(
+                    "HeroineBone",
+                    "现有预制体缺少 SpriteSkin、源图或骨骼层级，无法安全启用真实蒙皮。",
+                    "OK");
+                return;
+            }
+
+            skin.enabled = true;
+            EditorUtility.SetDirty(skin);
+            PrefabUtility.SavePrefabAsset(prefab);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[HeroineBone] 已启用 SpriteSkin；运行时将保留源图并由 Animator 驱动骨骼。");
+            EditorUtility.DisplayDialog(
+                "HeroineBone",
+                "已启用 SpriteSkin。请进入 Play 模式确认角色可见，并检查 idle / walk / attack 动作。",
+                "OK");
+#else
+            EditorUtility.DisplayDialog("HeroineBone", "未定义 HAS_2D_BONE_PACKAGE，无法启用真实骨骼。", "OK");
+#endif
+        }
+
+        /// <summary>
         /// 打开工程 / 脚本重新编译后，若 HeroineBone.prefab 尚不存在则自动补建（静默、幂等）。
         /// 让不熟悉 Unity 的操作者“打开工程即可直接使用”，无需手动点菜单。
         /// 仅在 HAS_2D_BONE_PACKAGE 定义时执行建骨；失败路径只打日志、不弹窗。
@@ -157,9 +231,10 @@ namespace Shuimo.EditorTools
                 return false;
             }
 
-            // 4. Animator + 自动生成 Controller（5 状态）+ 默认 idle 动画
+            // 4. Animator + 自动生成 Controller（5 状态）+ 默认骨骼动画。
+            //    不覆盖用户已经手录的 Motion；空状态才补上可运行的基础动作。
             AnimatorController ac = EnsureAnimatorController();
-            EnsureIdleMotion(ac, skin.boneTransforms);
+            EnsureDefaultMotions(ac, skin.boneTransforms);
             Animator animator = root.AddComponent<Animator>();
             animator.runtimeAnimatorController = ac;
 
@@ -223,11 +298,10 @@ namespace Shuimo.EditorTools
             Report(
                 "已生成 " + boneCount + " 根骨骼的角色 Prefab：\n" + PrefabPath +
                 "\n\n并创建了 AnimatorController（idle/walk/attack/hit/death 5 状态）。\n" +
-                "idle 已自动挂上默认呼吸动画 heroine_idle.anim，其余 4 个状态为空（可暂缺）。\n\n" +
+                "idle/walk/attack/hit/death 均已自动挂上基础骨骼动作；已有手录动画不会被覆盖。\n\n" +
                 "下一步：\n" +
                 "1) 把 Prefab 拖进场景，点 Play → 角色应原地轻微上下呼吸（骨骼已绑定）。\n" +
-                "2) 打开 Animator 窗口，给 walk/attack/hit/death 各 State 的 Motion 槽\n" +
-                "   拖入对应 .anim（暂缺不影响验证）。\n" +
+                "2) 打开 Animator 窗口，可把对应 State 的基础动作替换为精修 .anim。\n" +
                 "3) 之后可按 docs/2d-bone-setup-guide.md 第 10 步接入 WorldBuilder。",
                 false);
             return true;
@@ -319,54 +393,152 @@ namespace Shuimo.EditorTools
         }
 
         // =====================================================================
-        // 默认 idle 动画
+        // 默认骨骼动作
         //
-        // 给一个非 Unity 用户也能直接看到效果的兜底：若 idle 状态还没有 Motion，
-        // 自动生成 heroine_idle.anim（hip 呼吸式上下浮动，循环），绑定到 idle 状态。
-        // 幅度按 hip 实际 localPosition 的比例取值，自适应骨骼所在坐标系，
-        // 无论骨骼是“像素尺度”还是“世界单位尺度”都保持视觉比例合理。
-        // 已有 .anim / 已配 Motion 时跳过，绝不覆盖用户手录的动画。
+        // 新建的骨骼 Controller 过去只有 idle Motion，导致状态名虽然齐全，实际
+        // walk / attack / hit / death 却永远没有任何骨骼变化。这里为五个空状态
+        // 生成可替换的基础动画：一旦 SpriteSkin 权重完成，Animator 就能立刻驱动
+        // 身体、四肢与裙摆；已有手录 Motion 一律不碰。
         // =====================================================================
 
-        private static void EnsureIdleMotion(AnimatorController ac, Transform[] boneTransforms)
+        private static void EnsureDefaultMotions(AnimatorController ac, Transform[] boneTransforms)
         {
-            AnimatorState idle = FindState(ac.layers[0].stateMachine, "idle");
-            if (idle == null || idle.motion != null)
+            if (ac == null || boneTransforms == null)
             {
                 return;
             }
 
-            const string clipPath = "Assets/_Project/Art/Characters/Heroine2D/heroine_idle.anim";
+            Transform hip = FindBone(boneTransforms, "hip");
+            float amplitude = hip != null
+                ? Mathf.Max(0.01f, Mathf.Abs(hip.localPosition.y) * 0.02f)
+                : 0.02f;
+
+            EnsureDefaultMotion(ac, "idle", "heroine_idle", true, boneTransforms, amplitude);
+            EnsureDefaultMotion(ac, "walk", "heroine_walk", true, boneTransforms, amplitude);
+            EnsureDefaultMotion(ac, "attack", "heroine_attack", false, boneTransforms, amplitude);
+            EnsureDefaultMotion(ac, "hit", "heroine_hit", false, boneTransforms, amplitude);
+            EnsureDefaultMotion(ac, "death", "heroine_death", false, boneTransforms, amplitude);
+            AssetDatabase.SaveAssets();
+        }
+
+        private static void EnsureDefaultMotion(
+            AnimatorController controller,
+            string stateName,
+            string clipName,
+            bool loop,
+            Transform[] boneTransforms,
+            float amplitude)
+        {
+            AnimatorState state = FindState(controller.layers[0].stateMachine, stateName);
+            if (state == null || state.motion != null)
+            {
+                return;
+            }
+
+            string clipPath = "Assets/_Project/Art/Characters/Heroine2D/" + clipName + ".anim";
             AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
             if (clip == null)
             {
-                Transform hip = System.Array.Find(boneTransforms, t => t != null && t.name == "hip");
-                float amplitude = 0.02f;
-                if (hip != null)
-                {
-                    amplitude = Mathf.Max(0.01f, Mathf.Abs(hip.localPosition.y) * 0.02f);
-                }
-
                 clip = new AnimationClip();
-                clip.name = "heroine_idle";
+                clip.name = clipName;
                 clip.frameRate = 30f;
-
-                AnimationCurve bob = new AnimationCurve();
-                bob.AddKey(0.00f, 0f);
-                bob.AddKey(0.50f, amplitude);
-                bob.AddKey(1.00f, 0f);
-                clip.SetCurve("hip", typeof(Transform), "m_LocalPosition.y", bob);
-
-                // Mecanim 循环由 AnimationClipSettings.loopTime 控制（clip.SetLoop 不存在）。
+                PopulateDefaultMotion(clip, stateName, boneTransforms, amplitude);
                 AssetDatabase.CreateAsset(clip, clipPath);
-                AnimationClipSettings clipSettings = AnimationUtility.GetAnimationClipSettings(clip);
-                clipSettings.loopTime = true;
-                AnimationUtility.SetAnimationClipSettings(clip, clipSettings);
-                AssetDatabase.SaveAssets();
             }
 
-            idle.motion = clip;
-            EditorUtility.SetDirty(idle);
+            AnimationClipSettings clipSettings = AnimationUtility.GetAnimationClipSettings(clip);
+            clipSettings.loopTime = loop;
+            AnimationUtility.SetAnimationClipSettings(clip, clipSettings);
+            state.motion = clip;
+            EditorUtility.SetDirty(state);
+        }
+
+        private static void PopulateDefaultMotion(
+            AnimationClip clip,
+            string stateName,
+            Transform[] bones,
+            float amplitude)
+        {
+            float hipY = LocalPositionY(bones, "hip");
+            float hipX = LocalPositionX(bones, "hip");
+            float hipZ = LocalEulerZ(bones, "hip");
+            float chestZ = LocalEulerZ(bones, "chest");
+            float leftThighZ = LocalEulerZ(bones, "thigh_L");
+            float rightThighZ = LocalEulerZ(bones, "thigh_R");
+            float leftArmZ = LocalEulerZ(bones, "shoulder_L");
+            float rightArmZ = LocalEulerZ(bones, "shoulder_R");
+            float skirtLeftZ = LocalEulerZ(bones, "skirt_L");
+            float skirtRightZ = LocalEulerZ(bones, "skirt_R");
+
+            switch (stateName)
+            {
+                case "idle":
+                    SetCurve(clip, "hip", "m_LocalPosition.y", 0f, hipY, 0.5f, hipY + amplitude, 1f, hipY);
+                    SetCurve(clip, "hair_back_L", "localEulerAnglesRaw.z", 0f, LocalEulerZ(bones, "hair_back_L"), 0.5f, LocalEulerZ(bones, "hair_back_L") + 3f, 1f, LocalEulerZ(bones, "hair_back_L"));
+                    SetCurve(clip, "hair_back_R", "localEulerAnglesRaw.z", 0f, LocalEulerZ(bones, "hair_back_R"), 0.5f, LocalEulerZ(bones, "hair_back_R") - 3f, 1f, LocalEulerZ(bones, "hair_back_R"));
+                    break;
+                case "walk":
+                    SetCurve(clip, "hip", "m_LocalPosition.y", 0f, hipY, 0.25f, hipY + amplitude * 2.4f, 0.5f, hipY, 0.75f, hipY + amplitude * 2.4f, 1f, hipY);
+                    SetCurve(clip, "thigh_L", "localEulerAnglesRaw.z", 0f, leftThighZ - 18f, 0.5f, leftThighZ + 18f, 1f, leftThighZ - 18f);
+                    SetCurve(clip, "thigh_R", "localEulerAnglesRaw.z", 0f, rightThighZ + 18f, 0.5f, rightThighZ - 18f, 1f, rightThighZ + 18f);
+                    SetCurve(clip, "shoulder_L", "localEulerAnglesRaw.z", 0f, leftArmZ + 12f, 0.5f, leftArmZ - 12f, 1f, leftArmZ + 12f);
+                    SetCurve(clip, "shoulder_R", "localEulerAnglesRaw.z", 0f, rightArmZ - 12f, 0.5f, rightArmZ + 12f, 1f, rightArmZ - 12f);
+                    break;
+                case "attack":
+                    SetCurve(clip, "hip", "localEulerAnglesRaw.z", 0f, hipZ, 0.14f, hipZ - 9f, 0.32f, hipZ + 11f, 0.52f, hipZ);
+                    SetCurve(clip, "chest", "localEulerAnglesRaw.z", 0f, chestZ, 0.14f, chestZ - 14f, 0.32f, chestZ + 25f, 0.52f, chestZ);
+                    SetCurve(clip, "shoulder_R", "localEulerAnglesRaw.z", 0f, rightArmZ, 0.14f, rightArmZ - 26f, 0.32f, rightArmZ + 55f, 0.52f, rightArmZ);
+                    SetCurve(clip, "shoulder_L", "localEulerAnglesRaw.z", 0f, leftArmZ, 0.14f, leftArmZ + 12f, 0.32f, leftArmZ - 20f, 0.52f, leftArmZ);
+                    SetCurve(clip, "skirt_L", "localEulerAnglesRaw.z", 0f, skirtLeftZ, 0.32f, skirtLeftZ - 10f, 0.52f, skirtLeftZ);
+                    SetCurve(clip, "skirt_R", "localEulerAnglesRaw.z", 0f, skirtRightZ, 0.32f, skirtRightZ + 10f, 0.52f, skirtRightZ);
+                    break;
+                case "hit":
+                    SetCurve(clip, "hip", "m_LocalPosition.x", 0f, hipX, 0.08f, hipX - amplitude * 2.5f, 0.22f, hipX);
+                    SetCurve(clip, "chest", "localEulerAnglesRaw.z", 0f, chestZ, 0.08f, chestZ - 13f, 0.22f, chestZ);
+                    break;
+                case "death":
+                    SetCurve(clip, "hip", "localEulerAnglesRaw.z", 0f, hipZ, 0.42f, hipZ - 76f, 0.7f, hipZ - 82f);
+                    SetCurve(clip, "chest", "localEulerAnglesRaw.z", 0f, chestZ, 0.42f, chestZ + 18f, 0.7f, chestZ + 22f);
+                    break;
+            }
+        }
+
+        private static Transform FindBone(Transform[] bones, string boneName)
+        {
+            return System.Array.Find(bones, bone => bone != null && bone.name == boneName);
+        }
+
+        private static float LocalPositionY(Transform[] bones, string boneName)
+        {
+            Transform bone = FindBone(bones, boneName);
+            return bone != null ? bone.localPosition.y : 0.0f;
+        }
+
+        private static float LocalPositionX(Transform[] bones, string boneName)
+        {
+            Transform bone = FindBone(bones, boneName);
+            return bone != null ? bone.localPosition.x : 0.0f;
+        }
+
+        private static float LocalEulerZ(Transform[] bones, string boneName)
+        {
+            Transform bone = FindBone(bones, boneName);
+            if (bone == null)
+            {
+                return 0.0f;
+            }
+            float angle = bone.localEulerAngles.z;
+            return angle > 180.0f ? angle - 360.0f : angle;
+        }
+
+        private static void SetCurve(AnimationClip clip, string path, string propertyName, params float[] keys)
+        {
+            AnimationCurve curve = new AnimationCurve();
+            for (int i = 0; i + 1 < keys.Length; i += 2)
+            {
+                curve.AddKey(keys[i], keys[i + 1]);
+            }
+            clip.SetCurve(path, typeof(Transform), propertyName, curve);
         }
 
         // =====================================================================

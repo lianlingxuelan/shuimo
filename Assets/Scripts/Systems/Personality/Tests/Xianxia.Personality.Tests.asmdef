@@ -1,0 +1,13 @@
+{
+    "name": "Xianxia.Personality.Tests",
+    "rootNamespace": "Xianxia.Personality.Tests",
+    "references": ["com.unity.test-framework", "Xianxia.Personality"],
+    "includePlatforms": ["Editor"],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

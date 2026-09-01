@@ -40,6 +40,12 @@ namespace Xianxia.Unity.T2
         [Tooltip("开启后本组件不投递任何闪避意图，也不接管移动（P0-09 基线配置）。")]
         [SerializeField] private bool disableForBaseline;
 
+        [Header("诊断")]
+        [Tooltip("开启后按空格时在 Console 打印闪避链路状态，用于排查『按空格无反应』。" +
+                 "门控挡住只打印一次；按下/开始各打印一次。确认后可在 Inspector 关掉。")]
+        [SerializeField] private bool verboseLog = true;
+        private bool _gateLogged;
+
         // 本组件当前是否正在"接管"玩家移动。接管期间 PlayerController 的常规移动被覆盖。
         // 需要这个标志是为了知道"何时该把控制权还回去"，见 ReleaseDrive。
         private bool _driving;
@@ -118,6 +124,18 @@ namespace Xianxia.Unity.T2
             CombatBridge b = ResolveBridge();
             if (b == null || !b.IsReady || b.BaselineMode || !b.T3Enabled || b.IsGameplayBlocked)
             {
+                if (verboseLog && !_gateLogged)
+                {
+                    _gateLogged = true;
+                    Debug.LogWarning(string.Format(
+                        "[Dodge] 闪避门控未通过，意图被忽略（无需重复排查）：" +
+                        "b==null:{0} !IsReady:{1} BaselineMode:{2} !T3Enabled:{3} IsGameplayBlocked:{4}",
+                        b == null,
+                        b != null && !b.IsReady,
+                        b != null && b.BaselineMode,
+                        b != null && !b.T3Enabled,
+                        b != null && b.IsGameplayBlocked));
+                }
                 ReleaseDrive();
                 return;
             }
@@ -127,6 +145,9 @@ namespace Xianxia.Unity.T2
                 Vector2 dir = ResolveDodgeDir();
                 DodgeRequestCount++;
                 LastDodgeDir = dir;
+                if (verboseLog) Debug.Log(string.Format(
+                    "[Dodge] 空格按下，意图写入。DodgeRequestCount={0}，方向=({1:F2},{2:F2})",
+                    DodgeRequestCount, dir.x, dir.y));
                 b.RequestDodge(dir);
             }
 
@@ -169,6 +190,8 @@ namespace Xianxia.Unity.T2
             {
                 _wasDodging = true;
                 DodgeStartCount++;
+                if (verboseLog) Debug.Log(string.Format(
+                    "[Dodge] 内核开始执行闪避（位移驱动生效）。DodgeStartCount={0}", DodgeStartCount));
             }
 
             // 用内核锁定的方向，而不是玩家此刻的输入方向。

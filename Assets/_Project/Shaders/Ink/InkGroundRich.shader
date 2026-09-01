@@ -28,7 +28,6 @@ Shader "Xianxia/Ink/InkGroundRich"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #pragma multi_compile_fog
             #include "UnityCG.cginc"
 
             fixed4 _PaperColor;
@@ -53,7 +52,6 @@ Shader "Xianxia/Ink/InkGroundRich"
             {
                 float4 pos : SV_POSITION;
                 float3 wpos : TEXCOORD0;
-                UNITY_FOG_COORDS(1)
             };
 
             v2f vert (appdata v)
@@ -62,7 +60,6 @@ Shader "Xianxia/Ink/InkGroundRich"
                 float4 wp = mul(unity_ObjectToWorld, v.vertex);
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.wpos = wp.xyz;
-                UNITY_TRANSFER_FOG(o, o.pos);
                 return o;
             }
 
@@ -100,7 +97,12 @@ Shader "Xianxia/Ink/InkGroundRich"
             fixed4 frag (v2f i) : SV_Target
             {
                 // 0.18 让单块墨晕覆盖更大范围，避免地面被细碎噪声切成"花布"。
-                float2 p = i.wpos.xz * 0.18;
+                // 本工程的玩法地面在 XY 平面（Z 是伪深度）。若采样 XZ，整张
+                // 地图在纵向会读到同一个 Z，水墨纹理就退化成接近纯色的条纹。
+                // 世界单位是像素级（单屏数百单位），0.18 会把噪声压到远高于
+                // 屏幕像素的频率，采样后又被平均成一片白。降低到大笔触尺度，
+                // 才能看出宣纸上的墨晕而不是“有 shader 的纯色”。
+                float2 p = i.wpos.xy * 0.006;
 
                 // 大尺度淡墨晕染（多频）
                 float blot = fbm(p * _BlotScale);
@@ -130,9 +132,9 @@ Shader "Xianxia/Ink/InkGroundRich"
                 col = lerp(col, col * 0.92, 0.12);
                 col = lerp(col, _TintColor.rgb, _TintStrength * fbm(p * 0.4));
 
-                fixed4 final = fixed4(col, 1.0);
-                UNITY_APPLY_FOG(i.fogCoord, final);
-                return final;
+                // 地面就是水墨画布本身，不能被远景白雾洗回纯白；雾只用于
+                // 远处环境层，画布始终保留清晰的墨晕与纸纹。
+                return fixed4(col, 1.0);
             }
             ENDCG
         }
